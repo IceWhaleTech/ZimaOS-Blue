@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -42,8 +43,18 @@ const (
 )
 
 var (
-	iLinkStartupProbeTimeout = 60 * time.Second
-	iLinkHTTPTimeout         = 75 * time.Second
+	iLinkStartupProbeTimeout  = 60 * time.Second
+	iLinkHTTPTimeout          = 75 * time.Second
+	iLinkSendRetryDelay       = 100 * time.Millisecond
+	iLinkGetUpdatesRetryDelay = 100 * time.Millisecond
+	iLinkInboundDedupTTL      = 10 * time.Minute
+	iLinkPollErrorBackoffBase = 250 * time.Millisecond
+	iLinkPollErrorBackoffMax  = 5 * time.Second
+)
+
+const (
+	iLinkSendMaxAttempts       = 2
+	iLinkGetUpdatesMaxAttempts = 2
 )
 
 type Channel struct {
@@ -71,7 +82,8 @@ type Channel struct {
 
 	ilinkMu            sync.RWMutex
 	ilinkContextTokens map[string]string
-	ilinkUINHeader     string
+	ilinkInboundSeen   map[string]time.Time
+	ilinkInboundSeenGC time.Time
 }
 
 func New(cfg channel.WeChatILinkConfig, logger *zap.Logger) *Channel {
@@ -84,6 +96,7 @@ func New(cfg channel.WeChatILinkConfig, logger *zap.Logger) *Channel {
 			Timeout: iLinkHTTPTimeout,
 		},
 		ilinkContextTokens: make(map[string]string),
+		ilinkInboundSeen:   make(map[string]time.Time),
 	}
 }
 
@@ -124,7 +137,6 @@ func (c *Channel) Start(ctx context.Context) error {
 	if c.httpClient == nil {
 		c.httpClient = &http.Client{Timeout: iLinkHTTPTimeout}
 	}
-	_ = c.ensureILinkUINHeader()
 
 	probeCtx, cancel := context.WithTimeout(c.ctx, iLinkStartupProbeTimeout)
 	defer cancel()
@@ -223,12 +235,8 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		},
 	}
 
-	var resp iLinkResponseEnvelope
-	if err := c.postILinkJSON(ctx, "sendmessage", req, &resp); err != nil {
+	if err := c.sendILinkMessageWithRetry(ctx, req); err != nil {
 		return fmt.Errorf("send iLink message: %w", err)
-	}
-	if err := validateILinkResponse(resp); err != nil {
-		return err
 	}
 
 	c.msgsSent.Add(1)
@@ -373,8 +381,18 @@ type iLinkNamedItem struct {
 	Name     string `json:"filename,omitempty"`
 }
 
+type iLinkAPIStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *iLinkAPIStatusError) Error() string {
+	return fmt.Sprintf("iLink API status %d: %s", e.StatusCode, e.Body)
+}
+
 func (c *Channel) runILinkPoller(cursor string, waitBeforeNext bool, longPollingTimeoutMS int) {
 	defer c.wg.Done()
+	consecutiveFailures := 0
 
 	if waitBeforeNext {
 		if !sleepWithContext(c.ctx, iLinkPollDelay(longPollingTimeoutMS)) {
@@ -388,12 +406,14 @@ func (c *Channel) runILinkPoller(cursor string, waitBeforeNext bool, longPolling
 			if c.ctx == nil || c.ctx.Err() != nil {
 				return
 			}
+			consecutiveFailures++
 			c.setError(fmt.Sprintf("failed to poll iLink updates: %v", err))
-			if !sleepWithContext(c.ctx, time.Second) {
+			if !sleepWithContext(c.ctx, iLinkPollErrorBackoffDelay(consecutiveFailures)) {
 				return
 			}
 			continue
 		}
+		consecutiveFailures = 0
 
 		if resp.GetUpdatesBuf != "" {
 			cursor = resp.GetUpdatesBuf
@@ -425,19 +445,48 @@ func iLinkPollDelay(longPollingTimeoutMS int) time.Duration {
 	return delay
 }
 
+func iLinkPollErrorBackoffDelay(attempt int) time.Duration {
+	delay := iLinkPollErrorBackoffBase
+	if attempt <= 1 {
+		if delay > iLinkPollErrorBackoffMax {
+			return iLinkPollErrorBackoffMax
+		}
+		return delay
+	}
+
+	for i := 1; i < attempt; i++ {
+		if delay >= iLinkPollErrorBackoffMax {
+			return iLinkPollErrorBackoffMax
+		}
+		delay *= 2
+		if delay >= iLinkPollErrorBackoffMax {
+			return iLinkPollErrorBackoffMax
+		}
+	}
+
+	return delay
+}
+
 func (c *Channel) handleILinkIncomingMessages(messages []iLinkMessage) {
 	for _, incoming := range messages {
 		msg, ok := c.convertILinkMessage(incoming)
 		if !ok {
 			continue
 		}
+
+		now := time.Now()
 		if incoming.ContextToken != "" {
 			c.storeILinkContextToken(msg.ChatID, incoming.ContextToken)
+		}
+		if c.markILinkInboundSeen(incoming, now) {
+			c.logger.Debug("duplicate iLink inbound message skipped",
+				zap.String("message_id", msg.ID),
+				zap.String("chat_id", msg.ChatID))
+			continue
 		}
 
 		c.msgCount.Add(1)
 		c.msgsReceived.Add(1)
-		now := time.Now()
 		c.mu.Lock()
 		c.lastMessageAt = &now
 		c.mu.Unlock()
@@ -454,17 +503,80 @@ func (c *Channel) handleILinkIncomingMessages(messages []iLinkMessage) {
 }
 
 func (c *Channel) ilinkGetUpdates(ctx context.Context, cursor string) (iLinkGetUpdatesResponse, error) {
-	var resp iLinkGetUpdatesResponse
-	if err := c.postILinkJSON(ctx, "getupdates", iLinkGetUpdatesRequest{
-		GetUpdatesBuf: cursor,
-		BaseInfo:      buildILinkBaseInfo(),
-	}, &resp); err != nil {
-		return resp, err
+	var lastErr error
+
+	for attempt := 1; attempt <= iLinkGetUpdatesMaxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return iLinkGetUpdatesResponse{}, ctx.Err()
+		}
+
+		var resp iLinkGetUpdatesResponse
+		err := c.postILinkJSON(ctx, "getupdates", iLinkGetUpdatesRequest{
+			GetUpdatesBuf: cursor,
+			BaseInfo:      buildILinkBaseInfo(),
+		}, &resp)
+		if err == nil {
+			if err := validateILinkResponse(resp.iLinkResponseEnvelope); err != nil {
+				return resp, err
+			}
+			return resp, nil
+		}
+		if ctx.Err() != nil {
+			return iLinkGetUpdatesResponse{}, ctx.Err()
+		}
+		if !isRetryableILinkGetUpdatesError(err) || attempt == iLinkGetUpdatesMaxAttempts {
+			return iLinkGetUpdatesResponse{}, err
+		}
+
+		lastErr = err
+		c.logger.Warn("transient iLink getupdates failure, retrying",
+			zap.Int("attempt", attempt),
+			zap.Int("max_attempts", iLinkGetUpdatesMaxAttempts),
+			zap.String("cursor", cursor),
+			zap.Error(err))
+
+		if !sleepWithContext(ctx, time.Duration(attempt)*iLinkGetUpdatesRetryDelay) {
+			return iLinkGetUpdatesResponse{}, ctx.Err()
+		}
 	}
-	if err := validateILinkResponse(resp.iLinkResponseEnvelope); err != nil {
-		return resp, err
+
+	return iLinkGetUpdatesResponse{}, lastErr
+}
+
+func (c *Channel) sendILinkMessageWithRetry(ctx context.Context, req iLinkSendMessageRequest) error {
+	var lastErr error
+
+	for attempt := 1; attempt <= iLinkSendMaxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		var resp iLinkResponseEnvelope
+		err := c.postILinkJSON(ctx, "sendmessage", req, &resp)
+		if err == nil {
+			return validateILinkResponse(resp)
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !isRetryableILinkSendError(err) || attempt == iLinkSendMaxAttempts {
+			return err
+		}
+
+		lastErr = err
+		c.logger.Warn("transient iLink send failure, retrying",
+			zap.Int("attempt", attempt),
+			zap.Int("max_attempts", iLinkSendMaxAttempts),
+			zap.String("to_user_id", req.Msg.ToUserID),
+			zap.String("client_id", req.Msg.ClientID),
+			zap.Error(err))
+
+		if !sleepWithContext(ctx, time.Duration(attempt)*iLinkSendRetryDelay) {
+			return ctx.Err()
+		}
 	}
-	return resp, nil
+
+	return lastErr
 }
 
 func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload any, out any) error {
@@ -485,7 +597,7 @@ func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload an
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("AuthorizationType", "ilink_bot_token")
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(c.config.BotToken))
-	req.Header.Set("X-WECHAT-UIN", c.ensureILinkUINHeader())
+	req.Header.Set("X-WECHAT-UIN", generateILinkUINHeader())
 	req.Header.Set("iLink-App-Id", iLinkAppID)
 	req.Header.Set("iLink-App-ClientVersion", strconv.FormatUint(buildILinkClientVersion(resolveILinkChannelVersion()), 10))
 
@@ -505,7 +617,10 @@ func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload an
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("iLink API status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return &iLinkAPIStatusError{
+			StatusCode: resp.StatusCode,
+			Body:       strings.TrimSpace(string(raw)),
+		}
 	}
 	if out == nil {
 		return nil
@@ -623,19 +738,147 @@ func validateILinkResponse(resp iLinkResponseEnvelope) error {
 	return nil
 }
 
-func (c *Channel) ensureILinkUINHeader() string {
-	c.ilinkMu.Lock()
-	defer c.ilinkMu.Unlock()
-	if c.ilinkUINHeader != "" {
-		return c.ilinkUINHeader
-	}
-
+func generateILinkUINHeader() string {
 	var raw [4]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		binary.BigEndian.PutUint32(raw[:], uint32(time.Now().UnixNano()))
 	}
-	c.ilinkUINHeader = base64.StdEncoding.EncodeToString(raw[:])
-	return c.ilinkUINHeader
+	uin := binary.BigEndian.Uint32(raw[:])
+	return base64.StdEncoding.EncodeToString([]byte(strconv.FormatUint(uint64(uin), 10)))
+}
+
+func isRetryableILinkGetUpdatesError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	var statusErr *iLinkAPIStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode >= 500 && statusErr.StatusCode <= 599
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	return false
+}
+
+func isRetryableILinkSendError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	var statusErr *iLinkAPIStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode >= 500 && statusErr.StatusCode <= 599
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	return false
+}
+
+func (c *Channel) markILinkInboundSeen(msg iLinkMessage, now time.Time) bool {
+	if iLinkInboundDedupTTL <= 0 {
+		return false
+	}
+
+	key := iLinkInboundDedupKey(msg)
+	if key == "" {
+		return false
+	}
+
+	c.ilinkMu.Lock()
+	defer c.ilinkMu.Unlock()
+
+	if c.ilinkInboundSeen == nil {
+		c.ilinkInboundSeen = make(map[string]time.Time)
+	}
+	c.gcILinkInboundSeenLocked(now)
+
+	if seenAt, ok := c.ilinkInboundSeen[key]; ok && now.Sub(seenAt) < iLinkInboundDedupTTL {
+		return true
+	}
+
+	c.ilinkInboundSeen[key] = now
+	return false
+}
+
+func (c *Channel) gcILinkInboundSeenLocked(now time.Time) {
+	if !c.ilinkInboundSeenGC.IsZero() && now.Before(c.ilinkInboundSeenGC) {
+		return
+	}
+
+	cutoff := now.Add(-iLinkInboundDedupTTL)
+	for key, seenAt := range c.ilinkInboundSeen {
+		if seenAt.Before(cutoff) {
+			delete(c.ilinkInboundSeen, key)
+		}
+	}
+
+	c.ilinkInboundSeenGC = now.Add(time.Minute)
+}
+
+func iLinkInboundDedupKey(msg iLinkMessage) string {
+	if msg.MessageID != 0 {
+		return "mid:" + strconv.FormatInt(msg.MessageID, 10)
+	}
+
+	fromUserID := strings.TrimSpace(msg.FromUserID)
+	if fromUserID == "" {
+		return ""
+	}
+
+	itemSigs := make([]string, 0, len(msg.ItemList))
+	for _, item := range msg.ItemList {
+		itemSigs = append(itemSigs, iLinkInboundItemSignature(item))
+	}
+
+	return strings.Join([]string{
+		"fallback",
+		fromUserID,
+		strings.TrimSpace(msg.ToUserID),
+		strconv.FormatInt(msg.CreateTimeMS, 10),
+		strconv.Itoa(msg.MessageType),
+		strings.TrimSpace(msg.SessionID),
+		strings.Join(itemSigs, "\x1f"),
+	}, "|")
+}
+
+func iLinkInboundItemSignature(item iLinkMessageItem) string {
+	switch item.Type {
+	case iLinkItemTypeText:
+		if item.TextItem != nil {
+			return "text:" + strings.TrimSpace(item.TextItem.Text)
+		}
+	case iLinkItemTypeImage:
+		return "image:" + iLinkNamedItemValue(item.ImageItem)
+	case iLinkItemTypeVoice:
+		return "voice:" + iLinkNamedItemValue(item.VoiceItem)
+	case iLinkItemTypeFile:
+		return "file:" + iLinkNamedItemValue(item.FileItem)
+	case iLinkItemTypeVideo:
+		return "video:" + iLinkNamedItemValue(item.VideoItem)
+	}
+
+	return strconv.Itoa(item.Type)
 }
 
 func (c *Channel) resolveILinkContextToken(msg channel.OutgoingMessage) string {

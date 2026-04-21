@@ -204,6 +204,15 @@ func TestAutoHarnessTurnHook_CapturesContextPackSnapshotInQuickEvalMetadata(t *t
 		UserMessage:          "Finish and verify the Responses API fix",
 		Model:                "gpt-5.4-mini",
 		ContextPackSelection: selection,
+		ToolSurfaceSnapshot: &chatToolSurfaceLogSnapshot{
+			SurfaceMode:             string(chatToolSurfaceModeDirectPublicWeb),
+			CanonicalTarget:         "web_query",
+			ActivationRequested:     true,
+			ActivationApplied:       true,
+			StickySurfaceSource:     "selection_native",
+			RecoveryPath:            "direct_web_rescue",
+			ActivationFailureReason: "",
+		},
 	}, assistantMsg); err != nil {
 		t.Fatalf("AfterAssistantPersisted: %v", err)
 	}
@@ -224,6 +233,19 @@ func TestAutoHarnessTurnHook_CapturesContextPackSnapshotInQuickEvalMetadata(t *t
 	}
 	if got := groupSnapshot["selection_digest"]; got == "" || got == nil {
 		t.Fatalf("group selection_digest = %#v, want non-empty", got)
+	}
+	groupToolSurface, ok := spec.Metadata["tool_surface_snapshot"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("group tool_surface_snapshot type = %T, want map[string]interface{}", spec.Metadata["tool_surface_snapshot"])
+	}
+	if got := groupToolSurface["surface_mode"]; got != string(chatToolSurfaceModeDirectPublicWeb) {
+		t.Fatalf("group tool_surface_snapshot.surface_mode = %#v, want %q", got, chatToolSurfaceModeDirectPublicWeb)
+	}
+	if got := groupToolSurface["canonical_target"]; got != "web_query" {
+		t.Fatalf("group tool_surface_snapshot.canonical_target = %#v, want web_query", got)
+	}
+	if got := groupToolSurface["activation_applied"]; got != true {
+		t.Fatalf("group tool_surface_snapshot.activation_applied = %#v, want true", got)
 	}
 
 	itemSnapshot, ok := spec.Items[0].Metadata["contextpack_snapshot"].(map[string]interface{})
@@ -250,6 +272,16 @@ func TestAutoHarnessTurnHook_CapturesContextPackSnapshotInQuickEvalMetadata(t *t
 		if got := file["source_trust"]; got != "official" {
 			t.Fatalf("item snapshot file source_trust = %#v, want official", got)
 		}
+	}
+	itemToolSurface, ok := spec.Items[0].Metadata["tool_surface_snapshot"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("item tool_surface_snapshot type = %T, want map[string]interface{}", spec.Items[0].Metadata["tool_surface_snapshot"])
+	}
+	if got := itemToolSurface["sticky_surface_source"]; got != "selection_native" {
+		t.Fatalf("item tool_surface_snapshot.sticky_surface_source = %#v, want selection_native", got)
+	}
+	if got := itemToolSurface["recovery_path"]; got != "direct_web_rescue" {
+		t.Fatalf("item tool_surface_snapshot.recovery_path = %#v, want direct_web_rescue", got)
 	}
 }
 

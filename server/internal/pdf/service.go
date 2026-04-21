@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,9 +22,14 @@ import (
 )
 
 const (
-	defaultMaxPages            = 20
-	hardMaxPages               = 200
-	defaultMaxChars            = 50000
+	// defaultMaxPages controls how many pages are extracted when callers do not specify
+	// explicit page selection. We bias toward recall/coverage for long-form PDFs.
+	defaultMaxPages = 35
+	hardMaxPages    = 200
+	// defaultMaxChars controls how much extracted PDF text is returned when callers do not
+	// specify a max_chars limit. It needs to be large enough for long-form papers where
+	// key sections (methods, safety, limitations) may not appear on the first few pages.
+	defaultMaxChars            = 180000
 	hardMaxChars               = 200000
 	instanceAcquireTimeout     = 30 * time.Second
 	defaultRequestTimeout      = 2 * time.Minute
@@ -79,6 +87,8 @@ var pdfTextRuneReplacer = strings.NewReplacer(
 	"‚", "'",
 	"‛", "'",
 )
+
+var tocDigitPattern = regexp.MustCompile(`\d+`)
 
 // OCRService provides OCR fallback for rendered PDF pages.
 type OCRService interface {
@@ -372,14 +382,7 @@ func resolveSelectedPages(pageCount int, requested []int, maxPages int) ([]int, 
 		return nil, nil, nil
 	}
 	if len(requested) == 0 {
-		selected := make([]int, 0, minInt(pageCount, limit))
-		for i := 1; i <= pageCount && len(selected) < limit; i++ {
-			selected = append(selected, i)
-		}
-		warnings := []string{}
-		if pageCount > limit {
-			warnings = append(warnings, fmt.Sprintf("defaulting to first %d pages", limit))
-		}
+		selected, warnings := resolveDefaultSelectedPages(pageCount, limit, nil)
 		return selected, warnings, nil
 	}
 
@@ -401,6 +404,229 @@ func resolveSelectedPages(pageCount int, requested []int, maxPages int) ([]int, 
 		warnings = append(warnings, fmt.Sprintf("page selection truncated to %d pages", limit))
 	}
 	return selected, warnings, nil
+}
+
+func resolveDefaultSelectedPages(pageCount int, limit int, tocTargets []int) ([]int, []string) {
+	if pageCount <= 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = defaultMaxPages
+	}
+	if pageCount <= limit {
+		selected := make([]int, 0, pageCount)
+		for i := 1; i <= pageCount; i++ {
+			selected = append(selected, i)
+		}
+		return selected, nil
+	}
+
+	// For long PDFs, sampling only the beginning tends to miss key sections (methods,
+	// safety, limitations, appendices). Prefer a deterministic spread that keeps a
+	// contiguous head, TOC-driven targets, a few evenly spaced middle pages, and a tail slice.
+	headCount := minInt(limit, max(10, limit/3))
+	headCount = minInt(headCount, 12)
+	tailCount := minInt(limit-headCount, max(5, limit/4))
+	tailCount = minInt(tailCount, 8)
+	minMiddle := minInt(8, max(4, limit/6))
+	maxTOC := max(0, limit-headCount-tailCount-minMiddle)
+	if maxTOC > 12 {
+		maxTOC = 12
+	}
+	tocPages := filterTOCTargetPages(tocTargets, pageCount, headCount, tailCount)
+	if len(tocPages) > maxTOC {
+		tocPages = tocPages[:maxTOC]
+	}
+	middleCount := limit - headCount - tailCount - len(tocPages)
+	if middleCount < 0 {
+		middleCount = 0
+	}
+
+	selected := make([]int, 0, limit+12)
+	for i := 1; i <= headCount; i++ {
+		selected = append(selected, i)
+	}
+	selected = append(selected, tocPages...)
+
+	middleStart := headCount + 1
+	middleEnd := pageCount - tailCount
+	if middleCount > 0 && middleEnd >= middleStart {
+		span := middleEnd - middleStart
+		for i := 1; i <= middleCount; i++ {
+			page := middleStart
+			if span > 0 {
+				page = middleStart + (i*span)/(middleCount+1)
+			}
+			selected = append(selected, page)
+		}
+	}
+
+	for i := pageCount - tailCount + 1; i <= pageCount; i++ {
+		if i < 1 {
+			continue
+		}
+		selected = append(selected, i)
+	}
+
+	sort.Ints(selected)
+	selected = uniqueSortedPages(selected, pageCount)
+
+	// Fill any gaps caused by overlaps when pageCount is only slightly above limit.
+	if len(selected) < limit {
+		seen := make(map[int]struct{}, len(selected))
+		for _, page := range selected {
+			seen[page] = struct{}{}
+		}
+		for page := 1; page <= pageCount && len(selected) < limit; page++ {
+			if _, ok := seen[page]; ok {
+				continue
+			}
+			selected = append(selected, page)
+			seen[page] = struct{}{}
+		}
+		sort.Ints(selected)
+	}
+
+	// Enforce the limit while preserving the last page for coverage.
+	if len(selected) > limit {
+		sort.Ints(selected)
+		last := selected[len(selected)-1]
+		core := selected[:len(selected)-1]
+		if len(core) >= limit-1 {
+			selected = append([]int(nil), core[:limit-1]...)
+		} else {
+			selected = append([]int(nil), core...)
+		}
+		if last != selected[len(selected)-1] {
+			selected = append(selected, last)
+		}
+		sort.Ints(selected)
+	}
+
+	warnings := []string{fmt.Sprintf("defaulting to %d sampled pages across %d-page document", len(selected), pageCount)}
+	if len(tocPages) > 0 {
+		warnings = append(warnings, fmt.Sprintf("added %d table-of-contents target pages", len(tocPages)))
+	}
+	return selected, warnings
+}
+
+func uniqueSortedPages(pages []int, pageCount int) []int {
+	if len(pages) == 0 {
+		return nil
+	}
+	out := pages[:0]
+	prev := 0
+	for _, page := range pages {
+		if page < 1 || page > pageCount {
+			continue
+		}
+		if page == prev {
+			continue
+		}
+		out = append(out, page)
+		prev = page
+	}
+	return out
+}
+
+func filterTOCTargetPages(targets []int, pageCount, headCount, tailCount int) []int {
+	if len(targets) == 0 {
+		return nil
+	}
+	headMax := headCount
+	tailMin := pageCount - tailCount + 1
+	seen := map[int]struct{}{}
+	out := make([]int, 0, len(targets))
+	for _, page := range targets {
+		if page < 1 || page > pageCount {
+			continue
+		}
+		if page <= headMax || page >= tailMin {
+			continue
+		}
+		if _, ok := seen[page]; ok {
+			continue
+		}
+		seen[page] = struct{}{}
+		out = append(out, page)
+	}
+	sort.Ints(out)
+	return out
+}
+
+func extractTOCPageTargets(text string, pageCount int) []int {
+	if strings.TrimSpace(text) == "" || pageCount <= 0 {
+		return nil
+	}
+	keywords := []string{
+		"abstract",
+		"introduction",
+		"overview",
+		"background",
+		"method",
+		"methods",
+		"approach",
+		"training",
+		"evaluation",
+		"results",
+		"discussion",
+		"safety",
+		"alignment",
+		"limitations",
+		"conclusion",
+		"appendix",
+		"references",
+	}
+
+	type scored struct {
+		page     int
+		priority int
+	}
+	best := map[int]int{}
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lower := strings.ToLower(trimmed)
+		matches := tocDigitPattern.FindAllString(lower, -1)
+		if len(matches) == 0 {
+			continue
+		}
+		last := matches[len(matches)-1]
+		page, err := strconv.Atoi(last)
+		if err != nil || page < 1 || page > pageCount {
+			continue
+		}
+		for i, kw := range keywords {
+			if !strings.Contains(lower, kw) {
+				continue
+			}
+			if prev, ok := best[page]; !ok || i < prev {
+				best[page] = i
+			}
+			break
+		}
+	}
+	if len(best) == 0 {
+		return nil
+	}
+	items := make([]scored, 0, len(best))
+	for page, prio := range best {
+		items = append(items, scored{page: page, priority: prio})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].priority == items[j].priority {
+			return items[i].page < items[j].page
+		}
+		return items[i].priority < items[j].priority
+	})
+	out := make([]int, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.page)
+	}
+	return out
 }
 
 func clampMaxPages(value int) int {

@@ -93,7 +93,7 @@ func (p *computerUseDesktopChatRecoveryProvider) Chat(ctx context.Context, req l
 		}
 		firstToolArgs := strings.TrimSpace(p.firstToolArgs)
 		if firstToolArgs == "" {
-			firstToolArgs = `{"action":"ocr","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`
+			firstToolArgs = `{"action":"ocr","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`
 		}
 		return &llm.ChatResponse{
 			ID:    "computer-use-recovery-round-1",
@@ -116,7 +116,7 @@ func (p *computerUseDesktopChatRecoveryProvider) Chat(ctx context.Context, req l
 			}
 			recoveredToolArgs := strings.TrimSpace(p.recoveredToolArgs)
 			if recoveredToolArgs == "" {
-				recoveredToolArgs = `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`
+				recoveredToolArgs = `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`
 			}
 			return &llm.ChatResponse{
 				ID:    "computer-use-recovery-round-2",
@@ -153,7 +153,7 @@ func (p *computerUseDesktopChatRecoveryProvider) Chat(ctx context.Context, req l
 		if requestContainsComputerUseToolResult(req, "Host action completed and submitted") {
 			finalContent := strings.TrimSpace(p.finalContent)
 			if finalContent == "" {
-				finalContent = "已经在飞书桌面应用里给【后端之家】发出问候。"
+				finalContent = "已经在飞书桌面应用里给【test_group】发出问候。"
 			}
 			return &llm.ChatResponse{
 				ID:    "computer-use-recovery-round-3",
@@ -387,7 +387,7 @@ func (p *computerUseDesktopChatMultiRoundRecoveryProvider) Chat(ctx context.Cont
 			}
 			secondToolArgs := strings.TrimSpace(p.secondToolArgs)
 			if secondToolArgs == "" {
-				secondToolArgs = `{"action":"click","control":"后端之家"}`
+				secondToolArgs = `{"action":"click","control":"test_group"}`
 			}
 			return &llm.ChatResponse{
 				ID:    "computer-use-multi-round-2",
@@ -413,7 +413,7 @@ func (p *computerUseDesktopChatMultiRoundRecoveryProvider) Chat(ctx context.Cont
 			}
 			recoveredToolArgs := strings.TrimSpace(p.recoveredToolArgs)
 			if recoveredToolArgs == "" {
-				recoveredToolArgs = `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`
+				recoveredToolArgs = `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`
 			}
 			return &llm.ChatResponse{
 				ID:    "computer-use-multi-round-3",
@@ -433,7 +433,7 @@ func (p *computerUseDesktopChatMultiRoundRecoveryProvider) Chat(ctx context.Cont
 		if requestContainsComputerUseToolResult(req, "Host action completed and submitted") {
 			finalContent := strings.TrimSpace(p.finalContent)
 			if finalContent == "" {
-				finalContent = "已经在飞书桌面应用里给【后端之家】发出问候。"
+				finalContent = "已经在飞书桌面应用里给【test_group】发出问候。"
 			}
 			return &llm.ChatResponse{
 				ID:    "computer-use-multi-round-4",
@@ -689,7 +689,7 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudge_DetectsMessageInten
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterGenericFocus(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
 			Arguments: `{"action":"focus","app_name":"Feishu,Lark"}`,
@@ -702,7 +702,7 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterBareFocus(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
 			Arguments: `{"action":"focus"}`,
@@ -715,10 +715,10 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterGenericSelect(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
-			Arguments: `{"action":"select","conversation":"后端之家"}`,
+			Arguments: `{"action":"select","conversation":"test_group"}`,
 		}},
 	) {
 		t.Fatal("expected desktop-chat routing message to trigger continuation nudge even when the first computer_use action is a generic select")
@@ -728,10 +728,10 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterGenericClick(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
-			Arguments: `{"action":"click","control":"后端之家"}`,
+			Arguments: `{"action":"click","control":"test_group"}`,
 		}},
 	) {
 		t.Fatal("expected desktop-chat routing message to trigger continuation nudge even when the first computer_use action is a generic click")
@@ -741,7 +741,7 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterGenericKey(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
 			Arguments: `{"action":"key","keys":["tab"]}`,
@@ -754,7 +754,7 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterScreenshot(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
 			Arguments: `{"action":"screenshot","app_name":"Feishu,Lark"}`,
@@ -767,7 +767,7 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDesktopChatRoutingMessageAfterSnapshotInteractive(t *testing.T) {
 	if !shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(
 		"resp_prev_1",
-		"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		[]llm.ToolCall{{
 			Name:      "computer_use",
 			Arguments: `{"action":"snapshot_interactive","app_name":"Feishu,Lark"}`,
@@ -781,7 +781,7 @@ func TestBuildToolFallbackTextWithOptions_DesktopChatPendingDoesNotClaimCompleti
 	fallback, toolCount := buildToolFallbackTextWithOptions([]llm.Message{
 		{
 			Role:    llm.RoleUser,
-			Content: "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+			Content: "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 		},
 		{
 			Role:     llm.RoleTool,
@@ -807,10 +807,10 @@ func newDesktopChatFocusFirstRecoveryProvider(name string) *computerUseDesktopCh
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
 		firstToolArgs:     `{"action":"focus","app_name":"Feishu,Lark"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先聚焦飞书桌面应用。",
 		recoveredContent:  "飞书窗口已就绪，改用高层消息动作直接发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -821,10 +821,10 @@ func newDesktopChatBareFocusRecoveryProvider(name string) *computerUseDesktopCha
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
 		firstToolArgs:     `{"action":"focus"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先把聊天应用切到前台。",
 		recoveredContent:  "现在直接用高层消息动作发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -834,11 +834,11 @@ func newDesktopChatSelectFirstRecoveryProvider(name string) *computerUseDesktopC
 	}
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
-		firstToolArgs:     `{"action":"select","conversation":"后端之家"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		firstToolArgs:     `{"action":"select","conversation":"test_group"}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先切到目标聊天会话。",
 		recoveredContent:  "会话已定位，直接用高层消息动作发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -848,11 +848,11 @@ func newDesktopChatClickFirstRecoveryProvider(name string) *computerUseDesktopCh
 	}
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
-		firstToolArgs:     `{"action":"click","control":"后端之家"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		firstToolArgs:     `{"action":"click","control":"test_group"}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先点进目标聊天项。",
 		recoveredContent:  "聊天项已激活，直接用高层消息动作发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -863,10 +863,10 @@ func newDesktopChatKeyFirstRecoveryProvider(name string) *computerUseDesktopChat
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
 		firstToolArgs:     `{"action":"key","keys":["tab"]}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先用键盘把焦点切到目标聊天区域。",
 		recoveredContent:  "焦点已就绪，直接用高层消息动作发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -877,10 +877,10 @@ func newDesktopChatScreenshotFirstRecoveryProvider(name string) *computerUseDesk
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
 		firstToolArgs:     `{"action":"screenshot","app_name":"Feishu,Lark"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先截一张图确认当前聊天窗口。",
 		recoveredContent:  "界面已经确认，改用高层消息动作直接发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -891,10 +891,10 @@ func newDesktopChatSnapshotInteractiveFirstRecoveryProvider(name string) *comput
 	return &computerUseDesktopChatRecoveryProvider{
 		name:              name,
 		firstToolArgs:     `{"action":"snapshot_interactive","app_name":"Feishu,Lark"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先抓取可交互元素，确认当前聊天窗口。",
 		recoveredContent:  "结构已经确认，改用高层消息动作直接发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -905,12 +905,12 @@ func newDesktopChatScreenshotThenClickRecoveryProvider(name string) *computerUse
 	return &computerUseDesktopChatMultiRoundRecoveryProvider{
 		name:              name,
 		firstToolArgs:     `{"action":"screenshot","app_name":"Feishu,Lark"}`,
-		secondToolArgs:    `{"action":"click","control":"后端之家"}`,
-		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		secondToolArgs:    `{"action":"click","control":"test_group"}`,
+		recoveredToolArgs: `{"action":"message","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 		firstContent:      "我先看一下当前飞书聊天窗口。",
 		secondContent:     "我先点进目标聊天项，再直接发送。",
 		recoveredContent:  "聊天项已激活，直接用高层消息动作发送。",
-		finalContent:      "已经在飞书桌面应用里给【后端之家】发出问候。",
+		finalContent:      "已经在飞书桌面应用里给【test_group】发出问候。",
 	}
 }
 
@@ -1045,7 +1045,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-focus-first-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-focus-first-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1103,7 +1103,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
@@ -1135,7 +1135,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromBareFoc
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-bare-focus-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-bare-focus-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1193,7 +1193,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromBareFoc
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
@@ -1224,7 +1224,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromBareFocusToMessa
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-bare-focus-recovery-stream","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-bare-focus-recovery-stream","model":"gpt-5.3-codex-spark"}`)
 
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
@@ -1271,7 +1271,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromBareFocusToMessa
 		t.Fatalf("expected second stream request to carry desktop chat guardrails after bare focus, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 	if strings.Contains(body, "Host screenshot captured") || strings.Contains(body, `"action":"screenshot"`) {
@@ -1303,7 +1303,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromBareFocu
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -1347,7 +1347,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromBareFocu
 		t.Fatalf("expected second IM request to carry desktop chat guardrails after bare focus, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -1389,7 +1389,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 		Name:      "computer_use",
 		Arguments: `{"action":"focus"}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -1460,7 +1460,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 		t.Fatalf("expected second resumed request to include successful computer_use message result, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -1492,7 +1492,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-select-first-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-select-first-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1550,7 +1550,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
@@ -1581,7 +1581,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromGenericSelectToM
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-select-first-recovery-stream","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-select-first-recovery-stream","model":"gpt-5.3-codex-spark"}`)
 
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
@@ -1628,7 +1628,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromGenericSelectToM
 		t.Fatalf("expected second stream request to carry desktop chat guardrails after generic select, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 	if strings.Contains(body, "Host screenshot captured") || strings.Contains(body, `"action":"screenshot"`) {
@@ -1660,7 +1660,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromGenericS
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -1704,7 +1704,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromGenericS
 		t.Fatalf("expected second IM request to carry desktop chat guardrails after generic select, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -1744,9 +1744,9 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 	pendingTool := llm.ToolCall{
 		ID:        "call_computer_use_select_resume_1",
 		Name:      "computer_use",
-		Arguments: `{"action":"select","conversation":"后端之家"}`,
+		Arguments: `{"action":"select","conversation":"test_group"}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -1817,7 +1817,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 		t.Fatalf("expected second resumed request to include successful computer_use message result, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -1849,7 +1849,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-click-first-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-click-first-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1907,7 +1907,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
@@ -1938,7 +1938,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromGenericClickToMe
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-click-first-recovery-stream","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-click-first-recovery-stream","model":"gpt-5.3-codex-spark"}`)
 
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
@@ -1985,7 +1985,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromGenericClickToMe
 		t.Fatalf("expected second stream request to carry desktop chat guardrails after generic click, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 	if strings.Contains(body, "Host screenshot captured") || strings.Contains(body, `"action":"screenshot"`) {
@@ -2017,7 +2017,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromGenericC
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -2061,7 +2061,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromGenericC
 		t.Fatalf("expected second IM request to carry desktop chat guardrails after generic click, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -2101,9 +2101,9 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 	pendingTool := llm.ToolCall{
 		ID:        "call_computer_use_click_resume_1",
 		Name:      "computer_use",
-		Arguments: `{"action":"click","control":"后端之家"}`,
+		Arguments: `{"action":"click","control":"test_group"}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -2174,7 +2174,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 		t.Fatalf("expected second resumed request to include successful computer_use message result, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -2206,7 +2206,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-key-first-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-key-first-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -2264,7 +2264,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromGeneric
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
@@ -2295,7 +2295,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromGenericKeyToMess
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-key-first-recovery-stream","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-key-first-recovery-stream","model":"gpt-5.3-codex-spark"}`)
 
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
@@ -2342,7 +2342,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromGenericKeyToMess
 		t.Fatalf("expected second stream request to carry desktop chat guardrails after generic key, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 	if strings.Contains(body, "Host screenshot captured") || strings.Contains(body, `"action":"screenshot"`) {
@@ -2374,7 +2374,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromGenericK
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -2418,7 +2418,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromGenericK
 		t.Fatalf("expected second IM request to carry desktop chat guardrails after generic key, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -2460,7 +2460,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 		Name:      "computer_use",
 		Arguments: `{"action":"key","keys":["tab"]}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -2531,7 +2531,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRequestReco
 		t.Fatalf("expected second resumed request to include successful computer_use message result, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -2850,7 +2850,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMe
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue。","provider":"scripted-computer-use-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue。","provider":"scripted-computer-use-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -2879,8 +2879,8 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMe
 		secondReq, _ := provider.RequestAt(1)
 		t.Fatalf("second computer_use action = %q, want message; second request=%s", got, summarizeChatRequestMessagesForDebug(secondReq))
 	}
-	if got := anyToStringForLLM(calls[1]["conversation"]); got != "后端之家" {
-		t.Fatalf("second computer_use conversation = %q, want 后端之家", got)
+	if got := anyToStringForLLM(calls[1]["conversation"]); got != "test_group" {
+		t.Fatalf("second computer_use conversation = %q, want test_group", got)
 	}
 	if got := anyToStringForLLM(calls[1]["value"]); got != "你好，我是 Blue。" {
 		t.Fatalf("second computer_use value = %q, want 你好，我是 Blue。", got)
@@ -2932,7 +2932,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMe
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
@@ -2963,7 +2963,7 @@ func TestStreamMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMessage(t *
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-recovery","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-recovery","model":"gpt-5.3-codex-spark"}`)
 
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
@@ -3018,7 +3018,7 @@ func TestStreamMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMessage(t *
 		t.Fatalf("expected third request to include successful computer_use message result, got %#v", thirdReq.Messages)
 	}
 
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 	if strings.Contains(body, "Host screenshot captured") || strings.Contains(body, `"action":"screenshot"`) {
@@ -3050,7 +3050,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMes
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -3102,7 +3102,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMes
 		t.Fatalf("expected third request to include successful computer_use message result, got %#v", thirdReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -3141,9 +3141,9 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 	pendingTool := llm.ToolCall{
 		ID:        "call_computer_use_ocr_resume_1",
 		Name:      "computer_use",
-		Arguments: `{"action":"ocr","app_name":"Feishu,Lark","conversation":"后端之家","value":"你好，我是 Blue。","submit":true}`,
+		Arguments: `{"action":"ocr","app_name":"Feishu,Lark","conversation":"test_group","value":"你好，我是 Blue。","submit":true}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -3217,7 +3217,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 		t.Fatalf("expected second resumed request to include successful computer_use message result, got %#v", secondReq.Messages)
 	}
 
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 	if strings.Contains(resp, "Host screenshot captured") || strings.Contains(resp, "invalid action") {
@@ -3249,7 +3249,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromScreens
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-first-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-first-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -3292,7 +3292,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromScreens
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(content, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(content, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 }
@@ -3320,7 +3320,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromScreenshotToMess
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-first-recovery","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-first-recovery","model":"gpt-5.3-codex-spark"}`)
 
 	calls := computerUseMock.Calls()
 	if len(calls) != 2 {
@@ -3344,7 +3344,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromScreenshotToMess
 	if !requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
 		t.Fatalf("expected second stream request to carry desktop chat guardrails after screenshot, got %#v", secondReq.Messages)
 	}
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 }
@@ -3375,7 +3375,7 @@ func TestStreamMessage_ComputerUseDesktopChatPostToolFailureFallbackStaysIncompl
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-post-tool-failure-stream","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-post-tool-failure-stream","model":"gpt-5.3-codex-spark"}`)
 
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected fallback response instead of STREAM_ERROR, body=%s", body)
@@ -3437,7 +3437,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromScreensh
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -3465,7 +3465,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromScreensh
 	if !requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
 		t.Fatalf("expected second IM request to carry desktop chat guardrails after screenshot, got %#v", secondReq.Messages)
 	}
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 }
@@ -3504,7 +3504,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 		Name:      "computer_use",
 		Arguments: `{"action":"screenshot","app_name":"Feishu,Lark"}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -3554,7 +3554,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 	if !requestCarriesDesktopChatComputerUseGuardrails(firstReq) {
 		t.Fatalf("expected resumed IM request to carry desktop chat guardrails after screenshot, got %#v", firstReq.Messages)
 	}
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 }
@@ -3583,7 +3583,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromSnapsho
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-snapshot-interactive-first-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-snapshot-interactive-first-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -3626,7 +3626,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromSnapsho
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(content, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(content, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 }
@@ -3654,7 +3654,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromSnapshotInteract
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-snapshot-interactive-first-recovery","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-snapshot-interactive-first-recovery","model":"gpt-5.3-codex-spark"}`)
 
 	calls := computerUseMock.Calls()
 	if len(calls) != 2 {
@@ -3678,7 +3678,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromSnapshotInteract
 	if !requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
 		t.Fatalf("expected second stream request to carry desktop chat guardrails after interactive snapshot, got %#v", secondReq.Messages)
 	}
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 }
@@ -3707,7 +3707,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromSnapshot
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -3735,7 +3735,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromSnapshot
 	if !requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
 		t.Fatalf("expected second IM request to carry desktop chat guardrails after interactive snapshot, got %#v", secondReq.Messages)
 	}
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 }
@@ -3774,7 +3774,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 		Name:      "computer_use",
 		Arguments: `{"action":"snapshot_interactive","app_name":"Feishu,Lark"}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -3824,7 +3824,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 	if !requestCarriesDesktopChatComputerUseGuardrails(firstReq) {
 		t.Fatalf("expected resumed IM request to carry desktop chat guardrails after interactive snapshot, got %#v", firstReq.Messages)
 	}
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 }
@@ -3853,7 +3853,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromScreens
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-then-click-recovery","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-then-click-recovery","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -3905,7 +3905,7 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRequestRecoversFromScreens
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(content, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(content, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
 	}
 }
@@ -3933,7 +3933,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromScreenshotThenCl
 	handler := NewChatHandler(store, registry, toolRegistry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-then-click-recovery","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-screenshot-then-click-recovery","model":"gpt-5.3-codex-spark"}`)
 
 	if provider.CallCount() != 4 {
 		t.Fatalf("expected 4 LLM rounds (screenshot + click + recovered message + final summary), got %d", provider.CallCount())
@@ -3955,7 +3955,7 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromScreenshotThenCl
 		!requestCarriesDesktopChatComputerUseGuardrails(thirdReq) {
 		t.Fatalf("expected third stream request to carry screenshot+click results plus desktop-chat guardrails, got %#v", thirdReq.Messages)
 	}
-	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(body, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
 	}
 }
@@ -3984,7 +3984,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromScreensh
 		ID:          "msg_1",
 		UserID:      "user_1",
 		Username:    "user_1",
-		Content:     "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		Content:     "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
 	})
 	if err != nil {
 		t.Fatalf("ProcessChannelMessage() error = %v", err)
@@ -4010,7 +4010,7 @@ func TestProcessChannelMessage_ComputerUseDesktopChatRequestRecoversFromScreensh
 		!requestCarriesDesktopChatComputerUseGuardrails(thirdReq) {
 		t.Fatalf("expected third IM request to carry screenshot+click results plus desktop-chat guardrails, got %#v", thirdReq.Messages)
 	}
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 }
@@ -4049,7 +4049,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 		Name:      "computer_use",
 		Arguments: `{"action":"screenshot","app_name":"Feishu,Lark"}`,
 	}
-	routingMessage := "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
+	routingMessage := "帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成"
 	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
 		CheckpointID:    checkpoint.ID,
 		ConversationID:  convID,
@@ -4104,7 +4104,7 @@ func TestProcessChannelMessage_CheckpointResumeComputerUseDesktopChatRecoversFro
 		!requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
 		t.Fatalf("expected second resumed request to carry screenshot+click results plus desktop-chat guardrails, got %#v", secondReq.Messages)
 	}
-	if !strings.Contains(resp, "已经在飞书桌面应用里给【后端之家】发出问候。") {
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【test_group】发出问候。") {
 		t.Fatalf("expected final resumed IM completion summary, got %q", resp)
 	}
 }

@@ -2780,6 +2780,26 @@ export const useChatStore = defineStore('chat', () => {
     return true
   }
 
+  function shouldReconcileAfterFinalChunk(
+    beforeFinalizeContent: string,
+    finalChunk?: StreamChunk
+  ): boolean {
+    const persistedMessageId = finalChunk?.message_id?.trim()
+    if (!persistedMessageId) return false
+
+    // Without the persisted content echo, we can't guarantee the client-side stream
+    // matches what's stored in DB — reconcile by fetching once.
+    if (typeof finalChunk?.content !== 'string') return true
+
+    // Treat a blank echoed content as suspicious when we streamed non-empty content.
+    // (The backend may still have persisted the full message even if the final chunk payload was sparse.)
+    if (finalChunk.content.trim().length === 0 && beforeFinalizeContent.trim().length > 0) {
+      return true
+    }
+
+    return false
+  }
+
   watch(pendingQuestion, (q) => {
     if (q) {
       awaitingConfirmation.value = true
@@ -4032,7 +4052,11 @@ export const useChatStore = defineStore('chat', () => {
           })
           // Guard: if user switched away, don't touch messages
           if (currentConversationId.value !== sendConvId) return
+          const beforeFinalizeContent = messages.value[messages.value.length - 1]?.content ?? ''
           const finalizedLocally = applyFinalStreamChunk(sendConvId, finalChunk)
+          const shouldReconcile = finalizedLocally
+            ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
+            : false
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -4051,7 +4075,7 @@ export const useChatStore = defineStore('chat', () => {
               })
             }
           }
-          if (!finalizedLocally) {
+          if (!finalizedLocally || shouldReconcile) {
             fetchMessages(conversationId)
           }
           // Refresh conversations to get updated title (auto-generated after first message)
@@ -4404,7 +4428,11 @@ export const useChatStore = defineStore('chat', () => {
             label: resolveStreamUIStateLabel('completed'),
           })
           if (currentConversationId.value !== convId) return
+          const beforeFinalizeContent = messages.value[messages.value.length - 1]?.content ?? ''
           const finalizedLocally = applyFinalStreamChunk(convId, finalChunk)
+          const shouldReconcile = finalizedLocally
+            ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
+            : false
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -4415,7 +4443,7 @@ export const useChatStore = defineStore('chat', () => {
               triggerRef(messages)
             }
           }
-          if (!finalizedLocally) {
+          if (!finalizedLocally || shouldReconcile) {
             fetchMessages(convId)
           }
           fetchConversations()
@@ -4623,7 +4651,11 @@ export const useChatStore = defineStore('chat', () => {
             label: resolveStreamUIStateLabel('completed'),
           })
           if (currentConversationId.value !== conversationId) return
+          const beforeFinalizeContent = messages.value[messages.value.length - 1]?.content ?? ''
           const finalizedLocally = applyFinalStreamChunk(conversationId, finalChunk)
+          const shouldReconcile = finalizedLocally
+            ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
+            : false
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -4635,7 +4667,7 @@ export const useChatStore = defineStore('chat', () => {
               triggerRef(messages)
             }
           }
-          if (!finalizedLocally) {
+          if (!finalizedLocally || shouldReconcile) {
             fetchMessages(conversationId)
           }
           // Refresh trial quota to update progress bar
@@ -4878,7 +4910,11 @@ export const useChatStore = defineStore('chat', () => {
             label: resolveStreamUIStateLabel('completed'),
           })
           if (currentConversationId.value !== conversationId) return
+          const beforeFinalizeContent = messages.value[messages.value.length - 1]?.content ?? ''
           const finalizedLocally = applyFinalStreamChunk(conversationId, finalChunk)
+          const shouldReconcile = finalizedLocally
+            ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
+            : false
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -4889,7 +4925,7 @@ export const useChatStore = defineStore('chat', () => {
               triggerRef(messages)
             }
           }
-          if (!finalizedLocally) {
+          if (!finalizedLocally || shouldReconcile) {
             fetchMessages(conversationId)
           }
           // Refresh trial quota to update progress bar

@@ -51,6 +51,17 @@ type WindowInfo struct {
 	AppName string `json:"app_name,omitempty"`
 	PID     int    `json:"pid,omitempty"`
 	Focused bool   `json:"focused,omitempty"`
+	Layer   int    `json:"layer,omitempty"`
+	Bounds  Rect   `json:"bounds,omitempty"`
+}
+
+// Rect is an absolute rectangle in host coordinates (typically screen pixels).
+// It is intentionally generic (not normalized) and may be omitted when unavailable.
+type Rect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
 type ActionTelemetry struct {

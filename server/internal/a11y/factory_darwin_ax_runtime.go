@@ -54,6 +54,9 @@ var darwinResolveWindowRecordForPointClick = func(b *darwinBackend, windowID str
 var darwinRefreshWindowRecordForPointClick = func(b *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
 	return b.refreshWindowRecord(current)
 }
+var darwinResolveWindowRecordForAction = func(b *darwinBackend, windowID string) (darwinWindowRecord, error) {
+	return b.resolveWindowRecord(windowID)
+}
 var darwinCaptureSnapshotScreenshot = func(ctx context.Context, b *darwinBackend, record darwinWindowRecord) (ScreenshotResult, error) {
 	return b.screenshotWindowRecord(ctx, record)
 }
@@ -181,7 +184,7 @@ func (b *darwinBackend) snapshot(ctx context.Context, windowID string, interacti
 		Title:           record.Title,
 		Tree:            projection.Tree,
 		RefMap:          projection.RefMap,
-		Message:         "Host accessibility snapshot ready",
+		Message:         "Host computer-use snapshot ready",
 		ActionTelemetry: telemetry,
 	}
 	return result, nil
@@ -509,6 +512,16 @@ func (b *darwinBackend) resolveWindowForAction(ctx context.Context, windowID str
 	windowID = strings.TrimSpace(windowID)
 	if windowID == "" {
 		return "", nil
+	}
+	if record, err := darwinResolveWindowRecordForAction(b, windowID); err == nil {
+		if record.Focused {
+			return record.ID, nil
+		}
+		// For input injection, "activate" is usually sufficient and avoids long AX focus
+		// waits that can exceed the host action timeout budget.
+		if err := darwinActivateAppFunc(record.AppName); err == nil {
+			return record.ID, nil
+		}
 	}
 	result, err := darwinFocusWindowForHostAction(ctx, b, windowID)
 	if err != nil {
@@ -1001,7 +1014,11 @@ func darwinExecuteInputFallback(element uintptr, fallback string, value string, 
 }
 
 func darwinPasteTextInput(text string) error {
-	output, err := darwinCLIFallback.pasteTextWithTemporaryClipboard(nil, text)
+	// `osascript` clipboard manipulation can hang in practice (for example, when System Events
+	// is slow or blocked). Bound the paste attempt so we can fall back to Unicode input.
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	output, err := darwinCLIFallback.pasteTextWithTemporaryClipboard(ctx, text)
 	if err != nil {
 		return fmt.Errorf("osascript clipboard paste failed: %s: %w", output, err)
 	}
@@ -1193,6 +1210,7 @@ func darwinFindWindowElement(app uintptr, record darwinWindowRecord) uintptr {
 	if app == 0 {
 		return 0
 	}
+	focusedFallback := uintptr(0)
 	if focused, err := darwinCopyAttributeValue(app, "AXFocusedWindow"); err == nil && focused != 0 {
 		if darwinWindowElementMatches(focused, record) {
 			return focused
@@ -1200,14 +1218,23 @@ func darwinFindWindowElement(app uintptr, record darwinWindowRecord) uintptr {
 		if record.Focused {
 			return focused
 		}
-		darwinRelease(focused)
+		// Some apps only expose `AXFocusedWindow` reliably when `AXWindows` is unavailable
+		// (for example, when the window is not frontmost). Keep it as a fallback to reduce
+		// "AX window lookup failed" false negatives.
+		focusedFallback = focused
 	}
 	windowsRef, err := darwinCopyAttributeValue(app, "AXWindows")
 	if err != nil || windowsRef == 0 {
+		if focusedFallback != 0 {
+			return focusedFallback
+		}
 		return 0
 	}
 	defer darwinRelease(windowsRef)
 	if darwinCFArrayGetCount == nil || darwinCFArrayGetValueAtIndex == nil {
+		if focusedFallback != 0 {
+			darwinRelease(focusedFallback)
+		}
 		return 0
 	}
 
@@ -1216,6 +1243,9 @@ func darwinFindWindowElement(app uintptr, record darwinWindowRecord) uintptr {
 		window := darwinCFArrayGetValueAtIndex(windowsRef, 0)
 		if window != 0 && darwinCFRetain != nil {
 			darwinCFRetain(window)
+		}
+		if focusedFallback != 0 {
+			darwinRelease(focusedFallback)
 		}
 		return window
 	}
@@ -1229,6 +1259,9 @@ func darwinFindWindowElement(app uintptr, record darwinWindowRecord) uintptr {
 			if darwinCFRetain != nil {
 				darwinCFRetain(window)
 			}
+			if focusedFallback != 0 {
+				darwinRelease(focusedFallback)
+			}
 			return window
 		}
 		if best == 0 {
@@ -1237,6 +1270,12 @@ func darwinFindWindowElement(app uintptr, record darwinWindowRecord) uintptr {
 	}
 	if best != 0 && darwinCFRetain != nil {
 		darwinCFRetain(best)
+	}
+	if best == 0 && focusedFallback != 0 {
+		return focusedFallback
+	}
+	if focusedFallback != 0 {
+		darwinRelease(focusedFallback)
 	}
 	return best
 }
@@ -1471,10 +1510,14 @@ func darwinElementBounds(element uintptr) (darwinRect, bool) {
 }
 
 func darwinRectsClose(a darwinRect, b darwinRect) bool {
-	return darwinAbs(a.Origin.X-b.Origin.X) <= 3 &&
-		darwinAbs(a.Origin.Y-b.Origin.Y) <= 3 &&
-		darwinAbs(a.Size.Width-b.Size.Width) <= 3 &&
-		darwinAbs(a.Size.Height-b.Size.Height) <= 3
+	// CoreGraphics window bounds and AX window bounds often differ by more than a few pixels
+	// due to scaling, title bars, and fractional coordinates. Use a looser tolerance to
+	// avoid false-negative window element matching ("AX window lookup failed").
+	const tol = 24
+	return darwinAbs(a.Origin.X-b.Origin.X) <= tol &&
+		darwinAbs(a.Origin.Y-b.Origin.Y) <= tol &&
+		darwinAbs(a.Size.Width-b.Size.Width) <= tol &&
+		darwinAbs(a.Size.Height-b.Size.Height) <= tol
 }
 
 func darwinDefaultActionLabel(actions []string) string {

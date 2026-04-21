@@ -84,6 +84,21 @@ func TestToolLoopDetector_PollingNoProgress(t *testing.T) {
 	}
 }
 
+func TestToolLoopDetector_ProgressFingerprintPreventsFalseNoProgressAbort(t *testing.T) {
+	var detector ToolLoopDetector
+	rounds := []string{
+		`read:path=README.md start_line=1 end_line=20`,
+		`read:path=README.md start_line=21 end_line=40`,
+		`read:path=README.md start_line=41 end_line=60`,
+	}
+	for i, sig := range rounds {
+		detection := detector.Observe(sig, "continue reading", []string{`{"status":"completed","path":"README.md"}`})
+		if detection.Abort {
+			t.Fatalf("unexpected abort for progressive read fingerprint at iteration %d: %#v", i, detection)
+		}
+	}
+}
+
 func TestToolLoopDetector_ProgressMarkersResetLoopState(t *testing.T) {
 	var detector ToolLoopDetector
 	for i := 0; i < 2; i++ {

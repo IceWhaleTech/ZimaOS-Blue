@@ -57,19 +57,27 @@ func ensureToolLoopRegexes() {
 func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, toolSummaries []string, progressMarkers ...string) ToolLoopDetection {
 	normalizedToolSig := normalizeToolLoopText(toolSignature)
 	normalizedDecision := normalizeToolLoopText(assistantDecision)
+	exactToolSig := fingerprintToolLoopText(toolSignature)
+	exactDecision := fingerprintToolLoopText(assistantDecision)
 	normalizedSummaries := normalizeToolLoopSummaries(toolSummaries)
 	normalizedProgress := normalizeToolLoopProgressMarkers(progressMarkers)
+	if exactToolSig == "" {
+		exactToolSig = normalizedToolSig
+	}
+	if exactDecision == "" {
+		exactDecision = normalizedDecision
+	}
 
 	if len(normalizedProgress) > 0 {
 		d.reset()
 		return ToolLoopDetection{}
 	}
 
-	if normalizedToolSig != "" {
-		if normalizedToolSig == d.lastToolSignature {
+	if exactToolSig != "" {
+		if exactToolSig == d.lastToolSignature {
 			d.duplicateRounds++
 		} else {
-			d.lastToolSignature = normalizedToolSig
+			d.lastToolSignature = exactToolSig
 			d.duplicateRounds = 1
 		}
 	}
@@ -78,7 +86,7 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 	if outcomeSig == "" {
 		outcomeSig = "empty"
 	}
-	noProgressSig := normalizedToolSig + "|" + outcomeSig
+	noProgressSig := exactToolSig + "|" + outcomeSig
 	if noProgressSig == d.lastNoProgressSignature {
 		d.noProgressRounds++
 	} else {
@@ -94,7 +102,7 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 		}
 	}
 	if allErrors {
-		errorSig := normalizedToolSig + "|" + normalizedDecision + "|" + outcomeSig
+		errorSig := exactToolSig + "|" + exactDecision + "|" + outcomeSig
 		if errorSig == d.lastErrorSignature {
 			d.errorRounds++
 		} else {
@@ -115,7 +123,7 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 	}
 
 	d.recentRounds = append(d.recentRounds, toolLoopRound{
-		toolSignature:    normalizedToolSig,
+		toolSignature:    exactToolSig,
 		outcomeSignature: outcomeSig,
 	})
 	if len(d.recentRounds) > 4 {
@@ -261,6 +269,17 @@ func normalizeToolLoopText(content string) string {
 	normalized = toolLoopWhitespaceRE.ReplaceAllString(normalized, " ")
 	if len(normalized) > 160 {
 		normalized = normalized[:160]
+	}
+	return normalized
+}
+
+func fingerprintToolLoopText(content string) string {
+	ensureToolLoopRegexes()
+
+	normalized := strings.ToLower(strings.TrimSpace(content))
+	normalized = toolLoopWhitespaceRE.ReplaceAllString(normalized, " ")
+	if len(normalized) > 240 {
+		normalized = normalized[:240]
 	}
 	return normalized
 }

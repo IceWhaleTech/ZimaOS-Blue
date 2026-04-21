@@ -90,14 +90,29 @@
       /* Spinner */
       #app-splash .spinner {
         width: 36px; height: 36px;
-        border: 3px solid currentColor;
-        border-top-color: #3B82F6;
-        border-radius: 50%;
+        box-sizing: border-box;
+        border: 4px solid var(--splash-spinner-track);
+        border-right-color: var(--splash-spinner-accent);
+        border-top-color: var(--splash-spinner-accent);
+        border-radius: 9999px;
+        box-shadow: 0 0 18px var(--splash-spinner-glow);
         animation: splash-spin 0.8s linear infinite;
       }
-      #app-splash { color: rgba(148, 163, 184, 0.88); }
-      :root.light #app-splash { color: rgba(100, 116, 139, 0.88); }
+      #app-splash {
+        color: rgba(148, 163, 184, 0.88);
+        --splash-spinner-track: rgba(148, 163, 184, 0.22);
+        --splash-spinner-accent: rgba(59, 130, 246, 1);
+        --splash-spinner-glow: rgba(59, 130, 246, 0.22);
+      }
+      :root.light #app-splash {
+        color: rgba(100, 116, 139, 0.88);
+        --splash-spinner-track: rgba(100, 116, 139, 0.18);
+        --splash-spinner-glow: rgba(59, 130, 246, 0.14);
+      }
       @keyframes splash-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash .spinner { animation: none; }
+      }
       /* Apply saved theme class immediately to avoid flash */
     </style>
     <script>

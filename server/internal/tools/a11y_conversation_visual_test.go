@@ -3,6 +3,11 @@ package tools
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/png"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
@@ -249,6 +254,37 @@ func TestLocateA11yConversationVisualHit_FallsBackToOCRLocatorWhenChatGrounderMi
 	}
 	if hit.Point.X != 0.41 || hit.Point.Y != 0.52 {
 		t.Fatalf("point = %#v, want OCR fallback hit", hit.Point)
+	}
+}
+
+func TestCropA11yConversationSearchImage_UsesComputerUseTempPrefix(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "source.png")
+	file, err := os.Create(sourcePath)
+	if err != nil {
+		t.Fatalf("create source image: %v", err)
+	}
+	source := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	if err := png.Encode(file, source); err != nil {
+		_ = file.Close()
+		t.Fatalf("encode source image: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close source image: %v", err)
+	}
+
+	croppedPath, cleanup, err := cropA11yConversationSearchImage(sourcePath, a11yConversationImageRegion{
+		X:      0,
+		Y:      0,
+		Width:  0.5,
+		Height: 1,
+	})
+	if err != nil {
+		t.Fatalf("cropA11yConversationSearchImage() error = %v", err)
+	}
+	defer cleanup()
+
+	if got := filepath.Base(croppedPath); !strings.HasPrefix(got, "zimaos-blue-computer-use-conversation-") {
+		t.Fatalf("cropped temp file = %q, want computer-use prefix", got)
 	}
 }
 

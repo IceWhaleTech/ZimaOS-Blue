@@ -94,7 +94,7 @@ func (b *darwinBackend) ensureStructuredSnapshot(_ context.Context, record darwi
 
 	record, window := b.findSnapshotWindowElement(app, record)
 	if window == 0 {
-		return nil, false, ActionTelemetry{}, NewError("backend_unavailable", "AX window lookup failed", map[string]interface{}{"window_id": record.ID})
+		return nil, false, ActionTelemetry{}, NewError("backend_unavailable", "AX window lookup failed", darwinWindowRecordDiagnostics(record))
 	}
 	defer darwinRelease(window)
 
@@ -153,6 +153,23 @@ func (b *darwinBackend) findSnapshotWindowElement(app uintptr, record darwinWind
 	window = darwinFindWindowElementForSnapshot(app, refreshed)
 	if window != 0 {
 		return refreshed, window
+	}
+	// Some apps do not expose their full AX window list until they are activated.
+	// As a last resort, activate the app and retry the window lookup once.
+	appName := strings.TrimSpace(refreshed.AppName)
+	if appName == "" {
+		appName = strings.TrimSpace(record.AppName)
+	}
+	if appName != "" && darwinActivateAppFunc != nil {
+		_ = darwinActivateAppFunc(appName)
+		activated, actErr := darwinRefreshWindowRecordForSnapshot(b, refreshed)
+		if actErr == nil && strings.TrimSpace(activated.ID) != "" {
+			refreshed = activated
+		}
+		window = darwinFindWindowElementForSnapshot(app, refreshed)
+		if window != 0 {
+			return refreshed, window
+		}
 	}
 	return record, 0
 }

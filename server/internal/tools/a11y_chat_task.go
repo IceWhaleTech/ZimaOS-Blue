@@ -797,6 +797,13 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 		if forceSnapshotRefresh || !a11ySnapshotHasComposer(entries) {
 			if snapshotAttempts > 0 && !forceSnapshotRefresh {
 				if timeout <= 0 || time.Now().After(deadline) {
+					if a11ySnapshotLooksLikeShell(entries) {
+						a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "structured_unavailable_skip", "", "", map[string]interface{}{
+							"confirmation": "structured_unavailable_skip",
+							"reason":       "snapshot_shell",
+						})
+						return resolvedWindow, nil
+					}
 					a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusTerminalFailure, "structured_snapshot", "", "composer_not_found", nil)
 					return "", a11yruntime.NewError("target_not_found", "composer could not be confirmed", map[string]interface{}{"phase": "composer"})
 				}
@@ -807,6 +814,12 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 			}
 			result, err := backend.SnapshotInteractive(ctx, strings.TrimSpace(windowID))
 			if err != nil {
+				if a11yIsAXWindowLookupFailure(err) {
+					a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "structured_unavailable_skip", "", "", map[string]interface{}{
+						"confirmation": "structured_unavailable_skip",
+					})
+					return resolvedWindow, nil
+				}
 				a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusTerminalFailure, "structured_snapshot", "", "composer_not_found", nil)
 				return "", a11yruntime.NewError("target_not_found", "composer could not be confirmed", map[string]interface{}{"phase": "composer"})
 			}

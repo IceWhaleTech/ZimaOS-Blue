@@ -171,3 +171,39 @@ func TestChatHandlerGetConversationBootstrap_ReportsOwnedConversationActiveStrea
 		t.Fatalf("expected stream id in response, body=%s", body)
 	}
 }
+
+func TestChatHandlerEnqueueConversationInjection_CancelsActiveStreamWithInjectionReason(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Injection conversation", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+
+	cancelled := false
+	handler.streamController.Register("stream-a", func() { cancelled = true })
+	handler.convStreamMu.Lock()
+	handler.convToStream[conv.ID] = "stream-a"
+	handler.convStreamMu.Unlock()
+
+	streamID, injected := handler.enqueueConversationInjection(conv.ID, "Actually focus on logs")
+	if !injected {
+		t.Fatal("expected injection to be accepted")
+	}
+	if streamID != "stream-a" {
+		t.Fatalf("streamID = %q, want %q", streamID, "stream-a")
+	}
+	if !cancelled {
+		t.Fatal("expected active stream to be cancelled for injection restart")
+	}
+	if got := handler.streamController.ConsumeCancelReason("stream-a"); got != "injection_restart" {
+		t.Fatalf("cancel reason = %q, want %q", got, "injection_restart")
+	}
+}

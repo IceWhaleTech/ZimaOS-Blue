@@ -20,6 +20,7 @@ type TurnContext struct {
 	UserMessage          string
 	Model                string
 	ContextPackSelection *contextpack.SelectionSet
+	ToolSurfaceSnapshot  *chatToolSurfaceLogSnapshot
 	Source               MemoryRecallSource
 	RecallMode           MemoryRecallMode
 	IsRegenerate         bool

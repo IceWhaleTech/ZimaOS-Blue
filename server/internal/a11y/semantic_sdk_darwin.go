@@ -27,7 +27,7 @@ func (b *darwinBackend) Capture(ctx context.Context, scope CaptureScope) (RawTre
 
 	record, window := b.findSnapshotWindowElement(app, record)
 	if window == 0 {
-		return RawTree{}, NewError("backend_unavailable", "AX window lookup failed", map[string]interface{}{"window_id": record.ID})
+		return RawTree{}, NewError("backend_unavailable", "AX window lookup failed", darwinWindowRecordDiagnostics(record))
 	}
 	defer darwinRelease(window)
 

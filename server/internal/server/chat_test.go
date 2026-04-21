@@ -5246,7 +5246,7 @@ func TestChatHandlerSendMessage_RecoversRequestToolEnvelopeComputerUseIntoRealTo
 	conv, _ := store.CreateConversation(context.Background(), "Recovered request tool envelope computer use send message")
 
 	registry := llm.NewProviderRegistry()
-	pseudoContent := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"后端之家\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
+	pseudoContent := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"test_group\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
 	scripted := &scriptedChatProvider{
 		name: "scripted-computer-use-request-envelope",
 		responses: []llm.ChatResponse{
@@ -5263,7 +5263,7 @@ func TestChatHandlerSendMessage_RecoversRequestToolEnvelopeComputerUseIntoRealTo
 				Model: "gpt-5.3-codex-spark",
 				Message: llm.Message{
 					Role:    llm.RoleAssistant,
-					Content: "已经在飞书会话【后端之家】里发出问候。",
+					Content: "已经在飞书会话【test_group】里发出问候。",
 				},
 			},
 		},
@@ -5278,7 +5278,7 @@ func TestChatHandlerSendMessage_RecoversRequestToolEnvelopeComputerUseIntoRealTo
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-request-envelope","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-request-envelope","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -5303,8 +5303,8 @@ func TestChatHandlerSendMessage_RecoversRequestToolEnvelopeComputerUseIntoRealTo
 	if got := anyToStringForLLM(calls[0]["action"]); got != "message" {
 		t.Fatalf("computer_use action = %q, want message", got)
 	}
-	if got := anyToStringForLLM(calls[0]["conversation"]); got != "后端之家" {
-		t.Fatalf("computer_use conversation = %q, want 后端之家", got)
+	if got := anyToStringForLLM(calls[0]["conversation"]); got != "test_group" {
+		t.Fatalf("computer_use conversation = %q, want test_group", got)
 	}
 	if got := anyToStringForLLM(calls[0]["app_name"]); got != "飞书" {
 		t.Fatalf("computer_use app_name = %q, want 飞书", got)
@@ -5335,7 +5335,7 @@ func TestChatHandlerSendMessage_RecoversRequestToolEnvelopeComputerUseIntoRealTo
 		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
 	}
 	content, _ := resp["content"].(string)
-	if got := strings.TrimSpace(content); !strings.Contains(got, "已经在飞书会话【后端之家】里发出问候。") {
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已经在飞书会话【test_group】里发出问候。") {
 		t.Fatalf("expected final content from second round, got %q", got)
 	}
 	if strings.Contains(content, "request tool=computer_use") {
@@ -7728,7 +7728,7 @@ func TestPseudoDirectiveStartIndex_FlagsBracketedToolUseLeak(t *testing.T) {
 
 func TestPseudoDirectiveStartIndex_FlagsRequestToolEnvelopeComputerUseLeak(t *testing.T) {
 	delta := "我来执行桌面聊天发送。\n" +
-		`request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"后端之家\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
+		`request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"test_group\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
 	want := 0
 	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "computer_use"}}); got != want {
 		t.Fatalf("pseudoDirectiveStartIndex() = %d, want %d", got, want)
@@ -11149,6 +11149,9 @@ func TestChatHandlerStreamMessageCancelStopsInFlightToolExecution(t *testing.T) 
 	if !strings.Contains(rec.Body.String(), `"cancelled":true`) {
 		t.Fatalf("expected cancelled SSE payload, got: %s", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `"cancel_reason":"conversation_cancel"`) {
+		t.Fatalf("expected conversation cancel reason in SSE payload, got: %s", rec.Body.String())
+	}
 
 	msgs, err := store.GetMessages(context.Background(), conv.ID, 1000, 0)
 	if err != nil {
@@ -11291,6 +11294,9 @@ func TestChatHandlerCancelStreamEndpointStopsInFlightToolExecution(t *testing.T)
 	if !strings.Contains(cancelRec.Body.String(), streamID) {
 		t.Fatalf("expected cancel endpoint to echo stream id %q, got: %s", streamID, cancelRec.Body.String())
 	}
+	if !strings.Contains(cancelRec.Body.String(), `"cancel_reason":"user_cancel"`) {
+		t.Fatalf("expected cancel endpoint reason in payload, got: %s", cancelRec.Body.String())
+	}
 
 	select {
 	case <-streamDone:
@@ -11300,6 +11306,9 @@ func TestChatHandlerCancelStreamEndpointStopsInFlightToolExecution(t *testing.T)
 
 	if !strings.Contains(streamRec.Body.String(), `"cancelled":true`) {
 		t.Fatalf("expected cancelled SSE payload, got: %s", streamRec.Body.String())
+	}
+	if !strings.Contains(streamRec.Body.String(), `"cancel_reason":"user_cancel"`) {
+		t.Fatalf("expected user cancel reason in SSE payload, got: %s", streamRec.Body.String())
 	}
 
 	msgs, err := store.GetMessages(context.Background(), conv.ID, 1000, 0)

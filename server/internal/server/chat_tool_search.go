@@ -86,9 +86,16 @@ func (h *ChatHandler) applyToolSearchSurfaceSelection(policyReq tools.ToolPolicy
 	if h.toolSearchSkillExposureStamp != nil {
 		skillStamp = h.toolSearchSkillExposureStamp()
 	}
+	pendingState, hadPendingState := h.deferredToolExposure.Snapshot(sessionID)
 	if invalidated, reason := h.deferredToolExposure.InvalidateIfStale(sessionID, registryVersion, h.resolvePromptPolicy().Hash, skillStamp); invalidated {
 		h.recordToolSurfaceCacheInvalidation(reason)
 		selection.PromptCacheUnsafe = true
+		if hadPendingState {
+			selection.ActivationRequested = deferredActivationRequested(pendingState)
+			selection.ActivationApplied = false
+			selection.ActivationFailureReason = mapDeferredActivationInvalidationReason(reason)
+			selection = h.applyDeterministicActivationRecovery(policyReq, selection, pendingState)
+		}
 		return selection
 	}
 
@@ -98,6 +105,14 @@ func (h *ChatHandler) applyToolSearchSurfaceSelection(policyReq tools.ToolPolicy
 	}
 	selection.PromptCacheUnsafe = true
 	selection.NativeDefs = h.overlayDeferredToolExposure(policyReq, selection.NativeDefs, state, webSearchEnabled, deepResearchEnabled)
+	selection.ActivationRequested = deferredActivationRequested(state)
+	if selection.ActivationRequested {
+		selection.ActivationApplied, selection.ActivationFailureReason = validateDeferredToolExposure(selection.NativeDefs, state)
+		h.recordDeferredActivationOutcome(sessionID, selection.ActivationApplied, selection.ActivationFailureReason)
+		if !selection.ActivationApplied {
+			selection = h.applyDeterministicActivationRecovery(policyReq, selection, state)
+		}
+	}
 	return selection
 }
 
@@ -179,4 +194,107 @@ func sameToolDefNames(left, right []tools.ToolDefinition) bool {
 		}
 	}
 	return true
+}
+
+func deferredActivationRequested(state tools.DeferredToolExposureState) bool {
+	return len(state.ActivatedTools) > 0 ||
+		len(state.SelectedSkills) > 0 ||
+		len(state.SelectedAgents) > 0 ||
+		state.NeedExec ||
+		state.NeedAgentTools ||
+		state.ActivationRequested
+}
+
+func mapDeferredActivationInvalidationReason(reason string) string {
+	switch strings.TrimSpace(reason) {
+	case "skill_exposure":
+		return "stamp_mismatch"
+	case "registry_version", "prompt_policy":
+		return "state_mismatch"
+	default:
+		return "state_mismatch"
+	}
+}
+
+func validateDeferredToolExposure(defs []tools.ToolDefinition, state tools.DeferredToolExposureState) (bool, string) {
+	if !deferredActivationRequested(state) {
+		return false, ""
+	}
+	if state.NeedExec && !hasToolDefName(defs, "exec") {
+		return false, "exec_missing"
+	}
+	if state.NeedAgentTools && (!hasToolDefName(defs, "agents_list") || !hasToolDefName(defs, "subagents")) {
+		return false, "tool_not_visible"
+	}
+	for _, name := range state.ActivatedTools {
+		if !hasToolDefName(defs, name) {
+			return false, "tool_not_visible"
+		}
+	}
+	return true, ""
+}
+
+func (h *ChatHandler) recordDeferredActivationOutcome(sessionID string, applied bool, reason string) {
+	if h == nil || h.deferredToolExposure == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	requested := true
+	update := tools.DeferredToolExposureUpdate{
+		ActivationRequested:     &requested,
+		ActivationApplied:       &applied,
+		ActivationFailureReason: stringPtr(strings.TrimSpace(reason)),
+	}
+	_, _ = h.deferredToolExposure.Apply(strings.TrimSpace(sessionID), update)
+}
+
+func (h *ChatHandler) applyDeterministicActivationRecovery(policyReq tools.ToolPolicyRequest, selection chatToolSurfaceSelection, state tools.DeferredToolExposureState) chatToolSurfaceSelection {
+	if h == nil || !selection.ActivationRequested || selection.ActivationApplied || !h.deterministicActivationRecoveryEnabled(policyReq.SessionID) {
+		return selection
+	}
+
+	switch strings.TrimSpace(selection.ActivationFailureReason) {
+	case "exec_missing":
+		if execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind); ok {
+			selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, []tools.ToolDefinition{execDef})
+			selection.NativeDefs = h.ensureToolSearchVisible(policyReq, selection.NativeDefs)
+			selection.NativeDefs = sortToolDefsByName(selection.NativeDefs)
+			selection.RecoveryPath = "exec_tool_search_recovery"
+			if selection.SurfaceMode == "" {
+				selection.SurfaceMode = chatToolSurfaceModeSkillExec
+			}
+			selection.ActivationApplied, selection.ActivationFailureReason = validateDeferredToolExposure(selection.NativeDefs, state)
+		}
+	case "tool_not_visible", "state_mismatch", "stamp_mismatch":
+		recovered := false
+		for _, name := range state.ActivatedTools {
+			if def, ok := h.lookupNativeToolDefinitionForRoute(name, policyReq.RouteKind); ok {
+				selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, []tools.ToolDefinition{def})
+				recovered = true
+			}
+		}
+		if !recovered {
+			for _, name := range state.ActivatedTools {
+				if strings.EqualFold(strings.TrimSpace(name), "web_query") {
+					if def, ok := h.lookupNativeToolDefinitionForRoute("web_query", policyReq.RouteKind); ok {
+						selection.NativeDefs = mergeToolDefsByName(removeToolDefsByName(selection.NativeDefs, "exec"), []tools.ToolDefinition{def})
+						selection.RecoveryPath = "direct_web_rescue"
+						selection.SurfaceMode = chatToolSurfaceModeDirectPublicWeb
+						recovered = true
+					}
+				}
+			}
+		}
+		if recovered {
+			selection.NativeDefs = h.ensureToolSearchVisible(policyReq, sortToolDefsByName(selection.NativeDefs))
+			selection.ActivationApplied, selection.ActivationFailureReason = validateDeferredToolExposure(selection.NativeDefs, state)
+			if strings.TrimSpace(selection.RecoveryPath) == "" {
+				selection.RecoveryPath = "deterministic_activation_recovery"
+			}
+		}
+	}
+	return selection
+}
+
+func stringPtr(v string) *string {
+	return &v
 }

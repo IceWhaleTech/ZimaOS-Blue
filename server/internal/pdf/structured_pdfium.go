@@ -38,9 +38,25 @@ func (s *Service) extractWithPDFium(
 	if err != nil {
 		return ExtractResult{}, err
 	}
-	selectedPages, warnings, err := resolveSelectedPages(info.PageCount, req.Pages, req.MaxPages)
-	if err != nil {
-		return ExtractResult{}, err
+	limit := clampMaxPages(req.MaxPages)
+	var selectedPages []int
+	var warnings []string
+	if len(req.Pages) == 0 && info.PageCount > limit {
+		tocText := extractPDFiumTOCProbeText(instance, doc.Document, minInt(info.PageCount, 5))
+		tocTargets := extractTOCPageTargets(tocText, info.PageCount)
+		if len(tocTargets) > 0 {
+			selectedPages, warnings = resolveDefaultSelectedPages(info.PageCount, limit, tocTargets)
+		} else {
+			selectedPages, warnings, err = resolveSelectedPages(info.PageCount, req.Pages, req.MaxPages)
+			if err != nil {
+				return ExtractResult{}, err
+			}
+		}
+	} else {
+		selectedPages, warnings, err = resolveSelectedPages(info.PageCount, req.Pages, req.MaxPages)
+		if err != nil {
+			return ExtractResult{}, err
+		}
 	}
 	if len(selectedPages) == 0 {
 		return ExtractResult{Document: info}, nil
@@ -178,6 +194,26 @@ func (s *Service) extractWithPDFium(
 	}
 	result.CharCount = utf8.RuneCountInString(result.Text)
 	return result, nil
+}
+
+func extractPDFiumTOCProbeText(instance pdfium.Pdfium, document references.FPDF_DOCUMENT, pages int) string {
+	if instance == nil || pages <= 0 {
+		return ""
+	}
+	var buf strings.Builder
+	for page := 1; page <= pages; page++ {
+		resp, err := instance.GetPageText(&requests.GetPageText{
+			Page: requests.Page{ByIndex: &requests.PageByIndex{Document: document, Index: page - 1}},
+		})
+		if err != nil || resp == nil || strings.TrimSpace(resp.Text) == "" {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteString("\n")
+		}
+		buf.WriteString(canonicalizeExtractedPDFText(resp.Text))
+	}
+	return buf.String()
 }
 
 func (s *Service) extractPageSource(

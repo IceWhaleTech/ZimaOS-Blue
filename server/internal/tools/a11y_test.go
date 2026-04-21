@@ -851,6 +851,53 @@ func TestA11yToolExecute_SnapshotIncludesImagePath(t *testing.T) {
 	if out["image_path"] != "/tmp/host-window-9.png" {
 		t.Fatalf("image_path = %v, want /tmp/host-window-9.png", out["image_path"])
 	}
+	if out["message"] != "Host computer-use snapshot ready" {
+		t.Fatalf("message = %v, want Host computer-use snapshot ready", out["message"])
+	}
+}
+
+func TestA11yToolExecute_MissingHostBackendUsesComputerUseBranding(t *testing.T) {
+	tool := NewA11yTool()
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot",
+	})
+	if err != nil {
+		t.Fatalf("snapshot Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error"] != "host computer-use backend not available" {
+		t.Fatalf("error = %v, want host computer-use backend not available", out["error"])
+	}
+	if out["error_code"] != "backend_unavailable" {
+		t.Fatalf("error_code = %v, want backend_unavailable", out["error_code"])
+	}
+}
+
+func TestA11yToolExecute_BrowserCapabilitiesUsesComputerUseBranding(t *testing.T) {
+	tool := NewA11yTool()
+	tool.SetBackend(&a11yCompatBackend{})
+	tool.SetBrowser(&a11yBrowserCompatBackend{})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":  "capabilities",
+		"surface": "browser",
+	})
+	if err != nil {
+		t.Fatalf("capabilities Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Browser computer-use bridge ready" {
+		t.Fatalf("message = %v, want Browser computer-use bridge ready", out["message"])
+	}
 }
 
 func TestA11yToolExecute_StaleRefAfterSnapshotReplacement(t *testing.T) {
@@ -2200,7 +2247,7 @@ func TestA11yToolExecute_TypeAliasWithValueFallsBackToFocusedTextWhenInputSelect
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
 		"action":       "type",
 		"window_title": "Feishu",
-		"value":        "后端之家",
+		"value":        "test_group",
 	})
 	if err != nil {
 		t.Fatalf("type Execute() error = %v", err)
@@ -2208,8 +2255,8 @@ func TestA11yToolExecute_TypeAliasWithValueFallsBackToFocusedTextWhenInputSelect
 	if got := len(backend.focusedTypeHistory); got != 1 {
 		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
 	}
-	if backend.lastFocusedTypeValue != "后端之家" {
-		t.Fatalf("lastFocusedTypeValue = %q, want 后端之家", backend.lastFocusedTypeValue)
+	if backend.lastFocusedTypeValue != "test_group" {
+		t.Fatalf("lastFocusedTypeValue = %q, want test_group", backend.lastFocusedTypeValue)
 	}
 	if backend.lastFocusedTypeWindowID != "win-feishu" {
 		t.Fatalf("lastFocusedTypeWindowID = %q, want win-feishu", backend.lastFocusedTypeWindowID)
@@ -2254,7 +2301,7 @@ func TestA11yToolExecute_TypeAliasWithValueFallbackStillRunsSubmitKeys(t *testin
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
 		"action":       "type",
 		"window_title": "Feishu",
-		"value":        "后端之家",
+		"value":        "test_group",
 		"submit_keys":  []interface{}{"command", "k"},
 	})
 	if err != nil {
@@ -2382,7 +2429,7 @@ func TestA11yToolExecute_TypeAliasWithSingleSubmitShortcutLiteralStillSubmits(t 
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
 		"action":       "type",
 		"window_title": "Feishu",
-		"value":        "后端之家",
+		"value":        "test_group",
 		"submit_keys":  []interface{}{"Meta+k"},
 	})
 	if err != nil {
@@ -2486,7 +2533,7 @@ func TestA11yToolExecute_TypeAliasWithExplicitInputRoleFallsBackToFocusedText(t 
 		"action":       "type",
 		"window_title": "Feishu",
 		"target_role":  "input",
-		"value":        "后端之家",
+		"value":        "test_group",
 	})
 	if err != nil {
 		t.Fatalf("type Execute() error = %v", err)
@@ -2494,8 +2541,8 @@ func TestA11yToolExecute_TypeAliasWithExplicitInputRoleFallsBackToFocusedText(t 
 	if got := len(backend.focusedTypeHistory); got != 1 {
 		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
 	}
-	if backend.lastFocusedTypeValue != "后端之家" {
-		t.Fatalf("lastFocusedTypeValue = %q, want 后端之家", backend.lastFocusedTypeValue)
+	if backend.lastFocusedTypeValue != "test_group" {
+		t.Fatalf("lastFocusedTypeValue = %q, want test_group", backend.lastFocusedTypeValue)
 	}
 	if len(backend.actTypeHistory) != 0 {
 		t.Fatalf("actTypeHistory = %#v, want no semantic act call", backend.actTypeHistory)
@@ -2533,7 +2580,7 @@ func TestA11yToolExecute_TypeAliasWithNamedInputTargetDoesNotUseFocusedTextFallb
 		"window_title": "Feishu",
 		"target_role":  "input",
 		"target_name":  "Composer",
-		"value":        "后端之家",
+		"value":        "test_group",
 	})
 	if err != nil {
 		t.Fatalf("type Execute() error = %v", err)
@@ -2577,7 +2624,7 @@ func TestA11yToolExecute_ActTypeDoesNotUseFocusedTextAliasFallback(t *testing.T)
 		"window_title": "Feishu",
 		"params": map[string]interface{}{
 			"act_type": "type",
-			"value":    "后端之家",
+			"value":    "test_group",
 		},
 	})
 	if err != nil {

@@ -26,6 +26,20 @@ const (
 	hardPDFMaxBytesMB         = 100
 )
 
+const (
+	pdfReadModeFast = "fast"
+	pdfReadModeFull = "full"
+	pdfReadModeAuto = "auto"
+)
+
+const (
+	pdfReadModeFastMaxPages = 12
+	pdfReadModeFastMaxChars = 60000
+
+	pdfReadModeAutoMaxPages = 20
+	pdfReadModeAutoMaxChars = 120000
+)
+
 // PDFService provides PDF metadata and extraction support.
 type PDFService interface {
 	Info(ctx context.Context, path string) (pdfextract.DocumentInfo, error)
@@ -68,7 +82,7 @@ func (t *PDFTool) SetHTTPClient(client *http.Client) {
 func (t *PDFTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "pdf",
-		Description: "Use when the task centers on a workspace .pdf file and needs PDF-native reading, form filling, printable output, or layout-preserving reformatting.",
+		Description: "Use when the task centers on a workspace .pdf file and needs PDF-native reading, form filling, printable output, or layout-preserving reformatting. Defaults to a coverage-first reading mode; set read_mode=fast when you only need a quick skim.",
 		Icon:        "pdf",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -83,8 +97,13 @@ func (t *PDFTool) Definition() ToolDefinition {
 				"output_path": map[string]interface{}{"type": "string", "description": "Optional destination .pdf path for action=create, or destination workspace path for action=fill/reformat. Omit it on create to let the tool derive a sibling output path from input_path/path."},
 				"paths":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Deduped and capped at 10."},
 				"pages":       map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
-				"max_pages":   map[string]interface{}{"type": "integer", "description": "Maximum pages to extract."},
-				"max_chars":   map[string]interface{}{"type": "integer", "description": "Maximum characters to return."},
+				"max_pages":   map[string]interface{}{"type": "integer", "description": "Maximum pages to extract (hard cap). Prefer pages=... when you know which pages contain the answer."},
+				"max_chars":   map[string]interface{}{"type": "integer", "description": "Maximum characters to return (hard cap)."},
+				"read_mode": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{pdfReadModeFull, pdfReadModeFast, pdfReadModeAuto},
+					"description": "Controls the speed vs coverage tradeoff when max_pages/max_chars are omitted. full is coverage-first (uses service defaults). fast is speed-first (~12 pages, ~60k chars). auto is balanced (~20 pages, ~120k chars).",
+				},
 				"max_bytes_mb": map[string]interface{}{
 					"type":        "integer",
 					"description": "Maximum size per PDF in MB.",
@@ -93,17 +112,17 @@ func (t *PDFTool) Definition() ToolDefinition {
 					"type":        "object",
 					"description": "Optional output sections to include.",
 					"properties": map[string]interface{}{
-						"pages":           map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text."},
-						"markdown":        map[string]interface{}{"type": "boolean", "description": "Include layout-aware Markdown output."},
-						"outline":         map[string]interface{}{"type": "boolean", "description": "Include document outline/bookmarks."},
-						"layout":          map[string]interface{}{"type": "boolean", "description": "Include semantic blocks and tables."},
+						"pages":           map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text/markdown (useful for citations and page-specific answers)."},
+						"markdown":        map[string]interface{}{"type": "boolean", "description": "Include layout-aware Markdown output (good for long reports/tables)."},
+						"outline":         map[string]interface{}{"type": "boolean", "description": "Include document outline/bookmarks when available (good for navigation)."},
+						"layout":          map[string]interface{}{"type": "boolean", "description": "Include semantic blocks and tables (more expensive)."},
 						"headers_footers": map[string]interface{}{"type": "boolean", "description": "Keep repeated headers and footers in markdown/layout output."},
 					},
 				},
 				"fallback_mode": map[string]interface{}{
 					"type":        "string",
 					"enum":        []string{"auto", "ocr_only", "vision_only", "text_only"},
-					"description": "Fallback strategy for scanned or hard pages.",
+					"description": "Fallback strategy for scanned or hard pages. auto tries text extraction and falls back to OCR/vision when needed; text_only disables OCR+vision; ocr_only forces OCR; vision_only forces vision.",
 				},
 				"title":       map[string]interface{}{"type": "string", "description": "Optional title for action=create."},
 				"subtitle":    map[string]interface{}{"type": "string", "description": "Optional subtitle for action=create."},
@@ -408,11 +427,17 @@ func (t *PDFTool) executeReformat(ctx context.Context, args map[string]interface
 	}
 	disableOCR, disableVision := parsePDFFallbackFlags(args)
 	includeHeadersFooters, _ := compatBoolArg(args, "include_headers_footers", "includeHeadersFooters")
+	maxPages := compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages")
+	maxChars := compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length")
+	maxPages, maxChars, err = applyPDFReadMode(pdfReadMode(args), maxPages, maxChars)
+	if err != nil {
+		return "", err
+	}
 	extractReq := pdfextract.ExtractRequest{
 		Path:                  inputs[0].Path,
 		Pages:                 pages,
-		MaxPages:              compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages"),
-		MaxChars:              compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"),
+		MaxPages:              maxPages,
+		MaxChars:              maxChars,
 		IncludeMarkdown:       true,
 		IncludeOutline:        true,
 		IncludeHeadersFooters: includeHeadersFooters,
@@ -531,10 +556,18 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 	if enabled, ok := compatBoolArg(args, "include_headers_footers", "includeHeadersFooters"); ok {
 		includeHeadersFooters = enabled
 	}
+	maxPages := compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages")
+	maxChars := compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length")
+	mode := pdfReadMode(args)
+	maxPages, maxChars, err = applyPDFReadMode(mode, maxPages, maxChars)
+	if err != nil {
+		return nil, err
+	}
+
 	request := pdfextract.ExtractRequest{
 		Pages:                 pages,
-		MaxPages:              compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages"),
-		MaxChars:              compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"),
+		MaxPages:              maxPages,
+		MaxChars:              maxChars,
 		IncludePages:          includePages,
 		IncludeMarkdown:       includeMarkdown,
 		IncludeOutline:        includeOutline,
@@ -661,6 +694,45 @@ func normalizePDFArgs(args map[string]interface{}) map[string]interface{} {
 	}
 
 	return normalized
+}
+
+func pdfReadMode(args map[string]interface{}) string {
+	mode := strings.TrimSpace(strings.ToLower(firstCompatString(args, "read_mode", "readMode", "read")))
+	switch mode {
+	case "":
+		return ""
+	case pdfReadModeFull, pdfReadModeFast, pdfReadModeAuto:
+		return mode
+	default:
+		return mode
+	}
+}
+
+func applyPDFReadMode(mode string, maxPages, maxChars int) (int, int, error) {
+	mode = strings.TrimSpace(strings.ToLower(mode))
+	if mode == "" || mode == pdfReadModeFull {
+		return maxPages, maxChars, nil
+	}
+	switch mode {
+	case pdfReadModeFast:
+		if maxPages <= 0 {
+			maxPages = pdfReadModeFastMaxPages
+		}
+		if maxChars <= 0 {
+			maxChars = pdfReadModeFastMaxChars
+		}
+		return maxPages, maxChars, nil
+	case pdfReadModeAuto:
+		if maxPages <= 0 {
+			maxPages = pdfReadModeAutoMaxPages
+		}
+		if maxChars <= 0 {
+			maxChars = pdfReadModeAutoMaxChars
+		}
+		return maxPages, maxChars, nil
+	default:
+		return 0, 0, fmt.Errorf("invalid read_mode %q (supported: %s, %s, %s)", mode, pdfReadModeFull, pdfReadModeFast, pdfReadModeAuto)
+	}
 }
 
 func (t *PDFTool) resolvePDFInputs(ctx context.Context, refs []string, maxBytes int64) ([]resolvedPDFInput, func(), error) {

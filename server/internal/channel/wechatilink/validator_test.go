@@ -101,3 +101,30 @@ func TestValidator_ValidCredentials(t *testing.T) {
 		t.Errorf("expected api_base_url %q, got '%v'", server.URL, result.Data["api_base_url"])
 	}
 }
+
+func TestValidator_Validate_UsesDecimalStringUINHeader(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/getupdates" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		_ = decodeILinkUINHeader(t, r.Header.Get("X-WECHAT-UIN"))
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret":             0,
+			"msgs":            []any{},
+			"get_updates_buf": "cursor-1",
+		})
+	}))
+	defer server.Close()
+
+	v := NewValidatorWithOptions(10*time.Second, server.URL)
+	result := v.Validate(context.Background(), map[string]string{
+		"api_base_url": server.URL,
+		"bot_token":    "bot-token",
+	})
+
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s - %s", result.MessageKey, result.Error)
+	}
+}

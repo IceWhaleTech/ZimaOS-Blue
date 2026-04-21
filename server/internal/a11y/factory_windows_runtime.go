@@ -177,7 +177,7 @@ func (b *windowsBackend) snapshot(ctx context.Context, windowID string, interact
 		Title:           info.Title,
 		Tree:            projection.Tree,
 		RefMap:          projection.RefMap,
-		Message:         "Host accessibility snapshot ready",
+		Message:         "Host computer-use snapshot ready",
 		ActionTelemetry: telemetry,
 	}
 	return attachSnapshotImage(ctx, result, b.Screenshot), nil
@@ -348,9 +348,9 @@ func (b *windowsBackend) Screenshot(_ context.Context, windowID string) (Screens
 		return ScreenshotResult{HostOS: b.HostOS()}, err
 	}
 	rect, err := windowsGetRectFunc(hwnd)
-	dir := filepath.Join(os.TempDir(), "zimaos-blue", "a11y")
+	dir := filepath.Join(os.TempDir(), "zimaos-blue", "computer-use")
 	if strings.TrimSpace(b.mediaDir) != "" {
-		dir = filepath.Join(b.mediaDir, "a11y")
+		dir = filepath.Join(b.mediaDir, "computer-use")
 	}
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return ScreenshotResult{HostOS: b.HostOS()}, err
@@ -402,7 +402,7 @@ func windowsSnapshotMSAA(hostOS string, hwnd uintptr, info WindowInfo, interacti
 			Title:    info.Title,
 			Tree:     tree,
 			RefMap:   refMap,
-			Message:  "Host accessibility snapshot ready",
+			Message:  "Host computer-use snapshot ready",
 		}
 		return nil
 	})

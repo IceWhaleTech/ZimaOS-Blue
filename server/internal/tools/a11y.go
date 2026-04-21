@@ -180,6 +180,14 @@ func (t *A11yTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "Submit target role",
 				},
+				"prefer_visual": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Prefer visual conversation locate (OCR+click) over keyboard-based search when available.",
+				},
+				"locate_strategy": map[string]interface{}{
+					"type":        "string",
+					"description": "Conversation locate strategy override: `visual|visual_first|structured_search|quick_switcher`.",
+				},
 			},
 			"required": []string{"action"},
 		},
@@ -201,7 +209,7 @@ func (t *A11yTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	}
 	if backend == nil {
 		return a11yJSON(map[string]interface{}{
-			"error":      "host accessibility backend not available",
+			"error":      "host computer-use backend not available",
 			"error_code": "backend_unavailable",
 		}), nil
 	}
@@ -339,14 +347,14 @@ type hostWindowPixelClicker interface {
 }
 
 type a11yActOptions struct {
-	allowFocusedTypeAliasFallback bool
+	allowFocusedTypeAliasFallback          bool
 	skipOutcomeVerificationWithoutGrounder bool
 }
 
 func (t *A11yTool) doBrowser(ctx context.Context, browser *BrowserTool, action string, args map[string]interface{}) (interface{}, error) {
 	if browser == nil || browser.Backend() == nil {
 		return a11yJSON(map[string]interface{}{
-			"error":      "browser accessibility backend not available",
+			"error":      "browser computer-use backend not available",
 			"error_code": "backend_unavailable",
 		}), nil
 	}
@@ -398,7 +406,7 @@ func (t *A11yTool) doBrowserCapabilities(browser *BrowserTool) string {
 		"permissions":         []interface{}{},
 		"supported_actions":   supported,
 		"unsupported_actions": unsupported,
-		"message":             "Browser accessibility bridge ready",
+		"message":             "Browser computer-use bridge ready",
 	})
 }
 
@@ -792,6 +800,22 @@ func (t *A11yTool) tryActivateHostAppForWindowResolve(ctx context.Context, backe
 		return "", nil, a11yruntime.ActionResult{}, nil, false
 	}
 
+	windowResolveRetryable := func(err error) bool {
+		if err == nil {
+			return false
+		}
+		runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+		if !ok || runtimeErr.Code != "backend_unavailable" {
+			return false
+		}
+		switch runtimeErr.Message {
+		case "target window not found", "target window is ambiguous":
+			return true
+		default:
+			return false
+		}
+	}
+
 	lastErr := resolveErr
 	var activationResult a11yruntime.ActionResult
 	activated := false
@@ -803,12 +827,22 @@ func (t *A11yTool) tryActivateHostAppForWindowResolve(ctx context.Context, backe
 		}
 		activated = true
 		activationResult = result
-		resolvedTarget, match, retryErr := t.resolveHostWindowID(ctx, backend, args, windowID)
-		if retryErr == nil && strings.TrimSpace(resolvedTarget) != "" {
-			return resolvedTarget, match, activationResult, nil, true
-		}
-		if retryErr != nil {
-			lastErr = retryErr
+		// Activation can take a moment to update the "focused window" markers used for disambiguation.
+		// Retry resolve a few times before giving up to avoid flakey "target window is ambiguous" errors.
+		for attempt := 0; attempt < 3; attempt++ {
+			if ctx != nil && ctx.Err() != nil {
+				break
+			}
+			resolvedTarget, match, retryErr := t.resolveHostWindowID(ctx, backend, args, windowID)
+			if retryErr == nil && strings.TrimSpace(resolvedTarget) != "" {
+				return resolvedTarget, match, activationResult, nil, true
+			}
+			if retryErr != nil {
+				lastErr = retryErr
+				if !windowResolveRetryable(retryErr) {
+					break
+				}
+			}
 		}
 	}
 	if !activated {
@@ -895,7 +929,7 @@ func (t *A11yTool) doSnapshot(ctx context.Context, backend a11yruntime.Backend, 
 		"tree":       result.Tree,
 		"ref_map":    result.RefMap,
 		"image_path": result.ImagePath,
-		"message":    valueOrDefault(result.Message, "Host accessibility snapshot ready"),
+		"message":    valueOrDefault(result.Message, "Host computer-use snapshot ready"),
 	}
 	applyA11yTelemetryPayload(payload, result.ActionTelemetry)
 	return a11yJSON(payload), nil
@@ -1382,7 +1416,21 @@ func (t *A11yTool) tryFocusedTypeAliasFallback(
 		}
 	}
 	runtimeErr, ok := resolveErr.(*a11yruntime.RuntimeError)
-	if !ok || runtimeErr.Code != "target_not_found" {
+	if !ok {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if runtimeErr.Code != "target_not_found" {
+		// When the structured snapshot is unavailable (e.g. AX window lookup fails),
+		// fall back to focused text input if the scenario is a chat "message".
+		if !a11yIsAXWindowLookupFailure(resolveErr) {
+			return a11yruntime.ActionResult{}, false, nil
+		}
+	}
+	if runtimeErr.Code == "target_not_found" {
+		// ok
+	} else if runtimeErr.Code == "backend_unavailable" {
+		// ok (AX window lookup failed)
+	} else {
 		return a11yruntime.ActionResult{}, false, nil
 	}
 	switch normalizeA11yTargetRole(selector.Role) {
@@ -1395,6 +1443,18 @@ func (t *A11yTool) tryFocusedTypeAliasFallback(
 		return a11yruntime.ActionResult{}, false, nil
 	}
 	value := firstCompatString(args, "value", "text")
+	// Best-effort focus: click the lower portion of the window where chat composers
+	// typically live before pasting text into the focused control.
+	if strings.TrimSpace(windowID) != "" {
+		_, _ = a11yRunActionResultWithTimeout(ctx, "point_click", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+			return backend.ClickWindowPoint(actionCtx, windowID, a11yruntime.NormalizedPoint{X: 0.4, Y: 0.93}, holdMS)
+		})
+	}
+	if normalizedIntent == "message" && strings.TrimSpace(windowID) != "" {
+		_, _ = a11yRunActionResultWithTimeout(ctx, "key", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+			return backend.Key(actionCtx, windowID, []string{"command", "a"}, holdMS)
+		})
+	}
 	result, err := a11yRunActionResultWithTimeout(ctx, actType, windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
 		return typer.TypeFocusedText(actionCtx, windowID, value, holdMS)
 	})

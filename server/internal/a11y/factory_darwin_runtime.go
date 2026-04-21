@@ -208,6 +208,13 @@ func darwinWindowInfosFromRecords(records []darwinWindowRecord) []WindowInfo {
 			AppName: record.AppName,
 			PID:     record.PID,
 			Focused: record.Focused,
+			Layer:   record.Layer,
+			Bounds: Rect{
+				X:      record.Bounds.Origin.X,
+				Y:      record.Bounds.Origin.Y,
+				Width:  record.Bounds.Size.Width,
+				Height: record.Bounds.Size.Height,
+			},
 		})
 	}
 	return windows
@@ -222,9 +229,9 @@ func (b *darwinBackend) screenshot(ctx context.Context, windowID string) (Screen
 }
 
 func (b *darwinBackend) screenshotWindowRecord(ctx context.Context, record darwinWindowRecord) (ScreenshotResult, error) {
-	dir := filepath.Join(os.TempDir(), "zimaos-blue", "a11y")
+	dir := filepath.Join(os.TempDir(), "zimaos-blue", "computer-use")
 	if strings.TrimSpace(b.mediaDir) != "" {
-		dir = filepath.Join(b.mediaDir, "a11y")
+		dir = filepath.Join(b.mediaDir, "computer-use")
 	}
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return ScreenshotResult{HostOS: b.HostOS()}, fmt.Errorf("create screenshot dir: %w", err)

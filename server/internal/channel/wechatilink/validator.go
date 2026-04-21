@@ -3,8 +3,6 @@ package wechatilink
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -81,7 +79,7 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("AuthorizationType", "ilink_bot_token")
 	req.Header.Set("Authorization", "Bearer "+botToken)
-	req.Header.Set("X-WECHAT-UIN", validatorILinkUINHeader())
+	req.Header.Set("X-WECHAT-UIN", generateILinkUINHeader())
 	req.Header.Set("iLink-App-Id", iLinkAppID)
 	req.Header.Set("iLink-App-ClientVersion", strconv.FormatUint(buildILinkClientVersion(resolveILinkChannelVersion()), 10))
 
@@ -116,10 +114,4 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 		"has_cursor":      result.GetUpdatesBuf != "",
 		"long_polling_ms": result.LongPollingTimeoutMS,
 	})
-}
-
-func validatorILinkUINHeader() string {
-	var raw [4]byte
-	binary.BigEndian.PutUint32(raw[:], uint32(time.Now().UnixNano()))
-	return base64.StdEncoding.EncodeToString(raw[:])
 }

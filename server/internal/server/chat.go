@@ -28,6 +28,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
@@ -72,6 +73,12 @@ const (
 	// extra headroom for cold starts / model loading.
 	smallModelTitleGenerationTimeout = 12 * time.Second
 	responseStoppedMarker            = "[Response stopped]"
+	streamCancelReasonConversation   = "conversation_cancel"
+	streamCancelReasonUserCancel     = "user_cancel"
+	streamCancelReasonInjection      = "injection_restart"
+	streamCancelReasonCommandStop    = "command_stop_active_stream"
+	streamCancelReasonCancelAll      = "cancel_all"
+	streamCancelReasonShutdown       = "shutdown"
 )
 
 // getMessageSlice gets a message slice from the pool.
@@ -7302,25 +7309,49 @@ const (
 	chatNativeToolSurfaceModeClarifyNone chatNativeToolSurfaceMode = "clarify_none"
 )
 
+type chatToolSurfaceMode string
+
+const (
+	chatToolSurfaceModeLegacy          chatToolSurfaceMode = "legacy"
+	chatToolSurfaceModeSkillExec       chatToolSurfaceMode = "skill_exec"
+	chatToolSurfaceModeClarifyNone     chatToolSurfaceMode = "clarify_none"
+	chatToolSurfaceModeDirectPublicWeb chatToolSurfaceMode = "direct_public_web"
+)
+
 type chatToolSurfaceSelection struct {
-	RoutedDefs        []tools.ToolDefinition
-	NativeDefs        []tools.ToolDefinition
-	NativeMode        chatNativeToolSurfaceMode
-	PromptCacheUnsafe bool
-	SkillDecision     *agentcore.Decision
-	DiscoveryDecision *agentcore.CapabilityDiscoveryDecision
+	RoutedDefs              []tools.ToolDefinition
+	NativeDefs              []tools.ToolDefinition
+	NativeMode              chatNativeToolSurfaceMode
+	SurfaceMode             chatToolSurfaceMode
+	PromptCacheUnsafe       bool
+	ActivationRequested     bool
+	ActivationApplied       bool
+	ActivationFailureReason string
+	RecoveryPath            string
+	AbortReason             string
+	StickySurfaceSource     string
+	SkillDecision           *agentcore.Decision
+	DiscoveryDecision       *agentcore.CapabilityDiscoveryDecision
 }
 
 type chatToolSurfaceLogSnapshot struct {
-	Routed         int
-	Selected       int
-	NativeMode     string
-	NeedClarify    bool
-	SelectedSkill  string
-	DecisionReason string
-	ConflictFlags  []string
-	RoutedNames    []string
-	SelectedNames  []string
+	Routed                  int
+	Selected                int
+	NativeMode              string
+	SurfaceMode             string
+	CanonicalTarget         string
+	NeedClarify             bool
+	SelectedSkill           string
+	DecisionReason          string
+	ActivationRequested     bool
+	ActivationApplied       bool
+	ActivationFailureReason string
+	RecoveryPath            string
+	AbortReason             string
+	StickySurfaceSource     string
+	ConflictFlags           []string
+	RoutedNames             []string
+	SelectedNames           []string
 }
 
 func toolDefinitionNames(defs []tools.ToolDefinition) []string {
@@ -7349,9 +7380,11 @@ func buildChatToolSurfaceLogSnapshotWithSelected(selection chatToolSurfaceSelect
 	needClarify := false
 	selectedSkill := ""
 	decisionReason := ""
+	canonicalTarget := ""
 	var conflictFlags []string
 	if selection.DiscoveryDecision != nil {
 		needClarify = selection.DiscoveryDecision.NeedClarify
+		canonicalTarget = strings.TrimSpace(string(selection.DiscoveryDecision.CanonicalTarget))
 	}
 	if selection.SkillDecision != nil {
 		selectedSkill = strings.TrimSpace(selection.SkillDecision.SelectedSkill)
@@ -7360,16 +7393,35 @@ func buildChatToolSurfaceLogSnapshotWithSelected(selection chatToolSurfaceSelect
 			conflictFlags = append([]string(nil), selection.SkillDecision.ConflictFlags...)
 		}
 	}
+	surfaceMode := strings.TrimSpace(string(selection.SurfaceMode))
+	if surfaceMode == "" {
+		surfaceMode = string(selection.NativeMode)
+	}
+	stickySurfaceSource := strings.TrimSpace(selection.StickySurfaceSource)
+	if stickySurfaceSource == "" &&
+		selection.NativeMode == chatNativeToolSurfaceModeLegacy &&
+		!selection.PromptCacheUnsafe &&
+		!sameToolDefNames(selection.NativeDefs, selectedDefs) {
+		stickySurfaceSource = "prompt_cache_union"
+	}
 	return chatToolSurfaceLogSnapshot{
-		Routed:         len(selection.RoutedDefs),
-		Selected:       len(selectedDefs),
-		NativeMode:     string(selection.NativeMode),
-		NeedClarify:    needClarify,
-		SelectedSkill:  selectedSkill,
-		DecisionReason: decisionReason,
-		ConflictFlags:  conflictFlags,
-		RoutedNames:    toolDefinitionNames(selection.RoutedDefs),
-		SelectedNames:  toolDefinitionNames(selectedDefs),
+		Routed:                  len(selection.RoutedDefs),
+		Selected:                len(selectedDefs),
+		NativeMode:              string(selection.NativeMode),
+		SurfaceMode:             surfaceMode,
+		CanonicalTarget:         canonicalTarget,
+		NeedClarify:             needClarify,
+		SelectedSkill:           selectedSkill,
+		DecisionReason:          decisionReason,
+		ActivationRequested:     selection.ActivationRequested,
+		ActivationApplied:       selection.ActivationApplied,
+		ActivationFailureReason: strings.TrimSpace(selection.ActivationFailureReason),
+		RecoveryPath:            strings.TrimSpace(selection.RecoveryPath),
+		AbortReason:             strings.TrimSpace(selection.AbortReason),
+		StickySurfaceSource:     stickySurfaceSource,
+		ConflictFlags:           conflictFlags,
+		RoutedNames:             toolDefinitionNames(selection.RoutedDefs),
+		SelectedNames:           toolDefinitionNames(selectedDefs),
 	}
 }
 
@@ -7395,9 +7447,17 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 			Int("routed", snapshot.Routed).
 			Int("selected", snapshot.Selected).
 			Str("native_mode", snapshot.NativeMode).
+			Str("surface_mode", snapshot.SurfaceMode).
+			Str("canonical_target", snapshot.CanonicalTarget).
 			Bool("need_clarify", snapshot.NeedClarify).
 			Str("selected_skill", snapshot.SelectedSkill).
 			Str("decision_reason", snapshot.DecisionReason).
+			Bool("activation_requested", snapshot.ActivationRequested).
+			Bool("activation_applied", snapshot.ActivationApplied).
+			Str("activation_failure_reason", snapshot.ActivationFailureReason).
+			Str("recovery_path", snapshot.RecoveryPath).
+			Str("abort_reason", snapshot.AbortReason).
+			Str("sticky_surface_source", snapshot.StickySurfaceSource).
 			Strs("conflict_flags", snapshot.ConflictFlags).
 			Strs("routed_tools", snapshot.RoutedNames).
 			Strs("selected_tools", snapshot.SelectedNames).
@@ -7415,9 +7475,17 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 		Int("routed", snapshot.Routed).
 		Int("selected", snapshot.Selected).
 		Str("native_mode", snapshot.NativeMode).
+		Str("surface_mode", snapshot.SurfaceMode).
+		Str("canonical_target", snapshot.CanonicalTarget).
 		Bool("need_clarify", snapshot.NeedClarify).
 		Str("selected_skill", snapshot.SelectedSkill).
 		Str("decision_reason", snapshot.DecisionReason).
+		Bool("activation_requested", snapshot.ActivationRequested).
+		Bool("activation_applied", snapshot.ActivationApplied).
+		Str("activation_failure_reason", snapshot.ActivationFailureReason).
+		Str("recovery_path", snapshot.RecoveryPath).
+		Str("abort_reason", snapshot.AbortReason).
+		Str("sticky_surface_source", snapshot.StickySurfaceSource).
 		Strs("conflict_flags", snapshot.ConflictFlags).
 		Strs("routed_tools", snapshot.RoutedNames).
 		Strs("selected_tools", snapshot.SelectedNames).
@@ -7438,9 +7506,10 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	routedDefs = applyDeepResearchPreference(routedDefs, deepResearchEnabled)
 
 	selection := chatToolSurfaceSelection{
-		RoutedDefs: routedDefs,
-		NativeDefs: routedDefs,
-		NativeMode: chatNativeToolSurfaceModeLegacy,
+		RoutedDefs:  routedDefs,
+		NativeDefs:  routedDefs,
+		NativeMode:  chatNativeToolSurfaceModeLegacy,
+		SurfaceMode: chatToolSurfaceModeLegacy,
 	}
 	if narrowed := narrowDesktopChatSendToolSurface(selection.NativeDefs, userMessage); len(narrowed) > 0 {
 		selection.NativeDefs = narrowed
@@ -7452,8 +7521,14 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	// end-to-end artifact workflow.
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
 		originalRoutedDefs := selection.RoutedDefs
-		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
-		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		availableDefs := applyDeepResearchPreference(applyWebSearchPreference(h.toolDefinitionsForPolicy(policyReq), webSearchEnabled), deepResearchEnabled)
+		if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+			selection.RoutedDefs = preferPublicArtifactResearchWorkflowTools(userMessage, availableDefs, selection.RoutedDefs)
+			selection.NativeDefs = preferPublicArtifactResearchWorkflowTools(userMessage, availableDefs, selection.NativeDefs)
+		} else {
+			selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
+			selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		}
 		selection.RoutedDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.RoutedDefs)
 		selection.NativeDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.NativeDefs)
 		selection.RoutedDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.RoutedDefs)
@@ -7477,8 +7552,12 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
+		selection.SurfaceMode = chatToolSurfaceModeClarifyNone
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	case agentcore.NativeSurfaceModeSkillExec:
+		if shouldPreferDirectPublicWebLookup(userMessage, selection) && h.directWebRescueEnabled(policyReq.SessionID) {
+			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, h.applyDirectPublicWebSelection(policyReq, selection)), userMessage)
+		}
 		// Validate capability toggles for cutover-eligible canonical skills
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
 			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
@@ -7489,6 +7568,7 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		}
 		selection.NativeDefs = []tools.ToolDefinition{execDef}
 		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+		selection.SurfaceMode = chatToolSurfaceModeSkillExec
 		selection = h.preserveAdvisorToolOnResearchCutover(policyReq, selection)
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	default:
@@ -7511,6 +7591,120 @@ func narrowDesktopChatSendToolSurface(defs []tools.ToolDefinition, userMessage s
 func finalizeDesktopChatSendSurfaceSelection(selection chatToolSurfaceSelection, userMessage string) chatToolSurfaceSelection {
 	if narrowed := narrowDesktopChatSendToolSurface(selection.NativeDefs, userMessage); len(narrowed) > 0 {
 		selection.NativeDefs = narrowed
+	}
+	return selection
+}
+
+const (
+	chatDirectWebRescueFlagName                  = "direct_web_rescue"
+	chatDeterministicActivationRecoveryFlagName  = "deterministic_activation_recovery"
+	chatExtendedToolSurfaceObservabilityFlagName = "extended_tool_surface_observability"
+)
+
+func removeToolDefsByName(defs []tools.ToolDefinition, excluded ...string) []tools.ToolDefinition {
+	if len(defs) == 0 || len(excluded) == 0 {
+		return defs
+	}
+	excludedSet := make(map[string]struct{}, len(excluded))
+	for _, name := range excluded {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			continue
+		}
+		excludedSet[key] = struct{}{}
+	}
+	filtered := make([]tools.ToolDefinition, 0, len(defs))
+	for _, def := range defs {
+		key := strings.ToLower(strings.TrimSpace(def.Name))
+		if _, ok := excludedSet[key]; ok {
+			continue
+		}
+		filtered = append(filtered, def)
+	}
+	return filtered
+}
+
+func containsAnyFold(haystack string, needles ...string) bool {
+	for _, needle := range needles {
+		if needle != "" && strings.Contains(haystack, strings.ToLower(strings.TrimSpace(needle))) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *ChatHandler) directWebRescueEnabled(sessionID string) bool {
+	if h == nil || h.flagEvaluator == nil || !h.flagEvaluator.HasFlag(chatDirectWebRescueFlagName) {
+		return true
+	}
+	return h.flagEvaluator.IsEnabled(chatDirectWebRescueFlagName, &config.EvaluationContext{
+		Attributes: map[string]string{
+			"route_kind": string(tools.ToolRouteKindChat),
+			"session_id": strings.TrimSpace(sessionID),
+		},
+	})
+}
+
+func (h *ChatHandler) deterministicActivationRecoveryEnabled(sessionID string) bool {
+	if h == nil || h.flagEvaluator == nil || !h.flagEvaluator.HasFlag(chatDeterministicActivationRecoveryFlagName) {
+		return true
+	}
+	return h.flagEvaluator.IsEnabled(chatDeterministicActivationRecoveryFlagName, &config.EvaluationContext{
+		Attributes: map[string]string{
+			"route_kind": string(tools.ToolRouteKindChat),
+			"session_id": strings.TrimSpace(sessionID),
+		},
+	})
+}
+
+func (h *ChatHandler) extendedToolSurfaceObservabilityEnabled(sessionID string) bool {
+	if h == nil || h.flagEvaluator == nil || !h.flagEvaluator.HasFlag(chatExtendedToolSurfaceObservabilityFlagName) {
+		return true
+	}
+	return h.flagEvaluator.IsEnabled(chatExtendedToolSurfaceObservabilityFlagName, &config.EvaluationContext{
+		Attributes: map[string]string{
+			"route_kind": string(tools.ToolRouteKindChat),
+			"session_id": strings.TrimSpace(sessionID),
+		},
+	})
+}
+
+func shouldPreferDirectPublicWebLookup(userMessage string, selection chatToolSurfaceSelection) bool {
+	if selection.DiscoveryDecision == nil || selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
+		return false
+	}
+	if selection.DiscoveryDecision.NeedClarify || shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		return false
+	}
+	trimmed := strings.TrimSpace(userMessage)
+	if trimmed == "" || len(trimmed) > 200 {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	if containsAnyFold(lower,
+		"workspace", "repo", "readme", "local file", "local files", "folder", "directory",
+		"本地", "工作区", "仓库", "文件", "目录",
+		"save", "write", "export", "docx", "pdf", ".md", ".txt",
+		"保存", "写入", "导出", "生成",
+	) {
+		return false
+	}
+	return containsAnyFold(lower,
+		"latest", "recent", "news", "docs", "documentation", "official", "api", "website", "web", "search", "lookup",
+		"最新", "最近", "近期", "新闻", "文档", "官网", "官方", "搜索", "网上", "说明",
+	)
+}
+
+func (h *ChatHandler) applyDirectPublicWebSelection(policyReq tools.ToolPolicyRequest, selection chatToolSurfaceSelection) chatToolSurfaceSelection {
+	webQueryDef, ok := h.lookupNativeToolDefinitionForRoute("web_query", policyReq.RouteKind)
+	if !ok {
+		return selection
+	}
+	selection.NativeDefs = mergeToolDefsByName(removeToolDefsByName(selection.NativeDefs, "exec"), []tools.ToolDefinition{webQueryDef})
+	selection.NativeMode = chatNativeToolSurfaceModeLegacy
+	selection.SurfaceMode = chatToolSurfaceModeDirectPublicWeb
+	if strings.TrimSpace(selection.RecoveryPath) == "" {
+		selection.RecoveryPath = "direct_web_rescue"
 	}
 	return selection
 }
@@ -8265,6 +8459,22 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = suppressConvertForNativeArtifactRouting(userMessage, routed)
 	routed = applyEmailToolPreference(routed, userMessage)
 	routed = applyCalendarToolPreference(routed, userMessage)
+	selectorBase := cloneToolDefs(routed)
+
+	var toolDebug *tools.ToolSelectionDebug
+	if h.toolSelector != nil {
+		selectorInput := mergeToolDefsByName(routed, filterToolDefsToNames(allDefs, "ask", "bash"))
+		selection := h.toolSelector.SelectDetailed(userMessage, selectorInput)
+		debugCopy := selection.Debug
+		toolDebug = &debugCopy
+		switch {
+		case len(selection.Selected) > 0:
+			routed = selection.Selected
+		case shouldSuppressEmptyToolSelection(debugCopy) && !shouldPreserveDeferredSelectorSurface(selectorBase):
+			routed = nil
+		}
+	}
+	routed = h.preserveSelectorCriticalToolSurface(userMessage, policyReq, allDefs, selectorBase, routed)
 	routed = keepAlwaysExposedChatTools(allDefs, routed)
 
 	names := make([]string, len(routed))
@@ -8281,7 +8491,40 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		Bool("router_nil", h.toolRouter == nil).
 		Msg("[chat] selectTools")
 
-	return routed, nil
+	return routed, toolDebug
+}
+
+func shouldSuppressEmptyToolSelection(debug tools.ToolSelectionDebug) bool {
+	if debug.QuerySignals.PlainReply || debug.QuerySignals.Smalltalk || debug.QuerySignals.Negated {
+		return true
+	}
+	return debug.QuerySignals.HowToQuestion && stringSliceContains(debug.GatingFlags, "meta_intent")
+}
+
+func shouldPreserveDeferredSelectorSurface(defs []tools.ToolDefinition) bool {
+	return hasToolDefName(defs, "tool_search") || hasToolDefName(defs, "computer_use")
+}
+
+func (h *ChatHandler) preserveSelectorCriticalToolSurface(userMessage string, policyReq tools.ToolPolicyRequest, allDefs, beforeSelector, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(beforeSelector) == 0 {
+		return current
+	}
+	if len(filterToolDefsToNames(beforeSelector, "tool_search")) > 0 && len(current) > 0 {
+		current = mergeToolDefsByName(current, filterToolDefsToNames(beforeSelector, "tool_search"))
+	}
+	if shouldNarrowDesktopChatSendToolSurface(userMessage) {
+		return mergeToolDefsByName(current, filterToolDefsToNames(beforeSelector, "computer_use"))
+	}
+	return h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, current)
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldExpandChatToolAllowlistForEmailIntent(userMessage string) bool {
@@ -9722,17 +9965,24 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	routedDefs = applyDeepResearchPreference(routedDefs, deepResearchEnabled)
 
 	selection := chatToolSurfaceSelection{
-		RoutedDefs: routedDefs,
-		NativeDefs: routedDefs,
-		NativeMode: chatNativeToolSurfaceModeLegacy,
+		RoutedDefs:  routedDefs,
+		NativeDefs:  routedDefs,
+		NativeMode:  chatNativeToolSurfaceModeLegacy,
+		SurfaceMode: chatToolSurfaceModeLegacy,
 	}
 	if narrowed := narrowDesktopChatSendToolSurface(selection.NativeDefs, userMessage); len(narrowed) > 0 {
 		selection.NativeDefs = narrowed
 	}
 
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
-		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
-		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		availableDefs := applyDeepResearchPreference(applyWebSearchPreference(h.toolDefinitionsForPolicy(policyReq), webSearchEnabled), deepResearchEnabled)
+		if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+			selection.RoutedDefs = preferPublicArtifactResearchWorkflowTools(userMessage, availableDefs, selection.RoutedDefs)
+			selection.NativeDefs = preferPublicArtifactResearchWorkflowTools(userMessage, availableDefs, selection.NativeDefs)
+		} else {
+			selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
+			selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		}
 		selection.RoutedDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.RoutedDefs)
 		selection.NativeDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.NativeDefs)
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
@@ -9752,9 +10002,14 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
+		selection.SurfaceMode = chatToolSurfaceModeClarifyNone
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	case agentcore.NativeSurfaceModeLegacy:
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
+	}
+
+	if shouldPreferDirectPublicWebLookup(userMessage, selection) && h.directWebRescueEnabled(policyReq.SessionID) {
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, h.applyDirectPublicWebSelection(policyReq, selection)), userMessage)
 	}
 
 	if skillDynamicExposure {
@@ -9775,6 +10030,7 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 
 	selection.NativeDefs = []tools.ToolDefinition{execDef}
 	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+	selection.SurfaceMode = chatToolSurfaceModeSkillExec
 	selection = h.preserveAdvisorToolOnResearchCutover(policyReq, selection)
 	return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 }
@@ -12392,7 +12648,7 @@ func (h *ChatHandler) Shutdown() {
 	if h == nil {
 		return
 	}
-	h.streamController.CancelAll()
+	h.streamController.CancelAllWithReason(streamCancelReasonShutdown)
 	if h.persistCoordinator != nil {
 		if !h.persistCoordinator.ShutdownFlushWithin(chatPersistShutdownWait) {
 			logger.Warn().
@@ -12822,7 +13078,7 @@ func (h *ChatHandler) CancelConversationStream(conversationID string) (string, b
 	if strings.TrimSpace(streamID) == "" {
 		return "", false
 	}
-	cancelled := h.streamController.Cancel(streamID)
+	cancelled := h.streamController.CancelWithReason(streamID, streamCancelReasonConversation)
 	if cancelled {
 		h.markConversationCancelledForResponsesContinuation(conversationID)
 	}
@@ -15073,6 +15329,17 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
 		}
 		if detection := imLoopDetector.Observe(toolLoopSignature(completedCalls), resp.Message.Content, toolSummaries, writeTargets...); detection.Abort {
+			if recoveredReq, recoveryPath, recovered := h.applyDeterministicToolLoopRecoveryToRequest(ctx, req, routingMessage, convID, "", completedCalls); recovered {
+				req = recoveredReq
+				logger.Warn().
+					Int("round", imRound).
+					Str("reason", detection.Reason).
+					Int("streak", detection.Streak).
+					Str("signature", detection.Signature).
+					Str("recovery_path", recoveryPath).
+					Msg("[im] tool loop detected; applied deterministic recovery before abort")
+				continue
+			}
 			h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
 				"mode":        "im",
 				"reason":      detection.Reason,
@@ -15760,7 +16027,13 @@ func specializedToolLoopSignature(name, rawArgs string) (string, bool) {
 		if path == "" {
 			return "", false
 		}
-		return "path=" + path, true
+		parts := []string{"path=" + path}
+		parts = appendToolLoopOptionalArg(parts, payload, "start_line", "start_line", "startLine", "line_start", "lineStart")
+		parts = appendToolLoopOptionalArg(parts, payload, "end_line", "end_line", "endLine", "line_end", "lineEnd")
+		parts = appendToolLoopOptionalArg(parts, payload, "page", "page", "page_number", "pageNumber", "page_index", "pageIndex")
+		parts = appendToolLoopOptionalArg(parts, payload, "offset", "offset", "start_offset", "startOffset")
+		parts = appendToolLoopOptionalArg(parts, payload, "limit", "limit", "count", "length")
+		return strings.Join(parts, " "), true
 	case "write_begin":
 		path := extractToolLoopArgString(payload, "path", "file_path")
 		if path == "" {
@@ -15787,6 +16060,34 @@ func extractToolLoopArgString(payload map[string]interface{}, keys ...string) st
 		}
 	}
 	return ""
+}
+
+func appendToolLoopOptionalArg(parts []string, payload map[string]interface{}, label string, keys ...string) []string {
+	if value, ok := extractToolLoopArgValue(payload, keys...); ok {
+		return append(parts, label+"="+value)
+	}
+	return parts
+}
+
+func extractToolLoopArgValue(payload map[string]interface{}, keys ...string) (string, bool) {
+	for _, key := range keys {
+		raw, ok := payload[key]
+		if !ok || raw == nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case string:
+			value := strings.TrimSpace(v)
+			if value != "" {
+				return value, true
+			}
+		case float64:
+			return strconv.FormatFloat(v, 'f', -1, 64), true
+		case bool:
+			return strconv.FormatBool(v), true
+		}
+	}
+	return "", false
 }
 
 func extractToolLoopArgBool(payload map[string]interface{}, keys ...string) bool {
@@ -15952,6 +16253,128 @@ func buildToolLoopArtifactRecoveryTools(tools []llm.Tool, userMessage, signature
 		return tools
 	}
 	return reduced
+}
+
+type chatToolLoopRecoveryPlan struct {
+	Path         string
+	ContinueLoop bool
+	ToolNames    []string
+}
+
+func planDeterministicToolLoopRecovery(userMessage string, toolCalls []llm.ToolCall, availableTools []llm.Tool, state tools.DeferredToolExposureState) chatToolLoopRecoveryPlan {
+	if state.NeedExec && len(state.SelectedSkills) > 0 && isToolSearchFamilyRound(toolCalls) {
+		toolNames := llmToolNamesWithAdded(availableTools, "exec", "tool_search")
+		return chatToolLoopRecoveryPlan{
+			Path:         "exec_tool_search_recovery",
+			ContinueLoop: true,
+			ToolNames:    toolNames,
+		}
+	}
+	if shouldPreferDirectPublicWebLookup(userMessage, chatToolSurfaceSelection{
+		DiscoveryDecision: &agentcore.CapabilityDiscoveryDecision{CanonicalTarget: agentcore.CanonicalWebQuery},
+	}) && isToolSearchFamilyRound(toolCalls) {
+		toolNames := llmToolNamesWithAdded(availableTools, "web_query")
+		return chatToolLoopRecoveryPlan{
+			Path:         "direct_web_rescue",
+			ContinueLoop: true,
+			ToolNames:    toolNames,
+		}
+	}
+	return chatToolLoopRecoveryPlan{}
+}
+
+func llmToolNamesWithAdded(tools []llm.Tool, names ...string) []string {
+	seen := make(map[string]struct{}, len(tools)+len(names))
+	out := make([]string, 0, len(tools)+len(names))
+	for _, tool := range tools {
+		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	for _, raw := range names {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+func isToolSearchFamilyRound(toolCalls []llm.ToolCall) bool {
+	if len(toolCalls) == 0 {
+		return false
+	}
+	for _, tc := range toolCalls {
+		name := strings.ToLower(strings.TrimSpace(tc.Name))
+		switch name {
+		case "tool_search", "web_query", "web_search", "web_fetch", "web_read":
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func buildDeterministicToolLoopRecoveryNudge(path string) string {
+	switch strings.TrimSpace(path) {
+	case "direct_web_rescue":
+		return "The last rounds kept rediscovering tools without progress. Use `web_query` directly for this public web lookup, then answer the user instead of calling `tool_search` again."
+	case "exec_tool_search_recovery":
+		return "The last rounds kept rediscovering a skill without executing it. Use `exec` with the activated capability now, make concrete progress, and do not repeat `tool_search` unless new evidence requires it."
+	default:
+		return ""
+	}
+}
+
+func (h *ChatHandler) applyDeterministicToolLoopRecoveryToRequest(ctx context.Context, chatReq llm.ChatRequest, userMessage, convID, explicitProviderID string, toolCalls []llm.ToolCall) (llm.ChatRequest, string, bool) {
+	if h == nil {
+		return chatReq, "", false
+	}
+	pendingState := tools.DeferredToolExposureState{}
+	if h.deferredToolExposure != nil {
+		if snapshot, ok := h.deferredToolExposure.Snapshot(strings.TrimSpace(convID)); ok {
+			pendingState = snapshot
+		}
+	}
+	plan := planDeterministicToolLoopRecovery(userMessage, toolCalls, chatReq.Tools, pendingState)
+	if !plan.ContinueLoop {
+		return chatReq, "", false
+	}
+	nudge := buildDeterministicToolLoopRecoveryNudge(plan.Path)
+	if strings.TrimSpace(nudge) == "" {
+		return chatReq, "", false
+	}
+	state := h.conversationCommandStateOrDefault(ctx, convID)
+	webSearchEnabled := state.WebSearchEnabled
+	deepResearchEnabled := state.DeepResearchEnabled
+	nextReq := chatReq
+	nextReq.Messages = append(nextReq.Messages, llm.Message{
+		Role:    llm.RoleUser,
+		Content: nudge,
+	})
+	nextReq.Tools = defsToLLMTools(h.selectChatToolsForRequest(
+		ctx,
+		userMessage,
+		chatReq.Model,
+		convID,
+		explicitProviderID,
+		state,
+		&webSearchEnabled,
+		&deepResearchEnabled,
+	))
+	return nextReq, plan.Path, true
 }
 
 func isSearchOnlyArtifactRound(toolCalls []llm.ToolCall) bool {
@@ -23365,6 +23788,19 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
 			}
 			if detection := toolLoopDetector.Observe(toolLoopSignature(resp.Message.ToolCalls), resp.Message.Content, toolSummaries, writeTargets...); detection.Abort {
+				if recoveredReq, recoveryPath, recovered := h.applyDeterministicToolLoopRecoveryToRequest(llmCtx, chatReq, routingMessage, convID, explicitProviderID, resp.Message.ToolCalls); recovered {
+					chatReq = recoveredReq
+					logger.Warn().
+						Int("round", round).
+						Str("reason", detection.Reason).
+						Int("streak", detection.Streak).
+						Str("signature", detection.Signature).
+						Str("recovery_path", recoveryPath).
+						Msg("[chat] tool loop detected; applied deterministic recovery before abort")
+					resp = nil
+					err = nil
+					continue
+				}
 				if !toolLoopRecoveryUsed {
 					toolLoopRecoveryUsed = true
 					chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -24841,6 +25277,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// context already ignores raw HTTP disconnects via context.WithoutCancel
 	// above, so we can safely pass it through directly here.
 	toolCtx := ctx
+	streamCancelReason := ""
+	loadStreamCancelReason := func() string {
+		if strings.TrimSpace(streamCancelReason) == "" {
+			streamCancelReason = strings.TrimSpace(h.streamController.ConsumeCancelReason(streamID))
+		}
+		return streamCancelReason
+	}
 
 	// Set SSE headers before starting stream
 	c.Response().Header().Set("Content-Type", "text/event-stream")
@@ -25561,7 +26004,7 @@ STREAM_LOOP:
 			if pendingInjectionRestartOnChunk {
 				pendingInjectionRestartOnChunk = false
 				h.markConversationCancelledForResponsesContinuation(convID)
-				h.streamController.Cancel(streamID)
+				h.streamController.CancelWithReason(streamID, streamCancelReasonInjection)
 				return context.Canceled
 			}
 
@@ -26729,10 +27172,14 @@ STREAM_LOOP:
 			toolResults, toolAuditResults := h.executeToolCallsWithAudit(roundToolCtx, streamToolCalls)
 			if toolErr := roundToolCtx.Err(); toolErr != nil {
 				err = toolErr
-				logger.Info().
+				cancelReason := loadStreamCancelReason()
+				logEvent := logger.Info().
 					Err(toolErr).
-					Int("tool_round", toolRound).
-					Msg("[chat] stream: tool execution cancelled before tool results were emitted")
+					Int("tool_round", toolRound)
+				if cancelReason != "" {
+					logEvent = logEvent.Str("cancel_reason", cancelReason)
+				}
+				logEvent.Msg("[chat] stream: tool execution cancelled before tool results were emitted")
 				break
 			}
 			if streamWorkspaceArtifactTarget != "" {
@@ -26950,7 +27397,16 @@ STREAM_LOOP:
 				consecutiveToollessAutoContinueDups = 0
 			}
 			if loopDetection.Abort {
-				if !toolLoopRecoveryUsed {
+				if recoveredReq, recoveryPath, recovered := h.applyDeterministicToolLoopRecoveryToRequest(ctx, chatReq, routingMessage, convID, explicitProviderID, streamToolCalls); recovered {
+					chatReq = recoveredReq
+					logger.Warn().
+						Int("tool_round", toolRound).
+						Str("reason", loopDetection.Reason).
+						Int("streak", loopDetection.Streak).
+						Str("signature", loopDetection.Signature).
+						Str("recovery_path", recoveryPath).
+						Msg("[chat] stream: tool loop detected; applied deterministic recovery before abort")
+				} else if !toolLoopRecoveryUsed {
 					toolLoopRecoveryUsed = true
 					chatReq.Messages = append(chatReq.Messages, llm.Message{
 						Role:    llm.RoleUser,
@@ -27968,7 +28424,11 @@ STREAM_LOOP:
 		if ctx.Err() != nil {
 			// Stream was cancelled — check if this is a mid-stream injection
 			if injectedMsg := h.consumeInjection(convID); injectedMsg != "" {
-				logger.Info().Str("conv_id", convID).Msg("[chat] mid-stream injection detected, restarting stream")
+				logEvent := logger.Info().Str("conv_id", convID)
+				if cancelReason := loadStreamCancelReason(); cancelReason != "" {
+					logEvent = logEvent.Str("cancel_reason", cancelReason)
+				}
+				logEvent.Msg("[chat] mid-stream injection detected, restarting stream")
 
 				// Persist partial assistant content (without "[Response interrupted]")
 				if fullContent != "" {
@@ -28014,6 +28474,7 @@ STREAM_LOOP:
 				h.streamController.Unregister(streamID)
 				streamID = uuid.New().String()
 				streamSeq = 0
+				streamCancelReason = ""
 				ctx, cancel = context.WithCancel(context.WithoutCancel(c.Request().Context()))
 				h.streamController.Register(streamID, cancel)
 
@@ -28190,6 +28651,9 @@ STREAM_LOOP:
 			data := map[string]interface{}{
 				"cancelled": true,
 				"done":      true,
+			}
+			if cancelReason := loadStreamCancelReason(); cancelReason != "" {
+				data["cancel_reason"] = cancelReason
 			}
 			clearPostToolGapTrace()
 			h.flushConversationOnResponse(convID)
@@ -29712,12 +30176,13 @@ func (h *ChatHandler) CancelStream(c echo.Context) error {
 		})
 	}
 
-	if h.streamController.Cancel(activeStreamID) {
+	if h.streamController.CancelWithReason(activeStreamID, streamCancelReasonUserCancel) {
 		h.markConversationCancelledForResponsesContinuation(convID)
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success":   true,
-			"stream_id": activeStreamID,
-			"message":   "Stream cancelled successfully",
+			"success":       true,
+			"stream_id":     activeStreamID,
+			"cancel_reason": streamCancelReasonUserCancel,
+			"message":       "Stream cancelled successfully",
 		})
 	}
 
@@ -29739,10 +30204,11 @@ func (h *ChatHandler) ListActiveStreams(c echo.Context) error {
 
 // CancelAllStreams cancels all active streaming sessions.
 func (h *ChatHandler) CancelAllStreams(c echo.Context) error {
-	count := h.streamController.CancelAll()
+	count := h.streamController.CancelAllWithReason(streamCancelReasonCancelAll)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success":         true,
 		"cancelled_count": count,
+		"cancel_reason":   streamCancelReasonCancelAll,
 		"message":         "All streams cancelled",
 	})
 }
@@ -29834,7 +30300,7 @@ func (h *ChatHandler) enqueueConversationInjection(convID, message string) (stri
 	if hasStream {
 		// Cancel the active stream — StreamMessage will detect the injection.
 		h.markConversationCancelledForResponsesContinuation(convID)
-		h.streamController.Cancel(streamID)
+		h.streamController.CancelWithReason(streamID, streamCancelReasonInjection)
 	}
 
 	return streamID, true

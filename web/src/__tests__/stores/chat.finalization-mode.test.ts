@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useChatStore } from '@/stores/chat'
+import { messageApi } from '@/api/chat'
 
 const mocks = vi.hoisted(() => ({
   sseConnect: vi.fn(),
@@ -143,5 +144,58 @@ describe('Chat Store finalization mode', () => {
     expect(store.messages).toHaveLength(2)
     expect(store.messages[1]?.content).toBe(webFetchBlock)
     expect(store.messages[1]?.content).not.toContain(browserProgressBlock)
+  })
+
+  it('reconciles persisted content when final chunk lacks content', async () => {
+    const store = useChatStore()
+    store.currentConversationId = 'conv-1'
+    store.conversations = [
+      {
+        id: 'conv-1',
+        title: 'Missing final content reconciliation',
+        created_at: '2026-03-18T00:00:00.000Z',
+        updated_at: '2026-03-18T00:00:00.000Z',
+      },
+    ]
+
+    ;(messageApi.list as any).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'msg-user-1',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'hello',
+          created_at: '2026-03-18T00:00:00.000Z',
+        },
+        {
+          id: 'msg-assistant-final',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: 'full server content',
+          created_at: '2026-03-18T00:00:01.000Z',
+          provider: 'test',
+          model: 'minimax-m2.7',
+        },
+      ],
+    })
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+      options.onMessage?.({ delta: 'partial client content', done: false })
+      options.onComplete?.({
+        done: true,
+        message_id: 'msg-assistant-final',
+        provider: 'test',
+        model: 'minimax-m2.7',
+        // content intentionally missing
+      })
+    })
+
+    await store.sendMessage('hello')
+    await settleAsyncWork()
+
+    expect(messageApi.list).toHaveBeenCalled()
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[1]?.id).toBe('msg-assistant-final')
+    expect(store.messages[1]?.content).toBe('full server content')
   })
 })

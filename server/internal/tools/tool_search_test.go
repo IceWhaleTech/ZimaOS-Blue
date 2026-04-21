@@ -31,6 +31,14 @@ func (t *panicAfterFirstDefinitionTool) Execute(context.Context, map[string]inte
 	return "ok", nil
 }
 
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func stringPtr(v string) *string {
+	return &v
+}
+
 func writeToolSearchConflictSkill(t *testing.T, dir, entryDir, manifestName, description string) string {
 	t.Helper()
 
@@ -120,6 +128,74 @@ func TestToolSearchTool_SelectAndRequiredTermsActivateDeferredTool(t *testing.T)
 	}
 	if len(state.ActivatedTools) != 1 || state.ActivatedTools[0] != "process" {
 		t.Fatalf("state.ActivatedTools = %+v, want [process]", state.ActivatedTools)
+	}
+	if !state.ActivationRequested {
+		t.Fatal("state.ActivationRequested = false, want true")
+	}
+	if state.ActivationApplied {
+		t.Fatal("state.ActivationApplied = true, want false before request-time overlay")
+	}
+	if state.ActivationFailureReason != "" {
+		t.Fatalf("state.ActivationFailureReason = %q, want empty", state.ActivationFailureReason)
+	}
+}
+
+func TestDeferredToolExposureStore_TracksActivationOutcome(t *testing.T) {
+	store := NewDeferredToolExposureStore(time.Minute)
+	if _, ok := store.Apply("conv-activation", DeferredToolExposureUpdate{
+		ActivatedTools:      []string{"web_query"},
+		ActivationRequested: boolPtr(true),
+		ActivationApplied:   boolPtr(false),
+		RegistryVersion:     7,
+		PromptPolicyHash:    "policy-a",
+	}); !ok {
+		t.Fatal("expected initial deferred activation state to be written")
+	}
+
+	state, ok := store.Snapshot("conv-activation")
+	if !ok {
+		t.Fatal("expected deferred activation snapshot")
+	}
+	if !state.ActivationRequested {
+		t.Fatal("ActivationRequested = false, want true")
+	}
+	if state.ActivationApplied {
+		t.Fatal("ActivationApplied = true, want false")
+	}
+
+	if _, ok := store.Apply("conv-activation", DeferredToolExposureUpdate{
+		ActivationRequested:     boolPtr(true),
+		ActivationApplied:       boolPtr(false),
+		ActivationFailureReason: stringPtr("tool_not_visible"),
+	}); !ok {
+		t.Fatal("expected activation failure update to be recorded")
+	}
+
+	state, ok = store.Snapshot("conv-activation")
+	if !ok {
+		t.Fatal("expected deferred activation snapshot after failure")
+	}
+	if state.ActivationFailureReason != "tool_not_visible" {
+		t.Fatalf("ActivationFailureReason = %q, want tool_not_visible", state.ActivationFailureReason)
+	}
+
+	if _, ok := store.Apply("conv-activation", DeferredToolExposureUpdate{
+		ActivationRequested:     boolPtr(true),
+		ActivationApplied:       boolPtr(true),
+		ActivationFailureReason: stringPtr(""),
+	}); !ok {
+		t.Fatal("expected activation success update to be recorded")
+	}
+
+	state, ok = store.Snapshot("conv-activation")
+	if !ok {
+		t.Fatal("expected deferred activation snapshot after success")
+	}
+	if !state.ActivationApplied {
+		t.Fatal("ActivationApplied = false, want true")
+	}
+	if state.ActivationFailureReason != "" {
+		t.Fatalf("ActivationFailureReason = %q, want empty after success", state.ActivationFailureReason)
 	}
 }
 
@@ -420,6 +496,21 @@ func TestToolSearchTool_HidesLegacyWebAliasFromUserFacingMatches(t *testing.T) {
 	}
 	if len(canonical.Activated.Skipped) != 1 || canonical.Activated.Skipped[0].Reason != "already_loaded" {
 		t.Fatalf("canonical activated.skipped = %+v, want already_loaded", canonical.Activated.Skipped)
+	}
+
+	legacyCompatAny, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:web_search", "max_results": 10})
+	if err != nil {
+		t.Fatalf("Execute legacy compat returned error: %v", err)
+	}
+	legacyCompat := legacyCompatAny.(ToolSearchResult)
+	if len(legacyCompat.Matches) != 1 {
+		t.Fatalf("expected legacy web alias to normalize to canonical web_query match, got %+v", legacyCompat.Matches)
+	}
+	if legacyCompat.Matches[0].Name != "web_query" || legacyCompat.Matches[0].Kind != "tool" {
+		t.Fatalf("legacy compat match = %+v, want canonical tool web_query", legacyCompat.Matches[0])
+	}
+	if len(legacyCompat.Activated.Tools) != 0 {
+		t.Fatalf("legacy compat activated.tools = %+v, want no deferred activation for loaded web_query", legacyCompat.Activated.Tools)
 	}
 }
 

@@ -118,7 +118,7 @@ func cropA11yConversationSearchImage(imagePath string, region a11yConversationIm
 	if err != nil {
 		return "", nil, err
 	}
-	tmpFile, err := os.CreateTemp("", "zimaos-blue-a11y-conversation-*.png")
+	tmpFile, err := os.CreateTemp("", "zimaos-blue-computer-use-conversation-*.png")
 	if err != nil {
 		return "", nil, fmt.Errorf("create conversation crop temp file: %w", err)
 	}

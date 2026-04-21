@@ -264,7 +264,7 @@ func (h *ChatHandler) commandExecutor() *chatcmd.Executor {
 			if !ok || strings.TrimSpace(streamID) == "" {
 				return false
 			}
-			if !h.streamController.Cancel(streamID) {
+			if !h.streamController.CancelWithReason(streamID, streamCancelReasonCommandStop) {
 				return false
 			}
 			h.markConversationCancelledForResponsesContinuation(conversationID)

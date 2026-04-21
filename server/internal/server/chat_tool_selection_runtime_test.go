@@ -9,6 +9,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -116,6 +117,30 @@ func TestBuildChatToolSurfaceLogSnapshot_UsesNativeDefsForSelected(t *testing.T)
 	if snapshot.DecisionReason != "ir_no_match" {
 		t.Fatalf("DecisionReason = %q, want ir_no_match", snapshot.DecisionReason)
 	}
+	if snapshot.SurfaceMode != string(chatNativeToolSurfaceModeClarifyNone) {
+		t.Fatalf("SurfaceMode = %q, want %q", snapshot.SurfaceMode, chatNativeToolSurfaceModeClarifyNone)
+	}
+	if snapshot.CanonicalTarget != "" {
+		t.Fatalf("CanonicalTarget = %q, want empty", snapshot.CanonicalTarget)
+	}
+	if snapshot.ActivationRequested {
+		t.Fatal("ActivationRequested = true, want false")
+	}
+	if snapshot.ActivationApplied {
+		t.Fatal("ActivationApplied = true, want false")
+	}
+	if snapshot.ActivationFailureReason != "" {
+		t.Fatalf("ActivationFailureReason = %q, want empty", snapshot.ActivationFailureReason)
+	}
+	if snapshot.RecoveryPath != "" {
+		t.Fatalf("RecoveryPath = %q, want empty", snapshot.RecoveryPath)
+	}
+	if snapshot.AbortReason != "" {
+		t.Fatalf("AbortReason = %q, want empty", snapshot.AbortReason)
+	}
+	if snapshot.StickySurfaceSource != "" {
+		t.Fatalf("StickySurfaceSource = %q, want empty", snapshot.StickySurfaceSource)
+	}
 	if got := snapshot.ConflictFlags; len(got) != 1 || got[0] != "question_prefix" {
 		t.Fatalf("ConflictFlags = %v, want [question_prefix]", got)
 	}
@@ -124,6 +149,53 @@ func TestBuildChatToolSurfaceLogSnapshot_UsesNativeDefsForSelected(t *testing.T)
 	}
 	if len(snapshot.SelectedNames) != 0 {
 		t.Fatalf("SelectedNames = %v, want empty", snapshot.SelectedNames)
+	}
+}
+
+func TestBuildChatToolSurfaceLogSnapshot_RecordsUsabilityObservability(t *testing.T) {
+	snapshot := buildChatToolSurfaceLogSnapshot(chatToolSurfaceSelection{
+		RoutedDefs: []tools.ToolDefinition{
+			{Name: "read"},
+			{Name: "web_query"},
+		},
+		NativeDefs: []tools.ToolDefinition{
+			{Name: "tool_search"},
+			{Name: "web_query"},
+		},
+		NativeMode:              chatNativeToolSurfaceModeLegacy,
+		SurfaceMode:             chatToolSurfaceModeDirectPublicWeb,
+		ActivationRequested:     true,
+		ActivationApplied:       false,
+		ActivationFailureReason: "tool_not_visible",
+		RecoveryPath:            "direct_web_rescue",
+		AbortReason:             "polling_no_progress",
+		StickySurfaceSource:     "prompt_cache_union",
+		DiscoveryDecision:       &agentcore.CapabilityDiscoveryDecision{CanonicalTarget: agentcore.CanonicalWebQuery},
+	})
+
+	if snapshot.SurfaceMode != string(chatToolSurfaceModeDirectPublicWeb) {
+		t.Fatalf("SurfaceMode = %q, want %q", snapshot.SurfaceMode, chatToolSurfaceModeDirectPublicWeb)
+	}
+	if snapshot.CanonicalTarget != string(agentcore.CanonicalWebQuery) {
+		t.Fatalf("CanonicalTarget = %q, want %q", snapshot.CanonicalTarget, agentcore.CanonicalWebQuery)
+	}
+	if !snapshot.ActivationRequested {
+		t.Fatal("ActivationRequested = false, want true")
+	}
+	if snapshot.ActivationApplied {
+		t.Fatal("ActivationApplied = true, want false")
+	}
+	if snapshot.ActivationFailureReason != "tool_not_visible" {
+		t.Fatalf("ActivationFailureReason = %q, want tool_not_visible", snapshot.ActivationFailureReason)
+	}
+	if snapshot.RecoveryPath != "direct_web_rescue" {
+		t.Fatalf("RecoveryPath = %q, want direct_web_rescue", snapshot.RecoveryPath)
+	}
+	if snapshot.AbortReason != "polling_no_progress" {
+		t.Fatalf("AbortReason = %q, want polling_no_progress", snapshot.AbortReason)
+	}
+	if snapshot.StickySurfaceSource != "prompt_cache_union" {
+		t.Fatalf("StickySurfaceSource = %q, want prompt_cache_union", snapshot.StickySurfaceSource)
 	}
 }
 
@@ -700,7 +772,7 @@ func TestSelectChatToolsForRequest_DesktopChatSendRequestNarrowsToComputerUse(t 
 
 	got := handler.selectChatToolsForRequest(
 		context.Background(),
-		"帮我在飞书桌面应用里给【后端之家】的小伙伴们打个招呼，告诉他们是Blue发的消息",
+		"帮我在飞书桌面应用里给【test_group】的小伙伴们打个招呼，告诉他们是Blue发的消息",
 		"claude-3-5-haiku-20241022",
 		"conv-desktop-chat-send",
 		"",
@@ -729,7 +801,7 @@ func TestPreviewChatToolSurfacesForRequest_DesktopChatSendNarrowsNativeSurfaceTo
 
 	selection := handler.previewChatToolSurfacesForRequest(
 		context.Background(),
-		"帮我在飞书桌面应用里给【后端之家】的小伙伴们打个招呼，告诉他们是Blue发的消息",
+		"帮我在飞书桌面应用里给【test_group】的小伙伴们打个招呼，告诉他们是Blue发的消息",
 		tools.ToolPolicyRequest{
 			Model:     "claude-3-5-haiku-20241022",
 			RouteKind: tools.ToolRouteKindChat,
@@ -1046,7 +1118,7 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesNoLongerFilterTools(
 	}
 }
 
-func TestSelectChatToolsForRequest_SmartSkillSelectionCollapsesToExec(t *testing.T) {
+func TestSelectChatToolsForRequest_SmartSkillSelectionDirectsPublicWebLookup(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
@@ -1074,15 +1146,22 @@ func TestSelectChatToolsForRequest_SmartSkillSelectionCollapsesToExec(t *testing
 		nil,
 	)
 
-	if names := selectedToolNames(got); len(names) != 1 || names[0] != "exec" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [exec]", names)
+	names := toolNameSet(got)
+	for _, required := range []string{"read", "web_query", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want %q in direct public-web surface", selectedToolNames(got), required)
+		}
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("selectChatToolsForRequest() = %v, want no exec cutover for direct public-web lookup", selectedToolNames(got))
 	}
 }
 
-func TestSelectChatToolSurfacesForRequest_DiscoverFirstUsesRuntimeExecOverlay(t *testing.T) {
+func TestSelectChatToolSurfacesForRequest_DirectPublicWebLookupPrefersWebQuery(t *testing.T) {
 	registry := tools.NewRegistry()
 	tools.RegisterExecTools(registry, tools.DefaultExecConfig(), nil, nil, nil)
 	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 
 	handler := newChatToolSelectionTestHandler(registry)
 
@@ -1101,11 +1180,20 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstUsesRuntimeExecOverlay(t 
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
 
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+	names := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"tool_search", "web_query"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("NativeDefs = %v, want %q present for direct public-web lookup", selectedToolNames(selection.NativeDefs), required)
+		}
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("NativeDefs = %v, want no exec cutover for direct public-web lookup", selectedToolNames(selection.NativeDefs))
+	}
+	if selection.SurfaceMode != chatToolSurfaceModeDirectPublicWeb {
+		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeDirectPublicWeb)
 	}
 }
 
@@ -1131,17 +1219,24 @@ func TestSelectChatToolSurfacesForRequest_DefaultSettingsUseDiscoverFirstCutover
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
 
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
-		t.Fatalf("NativeDefs = %v, want [exec]", got)
+	names := toolNameSet(selection.NativeDefs)
+	if _, ok := names["web_query"]; !ok {
+		t.Fatalf("NativeDefs = %v, want direct web_query exposure", selectedToolNames(selection.NativeDefs))
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("NativeDefs = %v, want no exec cutover for direct public-web lookup", selectedToolNames(selection.NativeDefs))
 	}
 	if selection.DiscoveryDecision == nil {
 		t.Fatal("expected DiscoveryDecision")
 	}
 	if selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
 		t.Fatalf("CanonicalTarget = %q, want %q", selection.DiscoveryDecision.CanonicalTarget, agentcore.CanonicalWebQuery)
+	}
+	if selection.SurfaceMode != chatToolSurfaceModeDirectPublicWeb {
+		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeDirectPublicWeb)
 	}
 }
 
@@ -1190,14 +1285,16 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 		wantProfile       agentcore.ExecutionProfile
 		wantNativeMode    chatNativeToolSurfaceMode
 		wantDiscoveryMode agentcore.NativeSurfaceMode
+		wantDirectWeb     bool
 	}{
 		{
 			name:              "latest_docs_routes_to_web_query",
 			query:             "搜索最新 OpenAI Responses API 文档。",
 			wantCanonical:     agentcore.CanonicalWebQuery,
 			wantProfile:       agentcore.ExecutionProfilePreferFork,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantDirectWeb:     true,
 		},
 		{
 			name:              "login_flow_routes_to_browser",
@@ -1270,7 +1367,20 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			if selection.NativeMode != tc.wantNativeMode {
 				t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, tc.wantNativeMode)
 			}
-			if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
+			names := toolNameSet(selection.NativeDefs)
+			if tc.wantDirectWeb {
+				for _, required := range []string{"tool_search", "web_query"} {
+					if _, ok := names[required]; !ok {
+						t.Fatalf("NativeDefs = %v, want %q present for direct public-web lookup", selectedToolNames(selection.NativeDefs), required)
+					}
+				}
+				if _, ok := names["exec"]; ok {
+					t.Fatalf("NativeDefs = %v, want no exec cutover for direct public-web lookup", selectedToolNames(selection.NativeDefs))
+				}
+				if selection.SurfaceMode != chatToolSurfaceModeDirectPublicWeb {
+					t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeDirectPublicWeb)
+				}
+			} else if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
 				t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
 			}
 			if selection.DiscoveryDecision == nil {
@@ -1319,14 +1429,23 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNo
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	}, &webSearchEnabled, nil)
-	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("legacy-flag NativeMode = %q, want discover-first skill exec cutover", fallbackSelection.NativeMode)
+	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("legacy-flag NativeMode = %q, want direct public-web legacy surface", fallbackSelection.NativeMode)
 	}
-	if got := selectedToolNames(fallbackSelection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("legacy-flag NativeDefs = %v, want [exec tool_search]", got)
+	names := toolNameSet(fallbackSelection.NativeDefs)
+	for _, required := range []string{"tool_search", "web_query"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("legacy-flag NativeDefs = %v, want %q present for direct public-web lookup", selectedToolNames(fallbackSelection.NativeDefs), required)
+		}
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("legacy-flag NativeDefs = %v, want no exec cutover for direct public-web lookup", selectedToolNames(fallbackSelection.NativeDefs))
 	}
 	if fallbackSelection.DiscoveryDecision == nil || fallbackSelection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
 		t.Fatalf("legacy-flag DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
+	}
+	if fallbackSelection.SurfaceMode != chatToolSurfaceModeDirectPublicWeb {
+		t.Fatalf("legacy-flag SurfaceMode = %q, want %q", fallbackSelection.SurfaceMode, chatToolSurfaceModeDirectPublicWeb)
 	}
 }
 
@@ -1489,11 +1608,17 @@ func TestSelectChatToolSurfacesForRequest_LegacyExecCollapsePersistsWhenDynamicE
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want skill_exec while dynamic exposure is disabled", selection.NativeMode)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want direct public-web legacy surface while dynamic exposure is disabled", selection.NativeMode)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+	names := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"tool_search", "web_query"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("NativeDefs = %v, want %q present for direct public-web lookup", selectedToolNames(selection.NativeDefs), required)
+		}
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("NativeDefs = %v, want no exec cutover for direct public-web lookup", selectedToolNames(selection.NativeDefs))
 	}
 	if selection.DiscoveryDecision == nil {
 		t.Fatal("expected DiscoveryDecision")
@@ -1504,9 +1629,12 @@ func TestSelectChatToolSurfacesForRequest_LegacyExecCollapsePersistsWhenDynamicE
 	if selection.DiscoveryDecision.ExecutionProfile != agentcore.ExecutionProfilePreferFork {
 		t.Fatalf("ExecutionProfile = %q, want %q", selection.DiscoveryDecision.ExecutionProfile, agentcore.ExecutionProfilePreferFork)
 	}
+	if selection.SurfaceMode != chatToolSurfaceModeDirectPublicWeb {
+		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeDirectPublicWeb)
+	}
 }
 
-func TestSelectChatToolsForRequest_CutoverSkipsPromptCacheStickyUnion(t *testing.T) {
+func TestSelectChatToolsForRequest_DirectPublicWebLookupKeepsStickyUnionAvailable(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
@@ -1556,15 +1684,21 @@ func TestSelectChatToolsForRequest_CutoverSkipsPromptCacheStickyUnion(t *testing
 		nil,
 	)
 
-	if names := selectedToolNames(got); len(names) != 1 || names[0] != "exec" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want sticky surface reset to [exec]", names)
+	names := toolNameSet(got)
+	for _, required := range []string{"read", "web_query", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want %q in direct public-web surface", selectedToolNames(got), required)
+		}
 	}
-	if cached := handler.getPromptCacheToolSurface("conv-cutover"); cached != nil {
-		t.Fatalf("prompt cache surface = %#v, want cleared after cutover-native selection", cached)
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("selectChatToolsForRequest() = %v, want no exec cutover for direct public-web lookup", selectedToolNames(got))
+	}
+	if cached := handler.getPromptCacheToolSurface("conv-cutover"); cached == nil {
+		t.Fatal("prompt cache surface = nil, want direct public-web selection to stay cache-friendly")
 	}
 }
 
-func TestSelectChatToolsForRequest_DiscoverFirstCutoverSkipsPromptCacheStickyUnion(t *testing.T) {
+func TestSelectChatToolsForRequest_DirectPublicWebLookupPreservesPromptCacheSurface(t *testing.T) {
 	handler := newDiscoverFirstSelectionHandler(t, true)
 	attachTestProviderPool(t, handler, &providerpool.Provider{
 		ID:        "anthropic-test",
@@ -1600,12 +1734,71 @@ func TestSelectChatToolsForRequest_DiscoverFirstCutoverSkipsPromptCacheStickyUni
 		nil,
 	)
 
-	if names := selectedToolNames(got); len(names) != 2 || names[0] != "exec" || names[1] != "tool_search" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want sticky surface reset to [exec tool_search]", names)
+	names := toolNameSet(got)
+	for _, required := range []string{"tool_search", "web_query"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want %q preserved for direct public-web lookup", selectedToolNames(got), required)
+		}
 	}
-	if cached := handler.getPromptCacheToolSurface("conv-discover-cutover"); cached != nil {
-		t.Fatalf("prompt cache surface = %#v, want cleared after discover-first cutover", cached)
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("selectChatToolsForRequest() = %v, want no exec cutover for direct public-web lookup", selectedToolNames(got))
 	}
+	if cached := handler.getPromptCacheToolSurface("conv-discover-cutover"); cached == nil {
+		t.Fatal("prompt cache surface = nil, want stabilized surface to remain cached for direct public-web lookup")
+	}
+}
+
+func TestPlanDeterministicToolLoopRecovery_PublicWebLookupAddsWebQuery(t *testing.T) {
+	plan := planDeterministicToolLoopRecovery(
+		"帮我去网上搜索下近期新闻",
+		[]llm.ToolCall{{Name: "tool_search"}},
+		[]llm.Tool{{Name: "tool_search"}},
+		tools.DeferredToolExposureState{},
+	)
+
+	if plan.Path != "direct_web_rescue" {
+		t.Fatalf("Path = %q, want direct_web_rescue", plan.Path)
+	}
+	if !plan.ContinueLoop {
+		t.Fatal("ContinueLoop = false, want true")
+	}
+	if !containsString(plan.ToolNames, "web_query") {
+		t.Fatalf("ToolNames = %+v, want web_query appended", plan.ToolNames)
+	}
+}
+
+func TestPlanDeterministicToolLoopRecovery_PendingSkillActivationAddsExecAndToolSearch(t *testing.T) {
+	plan := planDeterministicToolLoopRecovery(
+		"搜索最新 OpenAI Responses API 文档",
+		[]llm.ToolCall{{Name: "tool_search"}},
+		[]llm.Tool{{Name: "tool_search"}},
+		tools.DeferredToolExposureState{
+			SelectedSkills: []string{"web_query"},
+			NeedExec:       true,
+		},
+	)
+
+	if plan.Path != "exec_tool_search_recovery" {
+		t.Fatalf("Path = %q, want exec_tool_search_recovery", plan.Path)
+	}
+	if !plan.ContinueLoop {
+		t.Fatal("ContinueLoop = false, want true")
+	}
+	if !containsString(plan.ToolNames, "exec") {
+		t.Fatalf("ToolNames = %+v, want exec appended", plan.ToolNames)
+	}
+	if !containsString(plan.ToolNames, "tool_search") {
+		t.Fatalf("ToolNames = %+v, want tool_search preserved", plan.ToolNames)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSelectChatToolSurfacesForRequest_RecordsToolSurfaceAuditCounts(t *testing.T) {
@@ -1736,6 +1929,63 @@ func TestStabilizePromptCacheToolSurface_ToggleChangeResetsStickyTools(t *testin
 	})
 	if got := selectedToolNames(second); len(got) != 1 || got[0] != "read" {
 		t.Fatalf("toggle reset stabilize = %v, want [read]", got)
+	}
+}
+
+func TestSelectChatToolsForRequest_GreetingDoesNotStickyUnionIntoLaterWorkspaceTask(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	attachTestProviderPool(t, handler, &providerpool.Provider{
+		ID:        "anthropic-test",
+		Name:      "Anthropic Test",
+		Type:      providerpool.ProviderTypeCustom,
+		Location:  providerpool.ProviderLocationCloud,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		APIFormat: providerpool.APIFormatAnthropic,
+	})
+
+	state := memory.ConversationCommandState{
+		ConversationID:     "conv-greeting-followup",
+		SelectedProviderID: "anthropic-test",
+	}
+
+	first := handler.selectChatToolsForRequest(
+		context.Background(),
+		"hello",
+		"claude-3-5-haiku-20241022",
+		"conv-greeting-followup",
+		"",
+		state,
+		nil,
+		nil,
+	)
+	if len(first) != 0 {
+		t.Fatalf("first greeting tool surface = %v, want empty suppressed surface", selectedToolNames(first))
+	}
+
+	second := handler.selectChatToolsForRequest(
+		context.Background(),
+		"Read README.md from the workspace and summarize it.",
+		"claude-3-5-haiku-20241022",
+		"conv-greeting-followup",
+		"",
+		state,
+		nil,
+		nil,
+	)
+	secondNames := toolNameSet(second)
+	for _, required := range []string{"read", "write"} {
+		if _, ok := secondNames[required]; !ok {
+			t.Fatalf("follow-up workspace task tool surface = %v, want %q visible", selectedToolNames(second), required)
+		}
+	}
+	if _, ok := secondNames["web_query"]; ok {
+		t.Fatalf("follow-up workspace task tool surface = %v, want greeting turn not to sticky-union web_query", selectedToolNames(second))
 	}
 }
 

@@ -51,6 +51,21 @@ func TestResolveA11yWindowTarget_UsesUniqueExactAppName(t *testing.T) {
 	}
 }
 
+func TestResolveA11yWindowTarget_UsesLargestBoundsToBreakAppNameAmbiguity(t *testing.T) {
+	windows := []a11yruntime.WindowInfo{
+		{ID: "win-1", Title: "Feishu", AppName: "Feishu", Layer: 0, Bounds: a11yruntime.Rect{X: 0, Y: 0, Width: 300, Height: 200}},
+		{ID: "win-2", Title: "Feishu - Team", AppName: "Feishu", Layer: 0, Bounds: a11yruntime.Rect{X: 0, Y: 0, Width: 900, Height: 700}},
+	}
+
+	resolved, _, err := resolveA11yWindowTarget("", "", "Feishu", windows)
+	if err != nil {
+		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
+	}
+	if resolved != "win-2" {
+		t.Fatalf("resolved = %q, want win-2", resolved)
+	}
+}
+
 func TestResolveA11yWindowTarget_UsesUniqueFuzzyWindowTitleAcrossAliasTerms(t *testing.T) {
 	windows := []a11yruntime.WindowInfo{
 		{ID: "win-1", Title: "Code", AppName: "Code"},

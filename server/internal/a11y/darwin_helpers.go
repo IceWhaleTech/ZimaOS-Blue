@@ -160,6 +160,34 @@ func darwinIncludeWindowRecord(record darwinWindowRecord) bool {
 	}
 }
 
+func darwinWindowRecordDiagnostics(record darwinWindowRecord) map[string]interface{} {
+	details := map[string]interface{}{
+		"window_id": strings.TrimSpace(record.ID),
+	}
+	if record.PID > 0 {
+		details["pid"] = record.PID
+	}
+	if trimmed := strings.TrimSpace(record.AppName); trimmed != "" {
+		details["app_name"] = trimmed
+	}
+	if trimmed := strings.TrimSpace(record.Title); trimmed != "" {
+		details["window_title"] = trimmed
+	}
+	if record.Layer != 0 {
+		details["layer"] = record.Layer
+	}
+	details["focused"] = record.Focused
+	if darwinRectDefined(record.Bounds) {
+		details["bounds"] = map[string]float64{
+			"x":      record.Bounds.Origin.X,
+			"y":      record.Bounds.Origin.Y,
+			"width":  record.Bounds.Size.Width,
+			"height": record.Bounds.Size.Height,
+		}
+	}
+	return details
+}
+
 func darwinMarkFocusedRecord(records []darwinWindowRecord, frontPID int, frontTitle string, frontBounds darwinRect) {
 	if len(records) == 0 {
 		return

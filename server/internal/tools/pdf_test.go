@@ -1269,6 +1269,48 @@ func TestPDFToolReadExecuteUsesStructuredDefaults(t *testing.T) {
 	}
 }
 
+func TestPDFToolReadExecuteReadModeFastOverridesLimitsWhenOmitted(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      path,
+		"read_mode": "fast",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if svc.lastExtractReq.MaxPages == 0 {
+		t.Fatal("expected MaxPages to be set for read_mode=fast")
+	}
+	if svc.lastExtractReq.MaxChars == 0 {
+		t.Fatal("expected MaxChars to be set for read_mode=fast")
+	}
+}
+
+func TestPDFToolReadExecuteReadModeDoesNotOverrideExplicitLimits(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      path,
+		"read_mode": "fast",
+		"max_pages": 3,
+		"max_chars": 1234,
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if svc.lastExtractReq.MaxPages != 3 {
+		t.Fatalf("MaxPages = %d, want 3", svc.lastExtractReq.MaxPages)
+	}
+	if svc.lastExtractReq.MaxChars != 1234 {
+		t.Fatalf("MaxChars = %d, want 1234", svc.lastExtractReq.MaxChars)
+	}
+}
+
 func TestPDFToolReadExecuteSupportsStructuredFlags(t *testing.T) {
 	path := writeTestPDF(t, "report.pdf", 256)
 	svc := &stubPDFService{}

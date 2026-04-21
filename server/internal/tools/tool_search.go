@@ -26,26 +26,32 @@ type ToolSearchRuntimeInfo struct {
 type ToolSearchRuntimeInfoSource func(sessionID string) ToolSearchRuntimeInfo
 
 type DeferredToolExposureState struct {
-	ActivatedTools     []string
-	SelectedSkills     []string
-	SelectedAgents     []string
-	NeedExec           bool
-	NeedAgentTools     bool
-	RegistryVersion    uint64
-	PromptPolicyHash   string
-	SkillExposureStamp string
-	ExpiresAt          time.Time
+	ActivatedTools          []string
+	SelectedSkills          []string
+	SelectedAgents          []string
+	NeedExec                bool
+	NeedAgentTools          bool
+	ActivationRequested     bool
+	ActivationApplied       bool
+	ActivationFailureReason string
+	RegistryVersion         uint64
+	PromptPolicyHash        string
+	SkillExposureStamp      string
+	ExpiresAt               time.Time
 }
 
 type DeferredToolExposureUpdate struct {
-	ActivatedTools     []string
-	SelectedSkills     []string
-	SelectedAgents     []string
-	NeedExec           bool
-	NeedAgentTools     bool
-	RegistryVersion    uint64
-	PromptPolicyHash   string
-	SkillExposureStamp string
+	ActivatedTools          []string
+	SelectedSkills          []string
+	SelectedAgents          []string
+	NeedExec                bool
+	NeedAgentTools          bool
+	ActivationRequested     *bool
+	ActivationApplied       *bool
+	ActivationFailureReason *string
+	RegistryVersion         uint64
+	PromptPolicyHash        string
+	SkillExposureStamp      string
 }
 
 type DeferredToolExposureStore struct {
@@ -165,6 +171,18 @@ func (s *DeferredToolExposureStore) Apply(sessionID string, update DeferredToolE
 	state.SelectedAgents = mergeToolSearchNames(state.SelectedAgents, update.SelectedAgents)
 	state.NeedExec = state.NeedExec || update.NeedExec
 	state.NeedAgentTools = state.NeedAgentTools || update.NeedAgentTools
+	if update.ActivationRequested != nil {
+		state.ActivationRequested = *update.ActivationRequested
+	}
+	if update.ActivationApplied != nil {
+		state.ActivationApplied = *update.ActivationApplied
+	}
+	if update.ActivationFailureReason != nil {
+		state.ActivationFailureReason = strings.TrimSpace(*update.ActivationFailureReason)
+	}
+	if state.ActivationApplied {
+		state.ActivationFailureReason = ""
+	}
 	if update.RegistryVersion != 0 {
 		state.RegistryVersion = update.RegistryVersion
 	}
@@ -192,6 +210,12 @@ func cloneDeferredToolExposureState(state DeferredToolExposureState) DeferredToo
 
 func deferredToolExposureStatesEqual(left, right DeferredToolExposureState) bool {
 	if left.NeedExec != right.NeedExec || left.NeedAgentTools != right.NeedAgentTools {
+		return false
+	}
+	if left.ActivationRequested != right.ActivationRequested || left.ActivationApplied != right.ActivationApplied {
+		return false
+	}
+	if strings.TrimSpace(left.ActivationFailureReason) != strings.TrimSpace(right.ActivationFailureReason) {
 		return false
 	}
 	if left.RegistryVersion != right.RegistryVersion {
@@ -244,6 +268,19 @@ func mergeToolSearchNames(existing, incoming []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func canonicalizePublicWebToolName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web_query"
+	default:
+		return strings.TrimSpace(name)
+	}
+}
+
+func canonicalPublicWebToolAliases() []string {
+	return []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"}
 }
 
 type ToolSearchTool struct {
@@ -702,7 +739,7 @@ func (t *ToolSearchTool) buildCapabilities(
 			}
 			capability := toolSearchCapability{
 				ID:           strings.TrimSpace(def.Name),
-				Name:         strings.TrimSpace(def.Name),
+				Name:         canonicalizePublicWebToolName(strings.TrimSpace(def.Name)),
 				Kind:         "tool",
 				Description:  strings.TrimSpace(def.Description),
 				Aliases:      append([]string(nil), def.Aliases...),
@@ -711,6 +748,9 @@ func (t *ToolSearchTool) buildCapabilities(
 				Activation:   "available",
 				CallTool:     strings.TrimSpace(def.Name),
 				CallHint:     fmt.Sprintf("Call the `%s` tool directly.", strings.TrimSpace(def.Name)),
+			}
+			if strings.EqualFold(strings.TrimSpace(capability.Name), "web_query") {
+				capability.Aliases = append(capability.Aliases, canonicalPublicWebToolAliases()...)
 			}
 			capabilities = append(capabilities, prepareToolSearchCapability(capability))
 			toolSearchMarkDedupeKeys(taken, capability.Name, capability.ID, capability.CanonicalSkill)
@@ -1303,11 +1343,17 @@ func (t *ToolSearchTool) applySelectedCapabilities(
 		PromptPolicyHash:   strings.TrimSpace(runtimeInfo.PromptPolicyHash),
 		SkillExposureStamp: strings.TrimSpace(skillExposureStamp),
 	}
+	activationRequested := true
+	activationApplied := false
+	activationFailureReason := ""
+	update.ActivationRequested = &activationRequested
+	update.ActivationApplied = &activationApplied
+	update.ActivationFailureReason = &activationFailureReason
 
 	for _, capability := range selected {
 		switch capability.Kind {
 		case "tool":
-			name := strings.TrimSpace(capability.Name)
+			name := canonicalizePublicWebToolName(strings.TrimSpace(capability.Name))
 			if name == "" {
 				continue
 			}

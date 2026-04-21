@@ -157,7 +157,7 @@ func TestRecoverPseudoToolCallsFromContent_RecoversTypelessSingleInputNativeDocu
 }
 
 func TestRecoverPseudoToolCallsFromContent_RecoversRequestToolEnvelopeForComputerUse(t *testing.T) {
-	content := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"后端之家\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
+	content := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"test_group\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
 
 	calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "computer_use"}})
 	if !ok {
@@ -180,8 +180,8 @@ func TestRecoverPseudoToolCallsFromContent_RecoversRequestToolEnvelopeForCompute
 	if got, _ := args["app_name"].(string); got != "飞书" {
 		t.Fatalf("app_name = %q, want 飞书", got)
 	}
-	if got, _ := args["conversation"].(string); got != "后端之家" {
-		t.Fatalf("conversation = %q, want 后端之家", got)
+	if got, _ := args["conversation"].(string); got != "test_group" {
+		t.Fatalf("conversation = %q, want test_group", got)
 	}
 	if got, _ := args["intent"].(string); got != "send_greeting" {
 		t.Fatalf("intent = %q, want send_greeting", got)

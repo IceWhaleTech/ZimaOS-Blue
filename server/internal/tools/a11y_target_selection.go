@@ -1050,6 +1050,35 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 	state := getA11yChatExecutionState(ctx)
 	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, windowID, selector)
 	if err != nil {
+		// If the structured snapshot is effectively a shell window (no useful content nodes),
+		// avoid expensive locate strategies and proceed with opportunistic execution instead.
+		t.mu.RLock()
+		cachedEntries := cloneA11ySnapshotEntries(t.lastRefs)
+		t.mu.RUnlock()
+		if a11yIsTargetNotFound(err) && a11ySnapshotLooksLikeShell(cachedEntries) {
+			fallbackWindow := strings.TrimSpace(valueOrDefault(resolvedWindow, windowID))
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, "structured_unavailable_skip", "", "", map[string]interface{}{
+					"conversation_locate_strategy": "structured_unavailable_skip",
+					"reason":                      "snapshot_shell",
+				})
+				t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, "structured_unavailable_skip")
+			}
+			return fallbackWindow, nil
+		}
+		// If we cannot build a structured snapshot for this window (for example, Feishu/Lark
+		// sometimes fails to expose an AX window element), avoid keyboard-based search and
+		// proceed with opportunistic "composer-first" execution instead.
+		if a11yIsAXWindowLookupFailure(err) {
+			fallbackWindow := strings.TrimSpace(valueOrDefault(resolvedWindow, windowID))
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, "structured_unavailable_skip", "", "", map[string]interface{}{
+					"conversation_locate_strategy": "structured_unavailable_skip",
+				})
+				t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, "structured_unavailable_skip")
+			}
+			return fallbackWindow, nil
+		}
 		if fastWindow, fastErr, handled := t.tryA11yConversationFallbackChain(ctx, backend, args, strings.TrimSpace(valueOrDefault(resolvedWindow, windowID)), selector, holdMS, err); handled {
 			if fastErr != nil {
 				return "", enrichA11yActionPhaseError(fastErr, "conversation", false)
@@ -1067,6 +1096,14 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 		return "", enrichA11yActionPhaseError(confirmErr, "conversation", false)
 	}
 	return confirmedWindow, nil
+}
+
+func a11yIsAXWindowLookupFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	return ok && runtimeErr.Code == "backend_unavailable" && strings.TrimSpace(runtimeErr.Message) == "AX window lookup failed"
 }
 
 func (t *A11yTool) tryA11yConversationFallbackChain(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, selector a11yTargetSelector, holdMS int, originalErr error) (string, error, bool) {
@@ -1093,6 +1130,15 @@ func (t *A11yTool) tryA11yConversationFallbackChain(ctx context.Context, backend
 		if memory := t.a11yChatMemory(); memory != nil {
 			preferVisual = a11yLocateConversationStrategyPrefersVisual(memory.strategyFor(state.platform, state.appProfile, state.intent, string(a11yChatStageLocateConversation)))
 		}
+	}
+	if raw := strings.TrimSpace(firstCompatString(args, "locate_strategy", "locateStrategy")); raw != "" {
+		switch strings.ToLower(raw) {
+		case "visual", "visual_first", "visual-first":
+			preferVisual = true
+		}
+	}
+	if v, ok := compatBoolArg(args, "prefer_visual", "preferVisual"); ok {
+		preferVisual = v
 	}
 	if preferVisual {
 		if fastWindow, fastErr, handled := t.tryA11yConversationVisualFastPath(ctx, backend, args, windowID, selector, holdMS); handled {
@@ -2580,6 +2626,39 @@ func a11ySnapshotHasComposer(entries []a11ySnapshotEntry) bool {
 		}
 	}
 	return false
+}
+
+// a11ySnapshotLooksLikeShell returns true when the interactive snapshot contains only
+// top-level window/container nodes (common for some Electron apps when AX exposes
+// the window but not the document/content subtree).
+func a11ySnapshotLooksLikeShell(entries []a11ySnapshotEntry) bool {
+	if len(entries) == 0 {
+		return true
+	}
+	meaningful := 0
+	for _, entry := range entries {
+		role := normalizeA11yTargetRole(entry.Role)
+		label := strings.TrimSpace(entry.Label)
+		switch role {
+		case "", "standard_window", "group", "unknown":
+			continue
+		case "close_button", "full_screen_button", "minimize_button":
+			continue
+		default:
+			// Some apps expose a single "client view" wrapper with a label; treat that as still shell-like.
+			if label == "" {
+				meaningful++
+			} else if strings.Contains(strings.ToLower(label), "view") || strings.Contains(strings.ToLower(label), "contents") {
+				meaningful++
+			} else {
+				meaningful += 2
+			}
+			if meaningful >= 2 {
+				return false
+			}
+		}
+	}
+	return meaningful == 0 || meaningful == 1
 }
 
 func a11ySnapshotHasPendingConversationSearch(entries []a11ySnapshotEntry, selectorName string) bool {

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
@@ -172,6 +173,13 @@ func resolveUniqueWindowCandidate(candidates []a11yruntime.WindowInfo, windowID 
 		if resolved, ok := resolveFocusedWindowCandidate(candidates); ok {
 			return resolved, &a11yWindowMatch{ResolvedID: resolved, MatchedBy: matchedBy, Exact: exact, Unique: false, Candidates: len(candidates)}, nil
 		}
+		// macOS apps like Feishu/Lark can expose multiple CoreGraphics windows (popovers, helpers)
+		// under the same app name; pick the most likely main window by size when possible.
+		if matchedBy == "app_name" && strings.TrimSpace(windowTitle) == "" && strings.TrimSpace(windowID) == "" {
+			if resolved, ok := resolveLargestWindowCandidate(candidates); ok {
+				return resolved, &a11yWindowMatch{ResolvedID: resolved, MatchedBy: matchedBy, Exact: exact, Unique: false, Candidates: len(candidates)}, nil
+			}
+		}
 		return "", nil, a11yruntime.NewError("backend_unavailable", "target window is ambiguous", windowMatchDetails(windowID, windowTitle, appName, len(candidates)))
 	}
 }
@@ -195,6 +203,78 @@ func resolveFocusedWindowCandidate(candidates []a11yruntime.WindowInfo) (string,
 		return "", false
 	}
 	return focusedID, true
+}
+
+func resolveLargestWindowCandidate(candidates []a11yruntime.WindowInfo) (string, bool) {
+	if len(candidates) == 0 {
+		return "", false
+	}
+	// Prefer layer 0 windows when present.
+	preferred := candidates
+	layer0 := make([]a11yruntime.WindowInfo, 0, len(candidates))
+	for _, item := range candidates {
+		if item.Layer == 0 {
+			layer0 = append(layer0, item)
+		}
+	}
+	if len(layer0) > 0 {
+		preferred = layer0
+	}
+
+	bestID := ""
+	bestArea := -1.0
+	bestTitleLen := -1
+
+	for _, item := range preferred {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		w := item.Bounds.Width
+		h := item.Bounds.Height
+		area := -1.0
+		if w > 0 && h > 0 {
+			area = w * h
+		}
+		titleLen := len(strings.TrimSpace(item.Title))
+		switch {
+		case bestID == "":
+			bestID = id
+			bestArea = area
+			bestTitleLen = titleLen
+		case area > bestArea:
+			bestID = id
+			bestArea = area
+			bestTitleLen = titleLen
+		case area == bestArea:
+			if titleLen > bestTitleLen {
+				bestID = id
+				bestTitleLen = titleLen
+			} else if titleLen == bestTitleLen && id != bestID {
+				// Deterministic tie-breaker: prefer the lowest numeric window id when possible,
+				// otherwise fall back to lexicographic ordering.
+				bestInt, bestErr := strconv.Atoi(bestID)
+				candInt, candErr := strconv.Atoi(id)
+				switch {
+				case bestErr == nil && candErr == nil:
+					if candInt < bestInt {
+						bestID = id
+					}
+				case id < bestID:
+					bestID = id
+				}
+			}
+		}
+	}
+	// Only use this heuristic when we have concrete size information; using title length
+	// alone is too error-prone and can pick an arbitrary background popover.
+	if bestArea < 0 {
+		return "", false
+	}
+	if bestID == "" {
+		return "", false
+	}
+	return bestID, true
 }
 
 func hasExactWindowID(windowID string, windows []a11yruntime.WindowInfo) bool {

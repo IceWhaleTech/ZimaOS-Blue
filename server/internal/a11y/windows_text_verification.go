@@ -78,7 +78,7 @@ func windowsNormalizeTextEntryLoose(value string) string {
 }
 
 func windowsCaptureRegionPNG(ctx context.Context, bounds windowsRect) ([]byte, error) {
-	path := filepath.Join(os.TempDir(), fmt.Sprintf("zimaos-blue-a11y-region-%d.png", time.Now().UnixNano()))
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("zimaos-blue-computer-use-region-%d.png", time.Now().UnixNano()))
 	defer os.Remove(path)
 	output, err := windowsCLIFallback.captureRegion(ctx, bounds, path)
 	if err != nil {

@@ -645,7 +645,44 @@ func TestDarwinFindSnapshotWindowElement_RetriesWithRefreshedRecord(t *testing.T
 	}
 }
 
-func TestDarwinFindWindowElement_UsesFocusedWindowFallbackWhenFocusedRecordAndWindowListUnavailable(t *testing.T) {
+func TestDarwinFindSnapshotWindowElement_ActivatesAppAfterLookupFailure(t *testing.T) {
+	prevRefresh := darwinRefreshWindowRecordForSnapshot
+	prevFind := darwinFindWindowElementForSnapshot
+	prevActivate := darwinActivateAppFunc
+	activated := false
+	darwinRefreshWindowRecordForSnapshot = func(_ *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+		return current, nil
+	}
+	darwinActivateAppFunc = func(appName string) error {
+		if strings.TrimSpace(appName) != "Feishu" {
+			t.Fatalf("activate appName = %q, want Feishu", appName)
+		}
+		activated = true
+		return nil
+	}
+	darwinFindWindowElementForSnapshot = func(_ uintptr, _ darwinWindowRecord) uintptr {
+		if activated {
+			return 2
+		}
+		return 0
+	}
+	defer func() {
+		darwinRefreshWindowRecordForSnapshot = prevRefresh
+		darwinFindWindowElementForSnapshot = prevFind
+		darwinActivateAppFunc = prevActivate
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	_, window := backend.findSnapshotWindowElement(1, darwinWindowRecord{ID: "win-1", PID: 123, AppName: "Feishu", Title: "Feishu"})
+	if !activated {
+		t.Fatal("expected app activation fallback after AX window lookup failure")
+	}
+	if window != 2 {
+		t.Fatalf("window = %d, want 2 after activation retry", window)
+	}
+}
+
+func TestDarwinFindWindowElement_UsesFocusedWindowFallbackWhenWindowListUnavailable(t *testing.T) {
 	initDarwinRuntime()
 	prevCopyAttr := darwinAXUIElementCopyAttributeValue
 	prevStringCreate := darwinCFStringCreate
@@ -699,7 +736,79 @@ func TestDarwinFindWindowElement_UsesFocusedWindowFallbackWhenFocusedRecordAndWi
 		ID:      "win-1",
 		AppName: "Feishu",
 		Title:   "Feishu",
-		Focused: true,
+		Focused: false,
+	})
+	if got != 2 {
+		t.Fatalf("darwinFindWindowElement() = %d, want focused window fallback 2", got)
+	}
+}
+
+func TestDarwinFindWindowElement_UsesFocusedWindowFallbackWhenWindowListIsEmpty(t *testing.T) {
+	initDarwinRuntime()
+	prevCopyAttr := darwinAXUIElementCopyAttributeValue
+	prevStringCreate := darwinCFStringCreate
+	prevRelease := darwinCFRelease
+	prevCount := darwinCFArrayGetCount
+	prevValueAt := darwinCFArrayGetValueAtIndex
+	attrNames := map[uintptr]string{}
+	nextAttrRef := uintptr(200)
+	darwinCFStringCreate = func(_ uintptr, cstr *byte, _ uint32) uintptr {
+		if cstr == nil {
+			return 0
+		}
+		buf := make([]byte, 0, 32)
+		for ptr := uintptr(unsafe.Pointer(cstr)); ; ptr++ {
+			ch := *(*byte)(unsafe.Pointer(ptr))
+			if ch == 0 {
+				break
+			}
+			buf = append(buf, ch)
+		}
+		ref := nextAttrRef
+		nextAttrRef++
+		attrNames[ref] = string(buf)
+		return ref
+	}
+	darwinAXUIElementCopyAttributeValue = func(element uintptr, attrRef uintptr, out *uintptr) int32 {
+		switch {
+		case element == 1 && attrNames[attrRef] == "AXFocusedWindow":
+			if out != nil {
+				*out = 2
+			}
+			return darwinAXErrorSuccess
+		case element == 1 && attrNames[attrRef] == "AXWindows":
+			if out != nil {
+				*out = 3
+			}
+			return darwinAXErrorSuccess
+		default:
+			if out != nil {
+				*out = 0
+			}
+			return 1
+		}
+	}
+	darwinCFArrayGetCount = func(array uintptr) int64 {
+		if array == 3 {
+			return 0
+		}
+		return 0
+	}
+	darwinCFArrayGetValueAtIndex = func(uintptr, int64) uintptr { return 0 }
+	darwinCFRelease = func(uintptr) {}
+	defer func() {
+		darwinAXUIElementCopyAttributeValue = prevCopyAttr
+		darwinCFStringCreate = prevStringCreate
+		darwinCFRelease = prevRelease
+		darwinCFArrayGetCount = prevCount
+		darwinCFArrayGetValueAtIndex = prevValueAt
+	}()
+
+	got := darwinFindWindowElement(1, darwinWindowRecord{
+		ID:      "win-1",
+		AppName: "Feishu",
+		Title:   "Feishu",
+		Focused: false,
 	})
 	if got != 2 {
 		t.Fatalf("darwinFindWindowElement() = %d, want focused window fallback 2", got)
@@ -757,6 +866,9 @@ func TestDarwinScreenshot_RetriesWithRefreshedWindowIDAfterFailure(t *testing.T)
 	}
 	if !strings.HasSuffix(result.ImagePath, "host-window-7001.png") {
 		t.Fatalf("image_path = %q, want suffix host-window-7001.png", result.ImagePath)
+	}
+	if !strings.Contains(result.ImagePath, string(filepath.Separator)+"computer-use"+string(filepath.Separator)) {
+		t.Fatalf("image_path = %q, want computer-use media dir", result.ImagePath)
 	}
 }
 

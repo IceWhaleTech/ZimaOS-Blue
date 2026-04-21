@@ -54,6 +54,33 @@ func TestStreamController_Cancel(t *testing.T) {
 	}
 }
 
+func TestStreamController_CancelWithReasonStoresReasonUntilConsumed(t *testing.T) {
+	sc := NewStreamController()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sc.Register("session1", cancel)
+
+	if !sc.CancelWithReason("session1", "user_cancel") {
+		t.Fatal("expected CancelWithReason to return true for existing session")
+	}
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("context was not cancelled")
+	}
+
+	if got := sc.CancelReason("session1"); got != "user_cancel" {
+		t.Fatalf("CancelReason() = %q, want %q", got, "user_cancel")
+	}
+	if got := sc.ConsumeCancelReason("session1"); got != "user_cancel" {
+		t.Fatalf("ConsumeCancelReason() = %q, want %q", got, "user_cancel")
+	}
+	if got := sc.CancelReason("session1"); got != "" {
+		t.Fatalf("CancelReason() after consume = %q, want empty", got)
+	}
+}
+
 func TestStreamController_CancelAll(t *testing.T) {
 	sc := NewStreamController()
 

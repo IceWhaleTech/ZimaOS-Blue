@@ -1373,6 +1373,12 @@ func TestA11yToolExecute_MessageUsesFocusedClipboardFallbackAfterComposerConfirm
 	if backend.lastFocusedTypeValue != "hello" {
 		t.Fatalf("lastFocusedTypeValue = %q, want hello", backend.lastFocusedTypeValue)
 	}
+	if got := len(backend.keyHistory); got != 1 {
+		t.Fatalf("keyHistory len = %d, want 1 select-all before focused clipboard fallback", got)
+	}
+	if chord := strings.Join(backend.keyHistory[0], "+"); chord != "command+a" {
+		t.Fatalf("keyHistory[0] = %q, want command+a", chord)
+	}
 	for _, actType := range backend.actTypeHistory {
 		if actType == "type" {
 			t.Fatalf("actTypeHistory = %#v, want no semantic type act when focused clipboard fallback is available", backend.actTypeHistory)

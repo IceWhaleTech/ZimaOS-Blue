@@ -1,6 +1,11 @@
 package server
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+)
 
 func TestMergeStreamingToolCallArguments_PreservesRicherPayloadOverEmptyObject(t *testing.T) {
 	current := `{"path":"notes.md","content":"hello"}`
@@ -97,5 +102,21 @@ func TestNormalizeToolCallArgumentsForExecution_EmptyBecomesJSONObject(t *testin
 	got := normalizeToolCallArgumentsForExecution("")
 	if got != "{}" {
 		t.Fatalf("normalizeToolCallArgumentsForExecution() = %q, want %q", got, "{}")
+	}
+}
+
+func TestToolLoopCallSignature_ReadIncludesRangeFingerprint(t *testing.T) {
+	sig := toolLoopCallSignature(llm.ToolCall{
+		Name:      "read",
+		Arguments: `{"path":"README.md","start_line":21,"end_line":40}`,
+	})
+	if !strings.Contains(sig, "path=README.md") {
+		t.Fatalf("toolLoopCallSignature() = %q, want path fingerprint", sig)
+	}
+	if !strings.Contains(sig, "start_line=21") {
+		t.Fatalf("toolLoopCallSignature() = %q, want start_line fingerprint", sig)
+	}
+	if !strings.Contains(sig, "end_line=40") {
+		t.Fatalf("toolLoopCallSignature() = %q, want end_line fingerprint", sig)
 	}
 }

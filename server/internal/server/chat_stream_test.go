@@ -6620,7 +6620,7 @@ func TestStreamMessage_RecoversRequestToolEnvelopeComputerUseIntoRealToolExecuti
 	}
 
 	registry := llm.NewProviderRegistry()
-	pseudoContent := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"后端之家\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
+	pseudoContent := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"test_group\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
 	scripted := &scriptedChatProvider{
 		name: "scripted-stream-computer-use-request-envelope",
 		responses: []llm.ChatResponse{
@@ -6637,7 +6637,7 @@ func TestStreamMessage_RecoversRequestToolEnvelopeComputerUseIntoRealToolExecuti
 				Model: "gpt-5.3-codex-spark",
 				Message: llm.Message{
 					Role:    llm.RoleAssistant,
-					Content: "已经在飞书会话【后端之家】里发出问候。",
+					Content: "已经在飞书会话【test_group】里发出问候。",
 				},
 			},
 		},
@@ -6652,7 +6652,7 @@ func TestStreamMessage_RecoversRequestToolEnvelopeComputerUseIntoRealToolExecuti
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-stream-computer-use-request-envelope","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我在飞书桌面应用上和【test_group】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-stream-computer-use-request-envelope","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -6668,7 +6668,7 @@ func TestStreamMessage_RecoversRequestToolEnvelopeComputerUseIntoRealToolExecuti
 	if strings.Contains(body, "request tool=computer_use") {
 		t.Fatalf("expected request tool pseudo-call leakage to be suppressed from stream body, got=%s", body)
 	}
-	if !strings.Contains(body, "已经在飞书会话【后端之家】里发出问候。") {
+	if !strings.Contains(body, "已经在飞书会话【test_group】里发出问候。") {
 		t.Fatalf("expected final content in stream body, got=%s", body)
 	}
 	if !strings.Contains(body, `"done":true`) {
@@ -6685,8 +6685,8 @@ func TestStreamMessage_RecoversRequestToolEnvelopeComputerUseIntoRealToolExecuti
 	if got := anyToStringForLLM(calls[0]["action"]); got != "message" {
 		t.Fatalf("computer_use action = %q, want message", got)
 	}
-	if got := anyToStringForLLM(calls[0]["conversation"]); got != "后端之家" {
-		t.Fatalf("computer_use conversation = %q, want 后端之家", got)
+	if got := anyToStringForLLM(calls[0]["conversation"]); got != "test_group" {
+		t.Fatalf("computer_use conversation = %q, want test_group", got)
 	}
 
 	secondReq, ok := scripted.RequestAt(1)

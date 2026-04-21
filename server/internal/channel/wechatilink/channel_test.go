@@ -2,11 +2,13 @@ package wechatilink
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -33,6 +35,26 @@ func newTCP4Server(tb testing.TB, handler http.Handler) *httptest.Server {
 	srv.Listener = ln
 	srv.Start()
 	return srv
+}
+
+func decodeILinkUINHeader(tb testing.TB, raw string) uint32 {
+	tb.Helper()
+
+	if strings.TrimSpace(raw) == "" {
+		tb.Fatal("expected X-WECHAT-UIN header to be set")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		tb.Fatalf("decode X-WECHAT-UIN base64: %v", err)
+	}
+
+	value, err := strconv.ParseUint(string(decoded), 10, 32)
+	if err != nil {
+		tb.Fatalf("parse decoded X-WECHAT-UIN as uint32: %v (decoded=%q)", err, string(decoded))
+	}
+
+	return uint32(value)
 }
 
 func TestChannel_NameAndType(t *testing.T) {
@@ -217,6 +239,48 @@ func TestChannel_Send_UsesChatIDByDefaultEvenWhenConfiguredUserIDPresent(t *test
 	}
 }
 
+func TestChannel_Send_UsesFreshDecimalStringUINHeaderPerRequest(t *testing.T) {
+	headers := make([]string, 0, 2)
+
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/sendmessage" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		headers = append(headers, r.Header.Get("X-WECHAT-UIN"))
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret": 0,
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+
+	for i := 0; i < 2; i++ {
+		if err := ch.Send(context.Background(), channel.OutgoingMessage{
+			ChatID:  "wxid-user",
+			Content: "hello from Blue",
+		}); err != nil {
+			t.Fatalf("Send error on call %d = %v", i+1, err)
+		}
+	}
+
+	if len(headers) != 2 {
+		t.Fatalf("expected 2 X-WECHAT-UIN headers, got %d", len(headers))
+	}
+
+	first := decodeILinkUINHeader(t, headers[0])
+	second := decodeILinkUINHeader(t, headers[1])
+	if headers[0] == headers[1] {
+		t.Fatalf("expected fresh X-WECHAT-UIN per request, got same header %q (%d, %d)", headers[0], first, second)
+	}
+}
+
 func TestChannel_Send_AllowsExplicitTargetUserIDOverride(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/ilink/bot/sendmessage" {
@@ -273,6 +337,309 @@ func TestChannel_Send_AllowsExplicitTargetUserIDOverride(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Send error = %v", err)
+	}
+}
+
+func TestChannel_Send_RetriesTransientTransportErrorWithSameClientID(t *testing.T) {
+	var attempts atomic.Int32
+	clientIDs := make([]string, 0, 2)
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: "https://ilinkai.weixin.qq.com",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+	ch.httpClient = &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/ilink/bot/sendmessage" {
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+
+			var body struct {
+				Msg struct {
+					ClientID string `json:"client_id"`
+				} `json:"msg"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			clientIDs = append(clientIDs, body.Msg.ClientID)
+
+			if attempts.Add(1) == 1 {
+				return nil, io.EOF
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"ret":0}`)),
+			}, nil
+		}),
+	}
+
+	if err := ch.Send(context.Background(), channel.OutgoingMessage{
+		ChatID:  "wxid-user",
+		Content: "hello from Blue",
+	}); err != nil {
+		t.Fatalf("Send error = %v", err)
+	}
+
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+	if len(clientIDs) != 2 {
+		t.Fatalf("expected 2 client_id observations, got %d", len(clientIDs))
+	}
+	if clientIDs[0] == "" || clientIDs[1] == "" {
+		t.Fatalf("expected non-empty client_id values, got %#v", clientIDs)
+	}
+	if clientIDs[0] != clientIDs[1] {
+		t.Fatalf("expected retry to reuse client_id, got %q then %q", clientIDs[0], clientIDs[1])
+	}
+}
+
+func TestChannel_Send_RetriesTransientHTTPStatusWithSameClientID(t *testing.T) {
+	var attempts atomic.Int32
+	clientIDs := make([]string, 0, 2)
+
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/sendmessage" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var body struct {
+			Msg struct {
+				ClientID string `json:"client_id"`
+			} `json:"msg"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		clientIDs = append(clientIDs, body.Msg.ClientID)
+
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`temporary outage`))
+			return
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret": 0,
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+
+	if err := ch.Send(context.Background(), channel.OutgoingMessage{
+		ChatID:  "wxid-user",
+		Content: "hello from Blue",
+	}); err != nil {
+		t.Fatalf("Send error = %v", err)
+	}
+
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+	if len(clientIDs) != 2 {
+		t.Fatalf("expected 2 client_id observations, got %d", len(clientIDs))
+	}
+	if clientIDs[0] == "" || clientIDs[1] == "" {
+		t.Fatalf("expected non-empty client_id values, got %#v", clientIDs)
+	}
+	if clientIDs[0] != clientIDs[1] {
+		t.Fatalf("expected retry to reuse client_id, got %q then %q", clientIDs[0], clientIDs[1])
+	}
+}
+
+func TestChannel_Send_DoesNotRetryNonTransientILinkError(t *testing.T) {
+	var attempts atomic.Int32
+
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/sendmessage" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		attempts.Add(1)
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret":    1,
+			"errmsg": "business failure",
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+
+	err := ch.Send(context.Background(), channel.OutgoingMessage{
+		ChatID:  "wxid-user",
+		Content: "hello from Blue",
+	})
+	if err == nil {
+		t.Fatal("expected Send to fail")
+	}
+	if !strings.Contains(err.Error(), "business failure") {
+		t.Fatalf("expected business failure error, got %v", err)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
+	}
+}
+
+func TestChannel_HandleILinkIncomingMessages_DeduplicatesSameMessageID(t *testing.T) {
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: "https://ilink.example.com",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+	ch.ctx = context.Background()
+
+	incoming := iLinkMessage{
+		MessageID:    101,
+		FromUserID:   "wxid-user",
+		ToUserID:     "wxid-bot",
+		CreateTimeMS: 1710000000123,
+		MessageType:  iLinkMessageTypeUser,
+		MessageState: 0,
+		ItemList: []iLinkMessageItem{
+			{
+				Type:     iLinkItemTypeText,
+				TextItem: &iLinkTextItem{Text: "hello"},
+			},
+		},
+	}
+
+	ch.handleILinkIncomingMessages([]iLinkMessage{incoming})
+	ch.handleILinkIncomingMessages([]iLinkMessage{incoming})
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.ID != "101" {
+			t.Fatalf("ID = %q, want %q", msg.ID, "101")
+		}
+	default:
+		t.Fatal("expected first inbound iLink message")
+	}
+
+	select {
+	case msg := <-ch.Messages():
+		t.Fatalf("unexpected duplicate inbound message: %#v", msg)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if got := ch.Info().MessagesReceived; got != 1 {
+		t.Fatalf("MessagesReceived = %d, want 1", got)
+	}
+}
+
+func TestChannel_HandleILinkIncomingMessages_AllowsDistinctMessageIDs(t *testing.T) {
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: "https://ilink.example.com",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+	ch.ctx = context.Background()
+
+	first := iLinkMessage{
+		MessageID:    101,
+		FromUserID:   "wxid-user",
+		ToUserID:     "wxid-bot",
+		CreateTimeMS: 1710000000123,
+		MessageType:  iLinkMessageTypeUser,
+		MessageState: 0,
+		ItemList: []iLinkMessageItem{
+			{
+				Type:     iLinkItemTypeText,
+				TextItem: &iLinkTextItem{Text: "hello"},
+			},
+		},
+	}
+	second := first
+	second.MessageID = 102
+
+	ch.handleILinkIncomingMessages([]iLinkMessage{first, second})
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.ID != "101" {
+			t.Fatalf("first ID = %q, want %q", msg.ID, "101")
+		}
+	default:
+		t.Fatal("expected first inbound iLink message")
+	}
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.ID != "102" {
+			t.Fatalf("second ID = %q, want %q", msg.ID, "102")
+		}
+	default:
+		t.Fatal("expected second inbound iLink message")
+	}
+
+	if got := ch.Info().MessagesReceived; got != 2 {
+		t.Fatalf("MessagesReceived = %d, want 2", got)
+	}
+}
+
+func TestChannel_HandleILinkIncomingMessages_AllowsDistinctZeroIDMessages(t *testing.T) {
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: "https://ilink.example.com",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+	ch.ctx = context.Background()
+
+	first := iLinkMessage{
+		FromUserID:   "wxid-user",
+		ToUserID:     "wxid-bot",
+		CreateTimeMS: 1710000000123,
+		MessageType:  iLinkMessageTypeUser,
+		MessageState: 0,
+		ItemList: []iLinkMessageItem{
+			{
+				Type:     iLinkItemTypeText,
+				TextItem: &iLinkTextItem{Text: "hello"},
+			},
+		},
+	}
+	second := first
+	second.ItemList = []iLinkMessageItem{
+		{
+			Type:     iLinkItemTypeText,
+			TextItem: &iLinkTextItem{Text: "world"},
+		},
+	}
+
+	ch.handleILinkIncomingMessages([]iLinkMessage{first, second})
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.Content != "hello" {
+			t.Fatalf("first Content = %q, want %q", msg.Content, "hello")
+		}
+	default:
+		t.Fatal("expected first zero-id inbound iLink message")
+	}
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.Content != "world" {
+			t.Fatalf("second Content = %q, want %q", msg.Content, "world")
+		}
+	default:
+		t.Fatal("expected second zero-id inbound iLink message")
+	}
+
+	if got := ch.Info().MessagesReceived; got != 2 {
+		t.Fatalf("MessagesReceived = %d, want 2", got)
 	}
 }
 
@@ -561,6 +928,111 @@ func TestChannel_Start_ContinuesWhenStartupProbeReturnsEOF(t *testing.T) {
 	}
 }
 
+func TestChannel_ilinkGetUpdates_RetriesTransientTransportError(t *testing.T) {
+	var attempts atomic.Int32
+	cursors := make([]string, 0, 2)
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: "https://ilinkai.weixin.qq.com",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+	ch.httpClient = &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/ilink/bot/getupdates" {
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+
+			var body struct {
+				GetUpdatesBuf string `json:"get_updates_buf"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			cursors = append(cursors, body.GetUpdatesBuf)
+
+			if attempts.Add(1) == 1 {
+				return nil, io.EOF
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					`{"ret":0,"msgs":[],"get_updates_buf":"cursor-2","longpolling_timeout_ms":1}`,
+				)),
+			}, nil
+		}),
+	}
+
+	resp, err := ch.ilinkGetUpdates(context.Background(), "cursor-1")
+	if err != nil {
+		t.Fatalf("ilinkGetUpdates error = %v", err)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+	if len(cursors) != 2 || cursors[0] != "cursor-1" || cursors[1] != "cursor-1" {
+		t.Fatalf("expected retry to reuse cursor-1, got %#v", cursors)
+	}
+	if resp.GetUpdatesBuf != "cursor-2" {
+		t.Fatalf("get_updates_buf = %q, want %q", resp.GetUpdatesBuf, "cursor-2")
+	}
+}
+
+func TestChannel_ilinkGetUpdates_RetriesTransientHTTPStatus(t *testing.T) {
+	var attempts atomic.Int32
+	cursors := make([]string, 0, 2)
+
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/getupdates" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var body struct {
+			GetUpdatesBuf string `json:"get_updates_buf"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		cursors = append(cursors, body.GetUpdatesBuf)
+
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`temporary outage`))
+			return
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret":                    0,
+			"msgs":                   []any{},
+			"get_updates_buf":        "cursor-2",
+			"longpolling_timeout_ms": 1,
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+
+	resp, err := ch.ilinkGetUpdates(context.Background(), "cursor-1")
+	if err != nil {
+		t.Fatalf("ilinkGetUpdates error = %v", err)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+	if len(cursors) != 2 || cursors[0] != "cursor-1" || cursors[1] != "cursor-1" {
+		t.Fatalf("expected retry to reuse cursor-1, got %#v", cursors)
+	}
+	if resp.GetUpdatesBuf != "cursor-2" {
+		t.Fatalf("get_updates_buf = %q, want %q", resp.GetUpdatesBuf, "cursor-2")
+	}
+}
+
 func TestChannel_Start_DoesNotDuplicateBotSubpath(t *testing.T) {
 	var calls atomic.Int32
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -596,5 +1068,27 @@ func TestChannel_Start_DoesNotDuplicateBotSubpath(t *testing.T) {
 
 	if calls.Load() == 0 {
 		t.Fatal("expected getupdates probe call")
+	}
+}
+
+func TestILinkPollErrorBackoffDelay_CapsAndGrows(t *testing.T) {
+	tests := []struct {
+		attempt int
+		want    time.Duration
+	}{
+		{attempt: 0, want: 250 * time.Millisecond},
+		{attempt: 1, want: 250 * time.Millisecond},
+		{attempt: 2, want: 500 * time.Millisecond},
+		{attempt: 3, want: 1 * time.Second},
+		{attempt: 4, want: 2 * time.Second},
+		{attempt: 5, want: 4 * time.Second},
+		{attempt: 6, want: 5 * time.Second},
+		{attempt: 9, want: 5 * time.Second},
+	}
+
+	for _, tt := range tests {
+		if got := iLinkPollErrorBackoffDelay(tt.attempt); got != tt.want {
+			t.Fatalf("iLinkPollErrorBackoffDelay(%d) = %v, want %v", tt.attempt, got, tt.want)
+		}
 	}
 }

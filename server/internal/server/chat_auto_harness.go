@@ -15,6 +15,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 const autoHarnessRecentMessageLimit = 64
@@ -207,6 +208,26 @@ func (h *AutoHarnessTurnHook) buildGroupSpec(ctx context.Context, turn TurnConte
 		return nil, nil, nil
 	}
 
+	toolSurfaceSnapshot := turn.ToolSurfaceSnapshot
+	if toolSurfaceSnapshot == nil && h.handler != nil {
+		webSearchEnabled := state.WebSearchEnabled
+		deepResearchEnabled := state.DeepResearchEnabled
+		selection := h.handler.previewChatToolSurfacesForRequest(
+			ctx,
+			goal,
+			tools.ToolPolicyRequest{
+				Model:               strings.TrimSpace(firstNonEmpty(assistantMsg.Model, turn.Model)),
+				SessionID:           strings.TrimSpace(autoTurn.Conversation.ID),
+				RouteKind:           tools.ToolRouteKindChat,
+				DeepResearchEnabled: &deepResearchEnabled,
+			},
+			&webSearchEnabled,
+			&deepResearchEnabled,
+		)
+		snapshot := buildChatToolSurfaceLogSnapshot(selection)
+		toolSurfaceSnapshot = &snapshot
+	}
+
 	preset := autoHarnessPresetConfig(state.DeepResearchEnabled || autoHarnessUsesResearchTools(autoTurn.ToolNames))
 	conversationTitle := autoHarnessConversationTitle(autoTurn.Conversation)
 	datasetName := fmt.Sprintf("%s %s Auto Harness", conversationTitle, preset.Label)
@@ -233,6 +254,9 @@ func (h *AutoHarnessTurnHook) buildGroupSpec(ctx context.Context, turn TurnConte
 	contextPackSnapshot := autoHarnessContextPackSnapshot(turn.ContextPackSelection)
 	if len(contextPackSnapshot) > 0 {
 		itemMetadata["contextpack_snapshot"] = autoHarnessCloneMap(contextPackSnapshot)
+	}
+	if toolSurfaceSnapshot := autoHarnessToolSurfaceSnapshot(toolSurfaceSnapshot); len(toolSurfaceSnapshot) > 0 {
+		itemMetadata["tool_surface_snapshot"] = autoHarnessCloneMap(toolSurfaceSnapshot)
 	}
 
 	contractMeta, successCriteria := autoHarnessContractMetadata(goal, autoTurn.ToolNames)
@@ -275,6 +299,9 @@ func (h *AutoHarnessTurnHook) buildGroupSpec(ctx context.Context, turn TurnConte
 	}
 	if len(contextPackSnapshot) > 0 {
 		groupMetadata["contextpack_snapshot"] = autoHarnessCloneMap(contextPackSnapshot)
+	}
+	if toolSurfaceSnapshot := autoHarnessToolSurfaceSnapshot(toolSurfaceSnapshot); len(toolSurfaceSnapshot) > 0 {
+		groupMetadata["tool_surface_snapshot"] = autoHarnessCloneMap(toolSurfaceSnapshot)
 	}
 
 	spec := &AutoHarnessQuickEvalSpec{
@@ -407,6 +434,29 @@ func autoHarnessContextPackSnapshot(selection *contextpack.SelectionSet) map[str
 		snapshot["selection_digest"] = digest
 	}
 	return snapshot
+}
+
+func autoHarnessToolSurfaceSnapshot(snapshot *chatToolSurfaceLogSnapshot) map[string]interface{} {
+	if snapshot == nil {
+		return nil
+	}
+	out := map[string]interface{}{
+		"native_mode":               strings.TrimSpace(snapshot.NativeMode),
+		"surface_mode":              strings.TrimSpace(snapshot.SurfaceMode),
+		"canonical_target":          strings.TrimSpace(snapshot.CanonicalTarget),
+		"selected_skill":            strings.TrimSpace(snapshot.SelectedSkill),
+		"decision_reason":           strings.TrimSpace(snapshot.DecisionReason),
+		"activation_requested":      snapshot.ActivationRequested,
+		"activation_applied":        snapshot.ActivationApplied,
+		"activation_failure_reason": strings.TrimSpace(snapshot.ActivationFailureReason),
+		"recovery_path":             strings.TrimSpace(snapshot.RecoveryPath),
+		"abort_reason":              strings.TrimSpace(snapshot.AbortReason),
+		"sticky_surface_source":     strings.TrimSpace(snapshot.StickySurfaceSource),
+		"need_clarify":              snapshot.NeedClarify,
+		"routed":                    snapshot.Routed,
+		"selected":                  snapshot.Selected,
+	}
+	return out
 }
 
 func autoHarnessCloneMap(in map[string]interface{}) map[string]interface{} {
