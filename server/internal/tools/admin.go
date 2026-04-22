@@ -23,6 +23,42 @@ type MgmtTool struct {
 	upgrade   AdminUpgradeService
 }
 
+var adminActionEnum = []string{
+	"providers.list",
+	"providers.add",
+	"providers.add_key",
+	"providers.remove",
+	"providers.enable",
+	"providers.disable",
+	"providers.models",
+	"settings.get",
+	"settings.set",
+	"channels.list",
+	"channels.status",
+	"skills.list",
+	"skills.enable",
+	"skills.disable",
+	"tools.list",
+	"tools.enable",
+	"tools.disable",
+	"system.health",
+	"system.info",
+	"system.version",
+	"proxy.stats",
+	"proxy.cache_stats",
+	"users.list",
+	"users.lock",
+	"users.unlock",
+	"apikeys.list",
+	"apikeys.create",
+	"apikeys.revoke",
+	"upgrade.status",
+	"upgrade.check",
+	"upgrade.download",
+	"upgrade.apply",
+	"upgrade.progress",
+}
+
 // NewMgmtTool creates a new management tool. Services are injected later via Set* methods.
 func NewMgmtTool() *MgmtTool {
 	return &MgmtTool{}
@@ -52,6 +88,7 @@ func (t *MgmtTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
+					"enum":        adminActionEnum,
 					"description": "Operation to perform (dot notation, e.g. providers.list, settings.set)",
 				},
 				"id": map[string]interface{}{
@@ -94,7 +131,7 @@ func (t *MgmtTool) Definition() ToolDefinition {
 
 // Execute dispatches to the appropriate handler based on the action parameter.
 func (t *MgmtTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	action := adminStringArg(args, "action", "op", "operation", "command")
+	action := normalizeAdminAction(adminStringArg(args, "action", "op", "operation", "command"))
 	if action == "" {
 		return errJSON("action is required"), nil
 	}
@@ -576,6 +613,17 @@ func (t *MgmtTool) handleAPIKeys(ctx context.Context, op string, args map[string
 
 func adminStringArg(args map[string]interface{}, keys ...string) string {
 	return strings.TrimSpace(firstCompatString(args, keys...))
+}
+
+func normalizeAdminAction(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if canonical, ok := resolveFuzzySchemaEnumValue(raw, adminActionEnum); ok {
+		return canonical
+	}
+	return strings.ToLower(raw)
 }
 
 // --- Helpers ---

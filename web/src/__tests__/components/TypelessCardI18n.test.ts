@@ -351,6 +351,366 @@ describe('Typeless card i18n', () => {
     expect(wrapper.text()).not.toContain('darwin')
   })
 
+  it('localizes host snapshot readiness and recovered browser-tab focus labels at render time', () => {
+    const plugins = [
+      createI18n({
+        legacy: false,
+        locale: 'zh-CN',
+        fallbackLocale: 'en-US',
+        messages: {
+          'en-US': mergeRuntimeHarnessLocale('en-US', {
+            common: {
+              yes: 'Yes',
+              no: 'No',
+            },
+            resultCard: {
+              labels: {},
+              messages: {},
+            },
+          }),
+          'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+            common: {
+              yes: '是',
+              no: '否',
+            },
+            resultCard: {
+              labels: {},
+              messages: {},
+            },
+          }),
+        },
+      }),
+    ]
+
+    const snapshotWrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Host computer-use snapshot ready',
+          details: [
+            { label: 'recovered_target_id', value: 'node-12' },
+            { label: 'surface', value: 'main' },
+            { label: 'automation', value: 'enabled' },
+            { label: 'browser', value: 'chrome' },
+            { label: 'ref_map', value: '{"tab":"active"}' },
+            { label: 'windows', value: '2' },
+            { label: 'tree_fetch_ms', value: '18' },
+          ],
+        },
+      },
+      global: {
+        plugins,
+      },
+    })
+
+    expect(snapshotWrapper.text()).toContain('主机电脑使用快照已就绪')
+    expect(snapshotWrapper.text()).toContain('已恢复的目标 ID')
+    expect(snapshotWrapper.text()).toContain('界面')
+    expect(snapshotWrapper.text()).toContain('自动化')
+    expect(snapshotWrapper.text()).toContain('浏览器')
+    expect(snapshotWrapper.text()).toContain('引用映射')
+    expect(snapshotWrapper.text()).toContain('窗口')
+    expect(snapshotWrapper.text()).toContain('树获取耗时 (ms)')
+
+    expect(snapshotWrapper.text()).not.toContain('Host computer-use snapshot ready')
+    expect(snapshotWrapper.text()).not.toContain('recovered_target_id')
+    expect(snapshotWrapper.text()).not.toContain('tree_fetch_ms')
+
+    const focusRecoveryWrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Browser tab focus recovered using active tab',
+          details: [{ label: 'browser', value: 'chrome' }],
+        },
+      },
+      global: {
+        plugins,
+      },
+    })
+
+    expect(focusRecoveryWrapper.text()).toContain('已使用活动标签页恢复浏览器标签页焦点')
+    expect(focusRecoveryWrapper.text()).not.toContain(
+      'Browser tab focus recovered using active tab'
+    )
+  })
+
+  it('localizes browser bridge, focus, and browser-surface values at render time', () => {
+    const plugins = [
+      createI18n({
+        legacy: false,
+        locale: 'zh-CN',
+        fallbackLocale: 'en-US',
+        messages: {
+          'en-US': mergeRuntimeHarnessLocale('en-US', {
+            common: {
+              yes: 'Yes',
+              no: 'No',
+            },
+            resultCard: {
+              labels: {},
+              messages: {},
+              values: {},
+            },
+          }),
+          'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+            common: {
+              yes: '是',
+              no: '否',
+            },
+            resultCard: {
+              labels: {},
+              messages: {},
+              values: {},
+            },
+          }),
+        },
+      }),
+    ]
+
+    const bridgeWrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Browser computer-use bridge ready',
+          details: [
+            { label: 'surface', value: 'browser' },
+            { label: 'host_os', value: 'browser' },
+            { label: 'execution_mode', value: 'automation' },
+          ],
+        },
+      },
+      global: {
+        plugins,
+      },
+    })
+
+    expect(bridgeWrapper.text()).toContain('浏览器电脑控制桥接已就绪')
+    expect(bridgeWrapper.text()).toContain('界面')
+    expect(bridgeWrapper.text()).toContain('浏览器')
+    expect(bridgeWrapper.text()).toContain('主机系统')
+    expect(bridgeWrapper.text()).toContain('执行模式')
+    expect(bridgeWrapper.text()).toContain('自动化')
+    expect(bridgeWrapper.text()).not.toContain('Browser computer-use bridge ready')
+
+    const focusWrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Browser tab focused',
+          details: [{ label: 'window_id', value: 'tab-3' }],
+        },
+      },
+      global: {
+        plugins,
+      },
+    })
+
+    expect(focusWrapper.text()).toContain('浏览器标签页已聚焦')
+    expect(focusWrapper.text()).not.toContain('Browser tab focused')
+  })
+
+  it('localizes remaining host/browser action status messages at render time', () => {
+    const plugins = [
+      createI18n({
+        legacy: false,
+        locale: 'zh-CN',
+        fallbackLocale: 'en-US',
+        messages: {
+          'en-US': mergeRuntimeHarnessLocale('en-US', {
+            common: {
+              yes: 'Yes',
+              no: 'No',
+            },
+            resultCard: {
+              labels: {},
+              messages: {},
+            },
+          }),
+          'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+            common: {
+              yes: '是',
+              no: '否',
+            },
+            resultCard: {
+              labels: {},
+              messages: {},
+            },
+          }),
+        },
+      }),
+    ]
+
+    const messages = [
+      ['Browser keys sent', '浏览器按键已发送'],
+      ['Host accessibility snapshot ready', '主机无障碍快照已就绪'],
+      ['Application activated', '应用已激活'],
+      ['Scroll completed', '滚动已完成'],
+      ['Pointer moved', '指针已移动'],
+    ] as const
+
+    for (const [message, localized] of messages) {
+      const wrapper = mount(CardResult, {
+        props: {
+          card: {
+            type: 'result',
+            title: 'computer_use',
+            status: 'success',
+            message,
+            details: [],
+          },
+        },
+        global: {
+          plugins,
+        },
+      })
+
+      expect(wrapper.text()).toContain(localized)
+      expect(wrapper.text()).not.toContain(message)
+    }
+  })
+
+  it('localizes advanced input and verification method values at render time', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Host action completed',
+          details: [
+            { label: 'input_method', value: 'set_value' },
+            { label: 'verification_method', value: 'ax_value' },
+            { label: 'input_method', value: 'semantic_action' },
+            { label: 'verification_method', value: 'semantic_action' },
+            { label: 'verification_method', value: 'point_click' },
+            { label: 'verification_method', value: 'ax_action' },
+          ],
+        },
+      },
+      global: {
+        plugins: [
+          createI18n({
+            legacy: false,
+            locale: 'zh-CN',
+            fallbackLocale: 'en-US',
+            messages: {
+              'en-US': mergeRuntimeHarnessLocale('en-US', {
+                common: {
+                  yes: 'Yes',
+                  no: 'No',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                  values: {},
+                },
+              }),
+              'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+                common: {
+                  yes: '是',
+                  no: '否',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                  values: {},
+                },
+              }),
+            },
+          }),
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('设置值')
+    expect(wrapper.text()).toContain('AX 值')
+    expect(wrapper.text()).toContain('语义操作')
+    expect(wrapper.text()).toContain('点按点击')
+    expect(wrapper.text()).toContain('AX 操作')
+
+    expect(wrapper.text()).not.toContain('set_value')
+    expect(wrapper.text()).not.toContain('ax_value')
+    expect(wrapper.text()).not.toContain('semantic_action')
+    expect(wrapper.text()).not.toContain('point_click')
+    expect(wrapper.text()).not.toContain('ax_action')
+  })
+
+  it('localizes intent values and windows host OS at render time', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Host action completed',
+          details: [
+            { label: 'host_os', value: 'windows' },
+            { label: 'intent', value: 'message' },
+            { label: 'intent', value: 'select' },
+            { label: 'intent', value: 'toggle' },
+            { label: 'intent', value: 'type' },
+          ],
+        },
+      },
+      global: {
+        plugins: [
+          createI18n({
+            legacy: false,
+            locale: 'zh-CN',
+            fallbackLocale: 'en-US',
+            messages: {
+              'en-US': mergeRuntimeHarnessLocale('en-US', {
+                common: {
+                  yes: 'Yes',
+                  no: 'No',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                  values: {},
+                },
+              }),
+              'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+                common: {
+                  yes: '是',
+                  no: '否',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                  values: {},
+                },
+              }),
+            },
+          }),
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('主机系统')
+    expect(wrapper.text()).toContain('Windows')
+    expect(wrapper.text()).toContain('意图')
+    expect(wrapper.text()).toContain('消息')
+    expect(wrapper.text()).toContain('选择')
+    expect(wrapper.text()).toContain('切换')
+    expect(wrapper.text()).toContain('输入')
+
+    expect(wrapper.text()).not.toContain('windows')
+    expect(wrapper.text()).not.toContain('message')
+    expect(wrapper.text()).not.toContain('select')
+    expect(wrapper.text()).not.toContain('toggle')
+    expect(wrapper.text()).not.toContain('type')
+  })
+
   it('localizes thinking accordion header', () => {
     const wrapper = mount(CardAccordion, {
       props: {

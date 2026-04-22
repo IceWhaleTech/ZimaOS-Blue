@@ -210,6 +210,50 @@ func TestMgmtTool_InvalidActionFormat(t *testing.T) {
 	}
 }
 
+func TestMgmtTool_FuzzyActionFormat_ListProvidersPhrase(t *testing.T) {
+	tool := newTestMgmtTool()
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "list providers"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := parseResult(t, result)
+	arr, ok := m["_array"].([]interface{})
+	if !ok {
+		t.Fatal("expected array result for fuzzy providers.list")
+	}
+	if len(arr) != 2 {
+		t.Errorf("expected 2 providers, got %d", len(arr))
+	}
+}
+
+func TestMgmtTool_FuzzyActionFormat_SystemHealthPhrase(t *testing.T) {
+	tool := newTestMgmtTool()
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "system health"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := parseResult(t, result)
+	if m["version"] != "0.10.39" {
+		t.Fatalf("version = %v, want 0.10.39", m["version"])
+	}
+}
+
+func TestMgmtTool_FuzzyActionFormat_APIKeysPhrase(t *testing.T) {
+	tool := newTestMgmtTool()
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "list api keys"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := parseResult(t, result)
+	arr, ok := m["_array"].([]interface{})
+	if !ok {
+		t.Fatal("expected array result for fuzzy apikeys.list")
+	}
+	if len(arr) != 1 {
+		t.Errorf("expected 1 api key, got %d", len(arr))
+	}
+}
+
 func TestMgmtTool_ProvidersListAction(t *testing.T) {
 	tool := newTestMgmtTool()
 	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "providers.list"})

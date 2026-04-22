@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	voiceWakeOnce sync.Once
+	voiceWakeOnce            sync.Once
+	voiceWakeReleasePipeline = releasePipeline
 
 	selAlloc                      objc.SEL
 	selInit                       objc.SEL
@@ -170,6 +171,35 @@ func newRuntime() runtimeController {
 	return &darwinRuntime{}
 }
 
+func withVoiceWakeStartPipelineCleanup(run func(result *startPipelineResult) error) (startPipelineResult, error) {
+	var result startPipelineResult
+	if run == nil {
+		return result, nil
+	}
+	success := false
+	defer func() {
+		if !success {
+			voiceWakeReleasePipeline(result)
+		}
+	}()
+	if err := run(&result); err != nil {
+		return startPipelineResult{}, err
+	}
+	success = true
+	return result, nil
+}
+
+func setVoiceWakeReleasePipelineForTest(fn func(startPipelineResult)) func() {
+	prev := voiceWakeReleasePipeline
+	if fn == nil {
+		fn = func(startPipelineResult) {}
+	}
+	voiceWakeReleasePipeline = fn
+	return func() {
+		voiceWakeReleasePipeline = prev
+	}
+}
+
 func (r *darwinRuntime) Running() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -218,126 +248,99 @@ func (r *darwinRuntime) startPipelineLocked() error {
 	generation := r.generation
 	resultCh := make(chan startPipelineResult, 1)
 	speech.SubmitToMainThread(func() {
-		initVoiceWakeSelectors()
-		recognizerClass := objc.ID(objc.GetClass("SFSpeechRecognizer"))
-		if recognizerClass == 0 {
-			resultCh <- startPipelineResult{err: ErrRecognizerUnavailable}
-			return
-		}
-		if err := speech.CheckSpeechRecognitionAccess(); err != nil {
-			resultCh <- startPipelineResult{err: fmt.Errorf("%w: %v", ErrSpeechUnauthorized, err)}
-			return
-		}
-		if err := speech.CheckMicrophoneAccess(); err != nil {
-			resultCh <- startPipelineResult{err: fmt.Errorf("%w: %v", ErrMicrophoneUnavailable, err)}
-			return
-		}
-		if status := objc.Send[int](recognizerClass, selAuthorizationStatus); status != 3 {
-			resultCh <- startPipelineResult{err: ErrSpeechUnauthorized}
-			return
-		}
-
-		var recognizer objc.ID
-		var nsLocale objc.ID
-		if locale := strings.TrimSpace(cfg.Locale); locale != "" {
-			nsLocaleClass := objc.ID(objc.GetClass("NSLocale"))
-			nsLocale = nsLocaleClass.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
-			recognizer = recognizerClass.Send(selAlloc).Send(selInitWithLocale, nsLocale)
-		} else {
-			recognizer = recognizerClass.Send(selAlloc).Send(selInit)
-		}
-		if nsLocale != 0 {
-			releaseObject(nsLocale)
-		}
-		if recognizer == 0 {
-			resultCh <- startPipelineResult{err: ErrRecognizerUnavailable}
-			return
-		}
-		if !objc.Send[bool](recognizer, selIsAvailable) {
-			resultCh <- startPipelineResult{err: ErrRecognizerUnavailable}
-			return
-		}
-
-		requestClass := objc.ID(objc.GetClass("SFSpeechAudioBufferRecognitionRequest"))
-		request := requestClass.Send(selAlloc).Send(selInit)
-		if request == 0 {
-			resultCh <- startPipelineResult{err: fmt.Errorf("failed to create voice wake recognition request")}
-			return
-		}
-		request.Send(selSetShouldReportPartial, true)
-
-		engineClass := objc.ID(objc.GetClass("AVAudioEngine"))
-		engine := engineClass.Send(selAlloc).Send(selInit)
-		if engine == 0 {
-			resultCh <- startPipelineResult{err: ErrMicrophoneUnavailable}
-			return
-		}
-		inputNode := engine.Send(selInputNode)
-		if inputNode == 0 {
-			resultCh <- startPipelineResult{err: ErrMicrophoneUnavailable}
-			return
-		}
-		format := inputNode.Send(selOutputFormatForBus, uintptr(0))
-		if format == 0 {
-			resultCh <- startPipelineResult{err: ErrMicrophoneUnavailable}
-			return
-		}
-		inputNode.Send(selRemoveTapOnBus, uintptr(0))
-
-		tapBlock := objc.NewBlock(func(_ objc.Block, buffer objc.ID, _ objc.ID) {
-			if buffer != 0 {
-				request.Send(selAppendAudioPCMBuffer, buffer)
+		result, err := withVoiceWakeStartPipelineCleanup(func(result *startPipelineResult) error {
+			initVoiceWakeSelectors()
+			recognizerClass := objc.ID(objc.GetClass("SFSpeechRecognizer"))
+			if recognizerClass == 0 {
+				return ErrRecognizerUnavailable
 			}
-		})
-		inputNode.Send(selInstallTapOnBus, uintptr(0), uintptr(2048), format, tapBlock)
+			if err := speech.CheckSpeechRecognitionAccess(); err != nil {
+				return fmt.Errorf("%w: %v", ErrSpeechUnauthorized, err)
+			}
+			if err := speech.CheckMicrophoneAccess(); err != nil {
+				return fmt.Errorf("%w: %v", ErrMicrophoneUnavailable, err)
+			}
+			if status := objc.Send[int](recognizerClass, selAuthorizationStatus); status != 3 {
+				return ErrSpeechUnauthorized
+			}
 
-		recognitionBlock := objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
-			if nsErr != 0 {
-				go r.handleUpdate(generation, "", nil, false, mapVoiceWakeError(goString(nsErr.Send(selLocalizedDescription))))
-				return
+			var nsLocale objc.ID
+			if locale := strings.TrimSpace(cfg.Locale); locale != "" {
+				nsLocaleClass := objc.ID(objc.GetClass("NSLocale"))
+				nsLocale = nsLocaleClass.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
+				result.recognizer = recognizerClass.Send(selAlloc).Send(selInitWithLocale, nsLocale)
+			} else {
+				result.recognizer = recognizerClass.Send(selAlloc).Send(selInit)
 			}
-			if res == 0 {
-				return
+			if nsLocale != 0 {
+				releaseObject(nsLocale)
 			}
-			transcription := res.Send(selBestTranscription)
-			text := strings.TrimSpace(goString(transcription.Send(selFormattedString)))
-			segments := transcriptionSegments(transcription)
-			isFinal := objc.Send[bool](res, selIsFinal)
-			go r.handleUpdate(generation, text, segments, isFinal, nil)
-		})
-		task := recognizer.Send(selRecognitionTaskWithRequest, request, recognitionBlock)
-		task = retainObject(task)
-		engine.Send(selPrepare)
-		var startErr objc.ID
-		started := objc.Send[bool](engine, selStartAndReturnError, unsafe.Pointer(&startErr))
-		if !started {
-			inputNode.Send(selRemoveTapOnBus, uintptr(0))
-			err := ErrMicrophoneUnavailable
-			if startErr != 0 {
-				err = mapVoiceWakeError(goString(startErr.Send(selLocalizedDescription)))
+			if result.recognizer == 0 {
+				return ErrRecognizerUnavailable
 			}
-			releasePipeline(startPipelineResult{
-				recognizer:       recognizer,
-				engine:           engine,
-				inputNode:        inputNode,
-				request:          request,
-				task:             task,
-				tapBlock:         tapBlock,
-				recognitionBlock: recognitionBlock,
+			if !objc.Send[bool](result.recognizer, selIsAvailable) {
+				return ErrRecognizerUnavailable
+			}
+
+			requestClass := objc.ID(objc.GetClass("SFSpeechAudioBufferRecognitionRequest"))
+			result.request = requestClass.Send(selAlloc).Send(selInit)
+			if result.request == 0 {
+				return fmt.Errorf("failed to create voice wake recognition request")
+			}
+			result.request.Send(selSetShouldReportPartial, true)
+
+			engineClass := objc.ID(objc.GetClass("AVAudioEngine"))
+			result.engine = engineClass.Send(selAlloc).Send(selInit)
+			if result.engine == 0 {
+				return ErrMicrophoneUnavailable
+			}
+			result.inputNode = result.engine.Send(selInputNode)
+			if result.inputNode == 0 {
+				return ErrMicrophoneUnavailable
+			}
+			format := result.inputNode.Send(selOutputFormatForBus, uintptr(0))
+			if format == 0 {
+				return ErrMicrophoneUnavailable
+			}
+			result.inputNode.Send(selRemoveTapOnBus, uintptr(0))
+
+			result.tapBlock = objc.NewBlock(func(_ objc.Block, buffer objc.ID, _ objc.ID) {
+				if buffer != 0 {
+					result.request.Send(selAppendAudioPCMBuffer, buffer)
+				}
 			})
-			resultCh <- startPipelineResult{err: err}
-			return
-		}
+			result.inputNode.Send(selInstallTapOnBus, uintptr(0), uintptr(2048), format, result.tapBlock)
 
-		resultCh <- startPipelineResult{
-			recognizer:       recognizer,
-			engine:           engine,
-			inputNode:        inputNode,
-			request:          request,
-			task:             task,
-			tapBlock:         tapBlock,
-			recognitionBlock: recognitionBlock,
-		}
+			result.recognitionBlock = objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
+				if nsErr != 0 {
+					go r.handleUpdate(generation, "", nil, false, mapVoiceWakeError(goString(nsErr.Send(selLocalizedDescription))))
+					return
+				}
+				if res == 0 {
+					return
+				}
+				transcription := res.Send(selBestTranscription)
+				text := strings.TrimSpace(goString(transcription.Send(selFormattedString)))
+				segments := transcriptionSegments(transcription)
+				isFinal := objc.Send[bool](res, selIsFinal)
+				go r.handleUpdate(generation, text, segments, isFinal, nil)
+			})
+			result.task = retainObject(result.recognizer.Send(selRecognitionTaskWithRequest, result.request, result.recognitionBlock))
+			result.engine.Send(selPrepare)
+			var startErr objc.ID
+			started := objc.Send[bool](result.engine, selStartAndReturnError, unsafe.Pointer(&startErr))
+			if !started {
+				result.inputNode.Send(selRemoveTapOnBus, uintptr(0))
+				err := ErrMicrophoneUnavailable
+				if startErr != 0 {
+					err = mapVoiceWakeError(goString(startErr.Send(selLocalizedDescription)))
+				}
+				return err
+			}
+			return nil
+		})
+		result.err = err
+		resultCh <- result
 	})
 	result := <-resultCh
 	if result.err != nil {

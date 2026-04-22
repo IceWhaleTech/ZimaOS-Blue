@@ -73,6 +73,16 @@ type ResultCardHostActionTelemetryLabelLocalePatch = {
   snapshot_revision: string
 }
 
+type ResultCardSnapshotRecoveryLabelLocalePatch = {
+  automation: string
+  browser: string
+  recovered_target_id: string
+  ref_map: string
+  surface: string
+  tree_fetch_ms: string
+  windows: string
+}
+
 const protectedHarnessTermReplacementPaths = new Set([
   'harness.group.remediationInfraProviderAuth',
   'harness.group.remediationInfraProviderQuota',
@@ -909,6 +919,436 @@ const resultCardFieldBackfills: Record<LocaleKey, ResultCardFieldLocalePatch> = 
   },
 }
 
+const resultCardSnapshotRecoveryLabelBackfills: Record<
+  LocaleKey,
+  ResultCardSnapshotRecoveryLabelLocalePatch
+> = {
+  'ca-ES': {
+    automation: 'Automatització',
+    browser: 'Navegador',
+    recovered_target_id: "ID de l'objectiu recuperat",
+    ref_map: 'Mapa de referències',
+    surface: 'Superfície',
+    tree_fetch_ms: "Temps d'obtenció de l'arbre (ms)",
+    windows: 'Finestres',
+  },
+  'cs-CZ': {
+    automation: 'Automatizace',
+    browser: 'Prohlížeč',
+    recovered_target_id: 'ID obnoveného cíle',
+    ref_map: 'Mapa odkazů',
+    surface: 'Rozhraní',
+    tree_fetch_ms: 'Doba načtení stromu (ms)',
+    windows: 'Okna',
+  },
+  'da-DK': {
+    automation: 'Automatisering',
+    browser: 'Weblæser',
+    recovered_target_id: 'Gendannet mål-ID',
+    ref_map: 'Referencekort',
+    surface: 'Grænseflade',
+    tree_fetch_ms: 'Tid til hentning af træ (ms)',
+    windows: 'Vinduer',
+  },
+  'de-DE': {
+    automation: 'Automatisierung',
+    browser: 'Webbrowser',
+    recovered_target_id: 'Wiederhergestellte Ziel-ID',
+    ref_map: 'Referenzzuordnung',
+    surface: 'Oberfläche',
+    tree_fetch_ms: 'Baumabrufzeit (ms)',
+    windows: 'Fenster',
+  },
+  'el-GR': {
+    automation: 'Αυτοματοποίηση',
+    browser: 'Πρόγραμμα περιήγησης',
+    recovered_target_id: 'Ανακτημένο αναγνωριστικό στόχου',
+    ref_map: 'Χάρτης αναφορών',
+    surface: 'Επιφάνεια',
+    tree_fetch_ms: 'Χρόνος ανάκτησης δέντρου (ms)',
+    windows: 'Παράθυρα',
+  },
+  'en-GB': {
+    automation: 'Automation',
+    browser: 'Browser',
+    recovered_target_id: 'Recovered Target ID',
+    ref_map: 'Reference Map',
+    surface: 'Surface',
+    tree_fetch_ms: 'Tree Fetch Time (ms)',
+    windows: 'Windows',
+  },
+  'en-US': {
+    automation: 'Automation',
+    browser: 'Browser',
+    recovered_target_id: 'Recovered Target ID',
+    ref_map: 'Reference Map',
+    surface: 'Surface',
+    tree_fetch_ms: 'Tree Fetch Time (ms)',
+    windows: 'Windows',
+  },
+  'es-ES': {
+    automation: 'Automatización',
+    browser: 'Navegador',
+    recovered_target_id: 'ID de destino recuperado',
+    ref_map: 'Mapa de referencias',
+    surface: 'Superficie',
+    tree_fetch_ms: 'Tiempo de obtención del árbol (ms)',
+    windows: 'Ventanas',
+  },
+  'fr-FR': {
+    automation: 'Automatisation',
+    browser: 'Navigateur',
+    recovered_target_id: 'ID cible récupéré',
+    ref_map: 'Carte de références',
+    surface: 'Interface',
+    tree_fetch_ms: "Temps de récupération de l'arborescence (ms)",
+    windows: 'Fenêtres',
+  },
+  'ga-IE': {
+    automation: 'Uathoibriú',
+    browser: 'Brabhsálaí',
+    recovered_target_id: 'Aitheantas sprice aisghafa',
+    ref_map: 'Léarscáil tagartha',
+    surface: 'Dromchla',
+    tree_fetch_ms: 'Am aisghabhála crainn (ms)',
+    windows: 'Fuinneoga',
+  },
+  'hr-HR': {
+    automation: 'Automatizacija',
+    browser: 'Preglednik',
+    recovered_target_id: 'Obnovljeni ID cilja',
+    ref_map: 'Karta referenci',
+    surface: 'Sučelje',
+    tree_fetch_ms: 'Vrijeme dohvaćanja stabla (ms)',
+    windows: 'Prozori',
+  },
+  'hu-HU': {
+    automation: 'Automatizálás',
+    browser: 'Böngésző',
+    recovered_target_id: 'Helyreállított célazonosító',
+    ref_map: 'Hivatkozástérkép',
+    surface: 'Felület',
+    tree_fetch_ms: 'Fa lekérési ideje (ms)',
+    windows: 'Ablakok',
+  },
+  'it-IT': {
+    automation: 'Automazione',
+    browser: 'Navigatore',
+    recovered_target_id: 'ID destinazione recuperato',
+    ref_map: 'Mappa riferimenti',
+    surface: 'Superficie',
+    tree_fetch_ms: "Tempo di recupero dell'albero (ms)",
+    windows: 'Finestre',
+  },
+  'ja-JP': {
+    automation: '自動化',
+    browser: 'ブラウザー',
+    recovered_target_id: '復元されたターゲット ID',
+    ref_map: '参照マップ',
+    surface: '画面',
+    tree_fetch_ms: 'ツリー取得時間 (ms)',
+    windows: 'ウィンドウ',
+  },
+  'ko-KR': {
+    automation: '자동화',
+    browser: '브라우저',
+    recovered_target_id: '복구된 대상 ID',
+    ref_map: '참조 맵',
+    surface: '화면',
+    tree_fetch_ms: '트리 가져오기 시간(ms)',
+    windows: '창',
+  },
+  'ml-IN': {
+    automation: 'ഓട്ടോമേഷൻ',
+    browser: 'ബ്രൗസർ',
+    recovered_target_id: 'വീണ്ടെടുത്ത ലക്ഷ്യ ഐഡി',
+    ref_map: 'റഫറൻസ് മാപ്പ്',
+    surface: 'ഇന്റർഫേസ്',
+    tree_fetch_ms: 'ട്രി നേടൽ സമയം (ms)',
+    windows: 'വിൻഡോകൾ',
+  },
+  'nb-NO': {
+    automation: 'Automatisering',
+    browser: 'Nettleser',
+    recovered_target_id: 'Gjenopprettet mål-ID',
+    ref_map: 'Referansekart',
+    surface: 'Grensesnitt',
+    tree_fetch_ms: 'Tid for henting av tre (ms)',
+    windows: 'Vinduer',
+  },
+  'nl-NL': {
+    automation: 'Automatisering',
+    browser: 'Webbrowser',
+    recovered_target_id: 'Herstelde doel-ID',
+    ref_map: 'Referentiekaart',
+    surface: 'Oppervlak',
+    tree_fetch_ms: 'Ophaaltijd van boomstructuur (ms)',
+    windows: 'Vensters',
+  },
+  'pl-PL': {
+    automation: 'Automatyzacja',
+    browser: 'Przeglądarka',
+    recovered_target_id: 'Odzyskany identyfikator celu',
+    ref_map: 'Mapa odniesień',
+    surface: 'Powierzchnia',
+    tree_fetch_ms: 'Czas pobierania drzewa (ms)',
+    windows: 'Okna',
+  },
+  'pt-BR': {
+    automation: 'Automação',
+    browser: 'Navegador',
+    recovered_target_id: 'ID de destino recuperado',
+    ref_map: 'Mapa de referências',
+    surface: 'Superfície',
+    tree_fetch_ms: 'Tempo de busca da árvore (ms)',
+    windows: 'Janelas',
+  },
+  'pt-PT': {
+    automation: 'Automação',
+    browser: 'Navegador',
+    recovered_target_id: 'ID de destino recuperado',
+    ref_map: 'Mapa de referências',
+    surface: 'Superfície',
+    tree_fetch_ms: 'Tempo de obtenção da árvore (ms)',
+    windows: 'Janelas',
+  },
+  'ro-RO': {
+    automation: 'Automatizare',
+    browser: 'Navigator',
+    recovered_target_id: 'ID țintă recuperat',
+    ref_map: 'Hartă de referințe',
+    surface: 'Suprafață',
+    tree_fetch_ms: 'Timp de preluare a arborelui (ms)',
+    windows: 'Ferestre',
+  },
+  'ru-RU': {
+    automation: 'Автоматизация',
+    browser: 'Браузер',
+    recovered_target_id: 'Восстановленный ID цели',
+    ref_map: 'Карта ссылок',
+    surface: 'Поверхность',
+    tree_fetch_ms: 'Время получения дерева (мс)',
+    windows: 'Окна',
+  },
+  'sk-SK': {
+    automation: 'Automatizácia',
+    browser: 'Prehliadač',
+    recovered_target_id: 'Obnovené ID cieľa',
+    ref_map: 'Mapa odkazov',
+    surface: 'Rozhranie',
+    tree_fetch_ms: 'Čas načítania stromu (ms)',
+    windows: 'Okná',
+  },
+  'sv-SE': {
+    automation: 'Automatisering',
+    browser: 'Webbläsare',
+    recovered_target_id: 'Återställt mål-ID',
+    ref_map: 'Referenskarta',
+    surface: 'Yta',
+    tree_fetch_ms: 'Hämtningstid för träd (ms)',
+    windows: 'Fönster',
+  },
+  'zh-CN': {
+    automation: '自动化',
+    browser: '浏览器',
+    recovered_target_id: '已恢复的目标 ID',
+    ref_map: '引用映射',
+    surface: '界面',
+    tree_fetch_ms: '树获取耗时 (ms)',
+    windows: '窗口',
+  },
+  'zh-TW': {
+    automation: '自動化',
+    browser: '瀏覽器',
+    recovered_target_id: '已恢復的目標 ID',
+    ref_map: '引用對應',
+    surface: '介面',
+    tree_fetch_ms: '樹狀擷取時間 (ms)',
+    windows: '視窗',
+  },
+}
+
+const resultCardHostComputerUseSnapshotReadyMessages: Record<LocaleKey, string> = {
+  'ca-ES': "La instantània d'ús de l'ordinador amfitrió està a punt",
+  'cs-CZ': 'Snímek použití hostitelského počítače je připraven',
+  'da-DK': 'Snapshot af værtscomputerbrug klar',
+  'de-DE': 'Snapshot der Host-Computernutzung bereit',
+  'el-GR': 'Το στιγμιότυπο χρήσης του κεντρικού υπολογιστή είναι έτοιμο',
+  'en-GB': 'Host computer-use snapshot ready',
+  'en-US': 'Host computer-use snapshot ready',
+  'es-ES': 'Instantánea de uso del equipo anfitrión lista',
+  'fr-FR': "Instantané d'utilisation de l'ordinateur hôte prêt",
+  'ga-IE': 'Tá seat úsáide ríomhaire an ósta réidh',
+  'hr-HR': 'Snimka uporabe računala hosta je spremna',
+  'hu-HU': 'A gazdagép számítógép-használati pillanatképe elkészült',
+  'it-IT': 'Snapshot di utilizzo del computer host pronto',
+  'ja-JP': 'ホストのコンピュータ使用スナップショットの準備完了',
+  'ko-KR': '호스트 컴퓨터 사용 스냅샷 준비 완료',
+  'ml-IN': 'ഹോസ്റ്റ് കമ്പ്യൂട്ടർ ഉപയോഗ സ്നാപ്ഷോട്ട് തയ്യാറായി',
+  'nb-NO': 'Øyeblikksbilde av vertsdatamaskinens bruk klart',
+  'nl-NL': 'Snapshot van computergebruik op de host gereed',
+  'pl-PL': 'Migawka użycia komputera hosta gotowa',
+  'pt-BR': 'Instantâneo de uso do computador host pronto',
+  'pt-PT': 'Instantâneo de uso do computador anfitrião pronto',
+  'ro-RO': 'Instantaneul de utilizare a computerului gazdă este gata',
+  'ru-RU': 'Снимок использования компьютера хоста готов',
+  'sk-SK': 'Snímka použitia hostiteľského počítača je pripravená',
+  'sv-SE': 'Ögonblicksbild av värddatorns användning klar',
+  'zh-CN': '主机电脑使用快照已就绪',
+  'zh-TW': '主機電腦使用快照已就緒',
+}
+
+const resultCardBrowserTabFocusRecoveredUsingActiveTabMessages: Record<LocaleKey, string> = {
+  'ca-ES': "S'ha recuperat el focus de la pestanya del navegador mitjançant la pestanya activa",
+  'cs-CZ': 'Zaměření karty prohlížeče bylo obnoveno pomocí aktivní karty',
+  'da-DK': 'Browserfanefokus gendannet ved hjælp af den aktive fane',
+  'de-DE': 'Fokus des Browser-Tabs mithilfe des aktiven Tabs wiederhergestellt',
+  'el-GR':
+    'Η εστίαση της καρτέλας του προγράμματος περιήγησης αποκαταστάθηκε χρησιμοποιώντας την ενεργή καρτέλα',
+  'en-GB': 'Browser tab focus recovered using active tab',
+  'en-US': 'Browser tab focus recovered using active tab',
+  'es-ES': 'Foco de la pestaña del navegador recuperado usando la pestaña activa',
+  'fr-FR': "Focus de l'onglet du navigateur restauré à l'aide de l'onglet actif",
+  'ga-IE': 'Athbhunaíodh fócas chluaisín an bhrabhsálaí ag úsáid an chluaisín ghníomhaigh',
+  'hr-HR': 'Fokus kartice preglednika vraćen je pomoću aktivne kartice',
+  'hu-HU': 'A böngészőlap fókusza az aktív lap használatával helyreállt',
+  'it-IT': 'Focus della scheda del browser ripristinato usando la scheda attiva',
+  'ja-JP': 'アクティブなタブを使用してブラウザータブのフォーカスを復元',
+  'ko-KR': '활성 탭을 사용해 브라우저 탭 포커스 복구',
+  'ml-IN': 'സജീവ ടാബ് ഉപയോഗിച്ച് ബ്രൗസർ ടാബ് ഫോക്കസ് പുനഃസ്ഥാപിച്ചു',
+  'nb-NO': 'Fanefokus i nettleseren gjenopprettet ved hjelp av den aktive fanen',
+  'nl-NL': 'Focus van het browsertabblad hersteld met het actieve tabblad',
+  'pl-PL': 'Fokus karty przeglądarki odzyskano przy użyciu aktywnej karty',
+  'pt-BR': 'Foco da guia do navegador recuperado usando a guia ativa',
+  'pt-PT': 'Foco do separador do navegador recuperado usando o separador ativo',
+  'ro-RO': 'Focalizarea filei browserului a fost restaurată folosind fila activă',
+  'ru-RU': 'Фокус вкладки браузера восстановлен с помощью активной вкладки',
+  'sk-SK': 'Zameranie karty prehliadača bolo obnovené pomocou aktívnej karty',
+  'sv-SE': 'Fokus för webbläsarfliken återställd med den aktiva fliken',
+  'zh-CN': '已使用活动标签页恢复浏览器标签页焦点',
+  'zh-TW': '已使用作用中分頁恢復瀏覽器分頁焦點',
+}
+
+const resultCardBrowserComputerUseBridgeReadyMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'El pont de control del navegador està a punt',
+  'cs-CZ': 'Most pro ovládání prohlížeče je připraven',
+  'da-DK': 'Browserens computerstyringsbro er klar',
+  'de-DE': 'Browser-Computersteuerungsbrücke bereit',
+  'el-GR': 'Η γέφυρα χειρισμού υπολογιστή του προγράμματος περιήγησης είναι έτοιμη',
+  'en-GB': 'Browser computer-use bridge ready',
+  'en-US': 'Browser computer-use bridge ready',
+  'es-ES': 'Puente de control informático del navegador listo',
+  'fr-FR': 'Passerelle de contrôle informatique du navigateur prête',
+  'ga-IE': 'Tá droichead rialaithe ríomhaire an bhrabhsálaí réidh',
+  'hr-HR': 'Most za upravljanje računalom preglednika je spreman',
+  'hu-HU': 'A böngésző számítógép-vezérlési hídja készen áll',
+  'it-IT': 'Bridge di controllo del browser pronto',
+  'ja-JP': 'ブラウザーのコンピューター操作ブリッジの準備完了',
+  'ko-KR': '브라우저 컴퓨터 사용 브리지 준비 완료',
+  'ml-IN': 'ബ്രൗസർ കമ്പ്യൂട്ടർ-ഉപയോഗ ബ്രിഡ്ജ് തയ്യാറായി',
+  'nb-NO': 'Nettleserens databruksbro er klar',
+  'nl-NL': 'Brug voor computergebruik van de browser gereed',
+  'pl-PL': 'Most sterowania komputerem przeglądarki gotowy',
+  'pt-BR': 'Ponte de controle do navegador pronta',
+  'pt-PT': 'Ponte de controlo do navegador pronta',
+  'ro-RO': 'Puntea de control a browserului este gata',
+  'ru-RU': 'Мост управления браузером готов',
+  'sk-SK': 'Most ovládania počítača prehliadača je pripravený',
+  'sv-SE': 'Webbläsarens datorstyrningsbrygga klar',
+  'zh-CN': '浏览器电脑控制桥接已就绪',
+  'zh-TW': '瀏覽器電腦控制橋接已就緒',
+}
+
+const resultCardBrowserTabFocusedMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Pestanya del navegador enfocada',
+  'cs-CZ': 'Karta prohlížeče zaměřena',
+  'da-DK': 'Browserfane fokuseret',
+  'de-DE': 'Browser-Tab fokussiert',
+  'el-GR': 'Η καρτέλα του προγράμματος περιήγησης εστιάστηκε',
+  'en-GB': 'Browser tab focused',
+  'en-US': 'Browser tab focused',
+  'es-ES': 'Pestaña del navegador enfocada',
+  'fr-FR': 'Onglet du navigateur focalisé',
+  'ga-IE': 'Díríodh ar chluaisín an bhrabhsálaí',
+  'hr-HR': 'Kartica preglednika fokusirana',
+  'hu-HU': 'A böngészőlap fókuszálva',
+  'it-IT': 'Scheda del browser focalizzata',
+  'ja-JP': 'ブラウザータブにフォーカスしました',
+  'ko-KR': '브라우저 탭에 포커스를 맞췄습니다',
+  'ml-IN': 'ബ്രൗസർ ടാബ് ഫോക്കസ് ചെയ്തു',
+  'nb-NO': 'Nettleserfane fokusert',
+  'nl-NL': 'Browsertabblad gefocust',
+  'pl-PL': 'Karta przeglądarki aktywna',
+  'pt-BR': 'Guia do navegador focada',
+  'pt-PT': 'Separador do navegador focado',
+  'ro-RO': 'Fila browserului focalizată',
+  'ru-RU': 'Вкладка браузера в фокусе',
+  'sk-SK': 'Karta prehliadača zaostrená',
+  'sv-SE': 'Webbläsarfliken fokuserad',
+  'zh-CN': '浏览器标签页已聚焦',
+  'zh-TW': '瀏覽器分頁已聚焦',
+}
+
+const resultCardBrowserKeysSentMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Tecles del navegador enviades',
+  'cs-CZ': 'Klávesy prohlížeče odeslány',
+  'da-DK': 'Browser-taster sendt',
+  'de-DE': 'Browser-Tasten gesendet',
+  'el-GR': 'Τα πλήκτρα του προγράμματος περιήγησης στάλθηκαν',
+  'en-GB': 'Browser keys sent',
+  'en-US': 'Browser keys sent',
+  'es-ES': 'Teclas del navegador enviadas',
+  'fr-FR': 'Touches du navigateur envoyées',
+  'ga-IE': 'Seoladh eochracha an bhrabhsálaí',
+  'hr-HR': 'Tipke preglednika poslane',
+  'hu-HU': 'A böngésző billentyűi elküldve',
+  'it-IT': 'Tasti del browser inviati',
+  'ja-JP': 'ブラウザーのキーを送信しました',
+  'ko-KR': '브라우저 키를 전송했습니다',
+  'ml-IN': 'ബ്രൗസർ കീകൾ അയച്ചു',
+  'nb-NO': 'Nettlesertaster sendt',
+  'nl-NL': 'Browsertoetsen verzonden',
+  'pl-PL': 'Klawisze przeglądarki wysłane',
+  'pt-BR': 'Teclas do navegador enviadas',
+  'pt-PT': 'Teclas do navegador enviadas',
+  'ro-RO': 'Tastele browserului trimise',
+  'ru-RU': 'Клавиши браузера отправлены',
+  'sk-SK': 'Klávesy prehliadača odoslané',
+  'sv-SE': 'Webbläsartangenter skickade',
+  'zh-CN': '浏览器按键已发送',
+  'zh-TW': '瀏覽器按鍵已送出',
+}
+
+const resultCardHostAccessibilitySnapshotReadyMessages: Record<LocaleKey, string> = {
+  'ca-ES': "La instantània d'accessibilitat de l'amfitrió està a punt",
+  'cs-CZ': 'Snímek přístupnosti hostitele je připraven',
+  'da-DK': 'Værtens tilgængelighedssnapshot er klar',
+  'de-DE': 'Barrierefreiheits-Snapshot des Hosts bereit',
+  'el-GR': 'Το στιγμιότυπο προσβασιμότητας του κεντρικού υπολογιστή είναι έτοιμο',
+  'en-GB': 'Host accessibility snapshot ready',
+  'en-US': 'Host accessibility snapshot ready',
+  'es-ES': 'Instantánea de accesibilidad del host lista',
+  'fr-FR': "Instantané d'accessibilité de l'ordinateur hôte prêt",
+  'ga-IE': 'Tá seat inrochtaineachta an ósta réidh',
+  'hr-HR': 'Snimka pristupačnosti hosta je spremna',
+  'hu-HU': 'A gazdagép akadálymentesítési pillanatképe elkészült',
+  'it-IT': 'Snapshot di accessibilità host pronto',
+  'ja-JP': 'ホストのアクセシビリティスナップショットの準備完了',
+  'ko-KR': '호스트 접근성 스냅샷 준비 완료',
+  'ml-IN': 'ഹോസ്റ്റ് ആക്‌സസിബിലിറ്റി സ്നാപ്ഷോട്ട് തയ്യാറായി',
+  'nb-NO': 'Øyeblikksbilde av vertens tilgjengelighet er klart',
+  'nl-NL': 'Toegankelijkheidssnapshot van de host gereed',
+  'pl-PL': 'Migawka dostępności hosta gotowa',
+  'pt-BR': 'Instantâneo de acessibilidade do host pronto',
+  'pt-PT': 'Instantâneo de acessibilidade do anfitrião pronto',
+  'ro-RO': 'Instantaneul de accesibilitate al gazdei este gata',
+  'ru-RU': 'Снимок доступности хоста готов',
+  'sk-SK': 'Snímka prístupnosti hostiteľa je pripravená',
+  'sv-SE': 'Ögonblicksbild av värdens tillgänglighet klar',
+  'zh-CN': '主机无障碍快照已就绪',
+  'zh-TW': '主機無障礙快照已就緒',
+}
+
 const resultCardExecutionModeLabels: Record<LocaleKey, string> = {
   'ca-ES': "Mode d'execucio",
   'cs-CZ': 'Režim spuštění',
@@ -967,6 +1407,96 @@ const resultCardWindowFocusedMessages: Record<LocaleKey, string> = {
   'sv-SE': 'Fönster fokuserat',
   'zh-CN': '窗口已聚焦',
   'zh-TW': '視窗已聚焦',
+}
+
+const resultCardApplicationActivatedMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Aplicació activada',
+  'cs-CZ': 'Aplikace aktivována',
+  'da-DK': 'Applikation aktiveret',
+  'de-DE': 'Anwendung aktiviert',
+  'el-GR': 'Η εφαρμογή ενεργοποιήθηκε',
+  'en-GB': 'Application activated',
+  'en-US': 'Application activated',
+  'es-ES': 'Aplicación activada',
+  'fr-FR': 'Application activée',
+  'ga-IE': 'Cuireadh an feidhmchlár i ngníomh',
+  'hr-HR': 'Aplikacija aktivirana',
+  'hu-HU': 'Az alkalmazás aktiválva',
+  'it-IT': 'Applicazione attivata',
+  'ja-JP': 'アプリケーションをアクティブにしました',
+  'ko-KR': '애플리케이션을 활성화했습니다',
+  'ml-IN': 'ആപ്ലിക്കേഷൻ സജീവമാക്കി',
+  'nb-NO': 'Program aktivert',
+  'nl-NL': 'Applicatie geactiveerd',
+  'pl-PL': 'Aplikacja aktywowana',
+  'pt-BR': 'Aplicativo ativado',
+  'pt-PT': 'Aplicação ativada',
+  'ro-RO': 'Aplicație activată',
+  'ru-RU': 'Приложение активировано',
+  'sk-SK': 'Aplikácia aktivovaná',
+  'sv-SE': 'Program aktiverat',
+  'zh-CN': '应用已激活',
+  'zh-TW': '應用程式已啟用',
+}
+
+const resultCardScrollCompletedMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Desplaçament completat',
+  'cs-CZ': 'Posun dokončen',
+  'da-DK': 'Rulning fuldført',
+  'de-DE': 'Scrollen abgeschlossen',
+  'el-GR': 'Η κύλιση ολοκληρώθηκε',
+  'en-GB': 'Scroll completed',
+  'en-US': 'Scroll completed',
+  'es-ES': 'Desplazamiento completado',
+  'fr-FR': 'Défilement terminé',
+  'ga-IE': 'Críochnaíodh an scrollú',
+  'hr-HR': 'Pomicanje dovršeno',
+  'hu-HU': 'A görgetés befejeződött',
+  'it-IT': 'Scorrimento completato',
+  'ja-JP': 'スクロールが完了しました',
+  'ko-KR': '스크롤이 완료되었습니다',
+  'ml-IN': 'സ്ക്രോൾ പൂർത്തിയായി',
+  'nb-NO': 'Rulling fullført',
+  'nl-NL': 'Scrollen voltooid',
+  'pl-PL': 'Przewijanie zakończone',
+  'pt-BR': 'Rolagem concluída',
+  'pt-PT': 'Deslocação concluída',
+  'ro-RO': 'Derularea s-a încheiat',
+  'ru-RU': 'Прокрутка завершена',
+  'sk-SK': 'Posúvanie dokončené',
+  'sv-SE': 'Rullning slutförd',
+  'zh-CN': '滚动已完成',
+  'zh-TW': '捲動已完成',
+}
+
+const resultCardPointerMovedMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Punter mogut',
+  'cs-CZ': 'Ukazatel přesunut',
+  'da-DK': 'Markør flyttet',
+  'de-DE': 'Zeiger bewegt',
+  'el-GR': 'Ο δείκτης μετακινήθηκε',
+  'en-GB': 'Pointer moved',
+  'en-US': 'Pointer moved',
+  'es-ES': 'Puntero movido',
+  'fr-FR': 'Pointeur déplacé',
+  'ga-IE': 'Bogadh an pointeoir',
+  'hr-HR': 'Pokazivač pomaknut',
+  'hu-HU': 'A mutató áthelyezve',
+  'it-IT': 'Puntatore spostato',
+  'ja-JP': 'ポインターを移動しました',
+  'ko-KR': '포인터를 이동했습니다',
+  'ml-IN': 'പോയിന്റർ നീക്കി',
+  'nb-NO': 'Peker flyttet',
+  'nl-NL': 'Aanwijzer verplaatst',
+  'pl-PL': 'Wskaźnik przesunięty',
+  'pt-BR': 'Ponteiro movido',
+  'pt-PT': 'Ponteiro movido',
+  'ro-RO': 'Indicator mutat',
+  'ru-RU': 'Указатель перемещен',
+  'sk-SK': 'Ukazovateľ presunutý',
+  'sv-SE': 'Pekare flyttad',
+  'zh-CN': '指针已移动',
+  'zh-TW': '指標已移動',
 }
 
 const resultCardHostActionLabelBackfills: Record<LocaleKey, ResultCardHostActionLabelLocalePatch> =
@@ -1709,6 +2239,276 @@ const resultCardInputActionValues: Record<LocaleKey, string> = {
   'sv-SE': 'Inmatningsåtgärd',
   'zh-CN': '输入操作',
   'zh-TW': '輸入操作',
+}
+
+const resultCardSetValueValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Estableix el valor',
+  'cs-CZ': 'Nastavit hodnotu',
+  'da-DK': 'Sæt værdi',
+  'de-DE': 'Wert setzen',
+  'el-GR': 'Ορισμός τιμής',
+  'en-GB': 'Set Value',
+  'en-US': 'Set Value',
+  'es-ES': 'Establecer valor',
+  'fr-FR': 'Définir la valeur',
+  'ga-IE': 'Socraigh luach',
+  'hr-HR': 'Postavi vrijednost',
+  'hu-HU': 'Érték beállítása',
+  'it-IT': 'Imposta valore',
+  'ja-JP': '値を設定',
+  'ko-KR': '값 설정',
+  'ml-IN': 'മൂല്യം സജ്ജമാക്കുക',
+  'nb-NO': 'Sett verdi',
+  'nl-NL': 'Waarde instellen',
+  'pl-PL': 'Ustaw wartość',
+  'pt-BR': 'Definir valor',
+  'pt-PT': 'Definir valor',
+  'ro-RO': 'Setează valoarea',
+  'ru-RU': 'Установить значение',
+  'sk-SK': 'Nastaviť hodnotu',
+  'sv-SE': 'Ange värde',
+  'zh-CN': '设置值',
+  'zh-TW': '設定值',
+}
+
+const resultCardSemanticActionValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Acció semàntica',
+  'cs-CZ': 'Sémantická akce',
+  'da-DK': 'Semantisk handling',
+  'de-DE': 'Semantische Aktion',
+  'el-GR': 'Σημασιολογική ενέργεια',
+  'en-GB': 'Semantic Action',
+  'en-US': 'Semantic Action',
+  'es-ES': 'Acción semántica',
+  'fr-FR': 'Action sémantique',
+  'ga-IE': 'Gníomh séimeantach',
+  'hr-HR': 'Semantička radnja',
+  'hu-HU': 'Szemantikus művelet',
+  'it-IT': 'Azione semantica',
+  'ja-JP': 'セマンティック操作',
+  'ko-KR': '시맨틱 동작',
+  'ml-IN': 'സെമാന്റിക് പ്രവർത്തനം',
+  'nb-NO': 'Semantisk handling',
+  'nl-NL': 'Semantische actie',
+  'pl-PL': 'Akcja semantyczna',
+  'pt-BR': 'Ação semântica',
+  'pt-PT': 'Ação semântica',
+  'ro-RO': 'Acțiune semantică',
+  'ru-RU': 'Семантическое действие',
+  'sk-SK': 'Sémantická akcia',
+  'sv-SE': 'Semantisk åtgärd',
+  'zh-CN': '语义操作',
+  'zh-TW': '語義操作',
+}
+
+const resultCardPointClickValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Clic per punt',
+  'cs-CZ': 'Kliknutí na bod',
+  'da-DK': 'Punktklik',
+  'de-DE': 'Punktklick',
+  'el-GR': 'Κλικ σε σημείο',
+  'en-GB': 'Point Click',
+  'en-US': 'Point Click',
+  'es-ES': 'Clic por punto',
+  'fr-FR': 'Clic sur point',
+  'ga-IE': 'Cliceáil pointe',
+  'hr-HR': 'Klik na točku',
+  'hu-HU': 'Pontkattintás',
+  'it-IT': 'Clic sul punto',
+  'ja-JP': 'ポイントクリック',
+  'ko-KR': '지점 클릭',
+  'ml-IN': 'പോയിന്റ് ക്ലിക്ക്',
+  'nb-NO': 'Punktklikk',
+  'nl-NL': 'Puntklik',
+  'pl-PL': 'Klik punktowy',
+  'pt-BR': 'Clique por ponto',
+  'pt-PT': 'Clique por ponto',
+  'ro-RO': 'Clic pe punct',
+  'ru-RU': 'Точечный щелчок',
+  'sk-SK': 'Kliknutie na bod',
+  'sv-SE': 'Punktklick',
+  'zh-CN': '点按点击',
+  'zh-TW': '點位點擊',
+}
+
+const resultCardAXValueValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Valor AX',
+  'cs-CZ': 'Hodnota AX',
+  'da-DK': 'AX-værdi',
+  'de-DE': 'AX-Wert',
+  'el-GR': 'Τιμή AX',
+  'en-GB': 'AX Value',
+  'en-US': 'AX Value',
+  'es-ES': 'Valor AX',
+  'fr-FR': 'Valeur AX',
+  'ga-IE': 'Luach AX',
+  'hr-HR': 'AX vrijednost',
+  'hu-HU': 'AX érték',
+  'it-IT': 'Valore AX',
+  'ja-JP': 'AX 値',
+  'ko-KR': 'AX 값',
+  'ml-IN': 'AX മൂല്യം',
+  'nb-NO': 'AX-verdi',
+  'nl-NL': 'AX-waarde',
+  'pl-PL': 'Wartość AX',
+  'pt-BR': 'Valor AX',
+  'pt-PT': 'Valor AX',
+  'ro-RO': 'Valoare AX',
+  'ru-RU': 'Значение AX',
+  'sk-SK': 'Hodnota AX',
+  'sv-SE': 'AX-värde',
+  'zh-CN': 'AX 值',
+  'zh-TW': 'AX 值',
+}
+
+const resultCardAXActionValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Acció AX',
+  'cs-CZ': 'Akce AX',
+  'da-DK': 'AX-handling',
+  'de-DE': 'AX-Aktion',
+  'el-GR': 'Ενέργεια AX',
+  'en-GB': 'AX Action',
+  'en-US': 'AX Action',
+  'es-ES': 'Acción AX',
+  'fr-FR': 'Action AX',
+  'ga-IE': 'Gníomh AX',
+  'hr-HR': 'AX radnja',
+  'hu-HU': 'AX művelet',
+  'it-IT': 'Azione AX',
+  'ja-JP': 'AX 操作',
+  'ko-KR': 'AX 동작',
+  'ml-IN': 'AX പ്രവർത്തനം',
+  'nb-NO': 'AX-handling',
+  'nl-NL': 'AX-actie',
+  'pl-PL': 'Akcja AX',
+  'pt-BR': 'Ação AX',
+  'pt-PT': 'Ação AX',
+  'ro-RO': 'Acțiune AX',
+  'ru-RU': 'Действие AX',
+  'sk-SK': 'Akcia AX',
+  'sv-SE': 'AX-åtgärd',
+  'zh-CN': 'AX 操作',
+  'zh-TW': 'AX 操作',
+}
+
+const resultCardIntentMessageValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Missatge',
+  'cs-CZ': 'Zpráva',
+  'da-DK': 'Besked',
+  'de-DE': 'Nachricht',
+  'el-GR': 'Μήνυμα',
+  'en-GB': 'Message',
+  'en-US': 'Message',
+  'es-ES': 'Mensaje',
+  'fr-FR': 'Message',
+  'ga-IE': 'Teachtaireacht',
+  'hr-HR': 'Poruka',
+  'hu-HU': 'Üzenet',
+  'it-IT': 'Messaggio',
+  'ja-JP': 'メッセージ',
+  'ko-KR': '메시지',
+  'ml-IN': 'സന്ദേശം',
+  'nb-NO': 'Melding',
+  'nl-NL': 'Bericht',
+  'pl-PL': 'Wiadomość',
+  'pt-BR': 'Mensagem',
+  'pt-PT': 'Mensagem',
+  'ro-RO': 'Mesaj',
+  'ru-RU': 'Сообщение',
+  'sk-SK': 'Správa',
+  'sv-SE': 'Meddelande',
+  'zh-CN': '消息',
+  'zh-TW': '訊息',
+}
+
+const resultCardIntentSelectValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Selecciona',
+  'cs-CZ': 'Vybrat',
+  'da-DK': 'Vælg',
+  'de-DE': 'Auswählen',
+  'el-GR': 'Επιλογή',
+  'en-GB': 'Select',
+  'en-US': 'Select',
+  'es-ES': 'Seleccionar',
+  'fr-FR': 'Sélectionner',
+  'ga-IE': 'Roghnaigh',
+  'hr-HR': 'Odaberi',
+  'hu-HU': 'Kiválasztás',
+  'it-IT': 'Seleziona',
+  'ja-JP': '選択',
+  'ko-KR': '선택',
+  'ml-IN': 'തിരഞ്ഞെടുക്കുക',
+  'nb-NO': 'Velg',
+  'nl-NL': 'Selecteren',
+  'pl-PL': 'Wybór',
+  'pt-BR': 'Selecionar',
+  'pt-PT': 'Selecionar',
+  'ro-RO': 'Selectare',
+  'ru-RU': 'Выбор',
+  'sk-SK': 'Vybrať',
+  'sv-SE': 'Välj',
+  'zh-CN': '选择',
+  'zh-TW': '選擇',
+}
+
+const resultCardIntentToggleValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Canvia',
+  'cs-CZ': 'Přepnout',
+  'da-DK': 'Skift',
+  'de-DE': 'Umschalten',
+  'el-GR': 'Εναλλαγή',
+  'en-GB': 'Toggle',
+  'en-US': 'Toggle',
+  'es-ES': 'Alternar',
+  'fr-FR': 'Basculer',
+  'ga-IE': 'Scoránaigh',
+  'hr-HR': 'Prebaci',
+  'hu-HU': 'Kapcsolás',
+  'it-IT': 'Commuta',
+  'ja-JP': '切り替え',
+  'ko-KR': '전환',
+  'ml-IN': 'മാറ്റുക',
+  'nb-NO': 'Veksle',
+  'nl-NL': 'Omschakelen',
+  'pl-PL': 'Przełącz',
+  'pt-BR': 'Alternar',
+  'pt-PT': 'Alternar',
+  'ro-RO': 'Comutare',
+  'ru-RU': 'Переключение',
+  'sk-SK': 'Prepnúť',
+  'sv-SE': 'Växla',
+  'zh-CN': '切换',
+  'zh-TW': '切換',
+}
+
+const resultCardIntentTypeValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Escriure',
+  'cs-CZ': 'Psát',
+  'da-DK': 'Skriv',
+  'de-DE': 'Eingeben',
+  'el-GR': 'Πληκτρολόγηση',
+  'en-GB': 'Type',
+  'en-US': 'Type',
+  'es-ES': 'Escribir',
+  'fr-FR': 'Saisir',
+  'ga-IE': 'Clóscríobh',
+  'hr-HR': 'Upiši',
+  'hu-HU': 'Gépelés',
+  'it-IT': 'Digitare',
+  'ja-JP': '入力',
+  'ko-KR': '입력',
+  'ml-IN': 'ടൈപ്പ്',
+  'nb-NO': 'Skriv',
+  'nl-NL': 'Typen',
+  'pl-PL': 'Wpisywanie',
+  'pt-BR': 'Digitar',
+  'pt-PT': 'Escrever',
+  'ro-RO': 'Tastare',
+  'ru-RU': 'Ввод',
+  'sk-SK': 'Písať',
+  'sv-SE': 'Skriva',
+  'zh-CN': '输入',
+  'zh-TW': '輸入',
 }
 
 type ProviderRecoveryLocalePatch = {
@@ -3238,6 +4038,16 @@ export function buildLocalePostMergeBackfill(
       )
     }
 
+    const snapshotRecoveryLabels = resultCardSnapshotRecoveryLabelBackfills[localeKey]
+    const englishSnapshotRecoveryLabels = resultCardSnapshotRecoveryLabelBackfills['en-US']
+    for (const [key, localized] of Object.entries(snapshotRecoveryLabels)) {
+      maybeBackfillResultCardLabel(
+        key,
+        localized,
+        englishSnapshotRecoveryLabels[key as keyof typeof englishSnapshotRecoveryLabels]
+      )
+    }
+
     const englishResultCardFieldMessages = resultCardFieldBackfills['en-US'].messages
     for (const [key, localized] of Object.entries(resultCardFieldCopy.messages)) {
       maybeBackfillResultCardMessage(
@@ -3265,6 +4075,57 @@ export function buildLocalePostMergeBackfill(
       'window_focused',
       resultCardWindowFocusedMessages[localeKey],
       'Window focused'
+    )
+    maybeBackfillResultCardMessage(
+      'host_computer_use_snapshot_ready',
+      resultCardHostComputerUseSnapshotReadyMessages[localeKey],
+      'Host computer-use snapshot ready'
+    )
+    maybeBackfillResultCardMessage(
+      'browser_computer_use_bridge_ready',
+      resultCardBrowserComputerUseBridgeReadyMessages[localeKey],
+      'Browser computer-use bridge ready'
+    )
+    maybeBackfillResultCardMessage(
+      'browser_tab_focus_recovered_using_active_tab',
+      resultCardBrowserTabFocusRecoveredUsingActiveTabMessages[localeKey],
+      'Browser tab focus recovered using active tab'
+    )
+    maybeBackfillResultCardMessage(
+      'browser_tab_focused',
+      resultCardBrowserTabFocusedMessages[localeKey],
+      'Browser tab focused'
+    )
+    maybeBackfillResultCardMessage(
+      'browser_keys_sent',
+      resultCardBrowserKeysSentMessages[localeKey],
+      'Browser keys sent'
+    )
+    maybeBackfillResultCardMessage(
+      'host_accessibility_snapshot_ready',
+      resultCardHostAccessibilitySnapshotReadyMessages[localeKey],
+      'Host accessibility snapshot ready'
+    )
+    maybeBackfillResultCardMessage(
+      'application_activated',
+      resultCardApplicationActivatedMessages[localeKey],
+      'Application activated'
+    )
+    maybeBackfillResultCardMessage(
+      'scroll_completed',
+      resultCardScrollCompletedMessages[localeKey],
+      'Scroll completed'
+    )
+    maybeBackfillResultCardMessage(
+      'pointer_moved',
+      resultCardPointerMovedMessages[localeKey],
+      'Pointer moved'
+    )
+    maybeBackfillResultCardValue(
+      'execution_mode',
+      'automation',
+      snapshotRecoveryLabels.automation,
+      'Automation'
     )
     maybeBackfillResultCardValue(
       'execution_mode',
@@ -3302,12 +4163,31 @@ export function buildLocalePostMergeBackfill(
       resultCardInputClickValues[localeKey],
       resultCardInputClickValues['en-US']
     )
+    maybeBackfillResultCardValue(
+      'host_os',
+      'browser',
+      snapshotRecoveryLabels.browser,
+      'Browser'
+    )
+    maybeBackfillResultCardValue('host_os', 'windows', 'Windows', 'Windows')
     maybeBackfillResultCardValue('host_os', 'darwin', 'macOS', 'Darwin')
     maybeBackfillResultCardValue(
       'input_method',
       'clipboard',
       resultCardClipboardValues[localeKey],
       resultCardClipboardValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'input_method',
+      'semantic_action',
+      resultCardSemanticActionValues[localeKey],
+      resultCardSemanticActionValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'input_method',
+      'set_value',
+      resultCardSetValueValues[localeKey],
+      resultCardSetValueValues['en-US']
     )
     maybeBackfillResultCardValue(
       'input_method',
@@ -3322,6 +4202,48 @@ export function buildLocalePostMergeBackfill(
       resultCardClickValues['en-US']
     )
     maybeBackfillResultCardValue(
+      'intent',
+      'message',
+      resultCardIntentMessageValues[localeKey],
+      resultCardIntentMessageValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'intent',
+      'select',
+      resultCardIntentSelectValues[localeKey],
+      resultCardIntentSelectValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'intent',
+      'toggle',
+      resultCardIntentToggleValues[localeKey],
+      resultCardIntentToggleValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'intent',
+      'type',
+      resultCardIntentTypeValues[localeKey],
+      resultCardIntentTypeValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'surface',
+      'browser',
+      snapshotRecoveryLabels.browser,
+      'Browser'
+    )
+    maybeBackfillResultCardValue(
+      'verification_method',
+      'ax_action',
+      resultCardAXActionValues[localeKey],
+      resultCardAXActionValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'verification_method',
+      'ax_value',
+      resultCardAXValueValues[localeKey],
+      resultCardAXValueValues['en-US']
+    )
+    maybeBackfillResultCardValue(
       'verification_method',
       'input_action',
       resultCardInputActionValues[localeKey],
@@ -3332,6 +4254,18 @@ export function buildLocalePostMergeBackfill(
       'focused_text',
       resultCardFocusedTextValues[localeKey],
       resultCardFocusedTextValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'verification_method',
+      'point_click',
+      resultCardPointClickValues[localeKey],
+      resultCardPointClickValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'verification_method',
+      'semantic_action',
+      resultCardSemanticActionValues[localeKey],
+      resultCardSemanticActionValues['en-US']
     )
   }
   const localizedMetricsMin = localizedMetricsMinLabels[localeKey]

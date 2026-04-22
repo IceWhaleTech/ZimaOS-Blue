@@ -198,6 +198,7 @@ func (t *UIReviewerTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
+					"enum":        uiReviewerActionEnum,
 					"description": "Optional canonical action: review_url (full URL review), review_image (VLM review of base64 image), check_accessibility (accessibility-only check). Defaults to review_url when url is provided, or review_image when image is provided. Do not use audit as an action name.",
 				},
 				"url": map[string]interface{}{
@@ -214,6 +215,7 @@ func (t *UIReviewerTool) Definition() ToolDefinition {
 				},
 				"device": map[string]interface{}{
 					"type":        "string",
+					"enum":        []string{"desktop", "mobile"},
 					"description": "Device type: desktop (1920x1080) or mobile (375x812). Auto-detected from channel if not set.",
 				},
 				"channel": map[string]interface{}{
@@ -231,11 +233,13 @@ func (t *UIReviewerTool) Definition() ToolDefinition {
 				},
 				"format": map[string]interface{}{
 					"type":        "string",
+					"enum":        []string{"json", "human"},
 					"description": "Output format: json or human. Default: json",
 					"default":     "json",
 				},
 				"profile": map[string]interface{}{
 					"type":        "string",
+					"enum":        []string{string(UIReviewProfileUIScreenshot), string(UIReviewProfilePPT)},
 					"description": "Review rubric profile: ui_screenshot (default) or ppt.",
 				},
 			},

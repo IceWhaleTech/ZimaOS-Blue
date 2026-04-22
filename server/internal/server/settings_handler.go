@@ -393,7 +393,7 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 		RouteKind: tools.ToolRouteKindChat,
 	}
 	selection := chatHandler.previewChatToolSurfacesForRequest(ctx, query, policyReq, nil, nil)
-	selectedDefs := selection.RoutedDefs
+	selectedDefs := selectorDryRunSelectedDefs(chatHandler, policyReq, selection)
 	toolNames := make([]string, len(selectedDefs))
 	for i, def := range selectedDefs {
 		toolNames[i] = def.Name
@@ -608,6 +608,18 @@ func selectorDryRunCanonicalSkillID(decision agentcore.Decision, discovery *agen
 		return string(canonical)
 	}
 	return strings.TrimSpace(decision.SelectedSkill)
+}
+
+func selectorDryRunSelectedDefs(chatHandler *ChatHandler, policyReq tools.ToolPolicyRequest, selection chatToolSurfaceSelection) []tools.ToolDefinition {
+	selectedDefs := selection.RoutedDefs
+	if chatHandler == nil || selection.DiscoveryDecision == nil {
+		return selectedDefs
+	}
+	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec || selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
+		return selectedDefs
+	}
+	allDefs := chatHandler.toolDefinitionsForPolicy(policyReq)
+	return mergeToolDefsByName(selectedDefs, filterToolDefsToNames(allDefs, "read", "write"))
 }
 
 func selectorDryRunDiscoverySurfaceReason(selection chatToolSurfaceSelection, skillDynamicExposure bool) string {

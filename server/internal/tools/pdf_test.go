@@ -1311,6 +1311,41 @@ func TestPDFToolReadExecuteReadModeDoesNotOverrideExplicitLimits(t *testing.T) {
 	}
 }
 
+func TestPDFToolReadExecutePurposeSkimSelectsFastModeWhenUnspecified(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    path,
+		"purpose": "skim",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if svc.lastExtractReq.MaxPages == 0 || svc.lastExtractReq.MaxChars == 0 {
+		t.Fatalf("expected purpose=skim to apply fast limits, got max_pages=%d max_chars=%d", svc.lastExtractReq.MaxPages, svc.lastExtractReq.MaxChars)
+	}
+}
+
+func TestPDFToolReadExecutePurposeDoesNotOverrideExplicitReadMode(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      path,
+		"purpose":   "skim",
+		"read_mode": "auto",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if svc.lastExtractReq.MaxPages != pdfReadModeAutoMaxPages {
+		t.Fatalf("MaxPages = %d, want %d (read_mode=auto)", svc.lastExtractReq.MaxPages, pdfReadModeAutoMaxPages)
+	}
+}
+
 func TestPDFToolReadExecuteSupportsStructuredFlags(t *testing.T) {
 	path := writeTestPDF(t, "report.pdf", 256)
 	svc := &stubPDFService{}

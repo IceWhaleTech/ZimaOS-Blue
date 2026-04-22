@@ -563,14 +563,20 @@ onMounted(async () => {
             })
           }}
         </span>
-        <span class="rounded-full bg-rose-50 px-3 py-1 text-xs text-rose-700">
+        <span
+          v-if="knowledgeSummary.conflicts > 0"
+          class="rounded-full bg-rose-50 px-3 py-1 text-xs text-rose-700"
+        >
           {{
             trp('knowledge.conflictCount', '{count} unresolved conflicts', {
               count: knowledgeSummary.conflicts,
             })
           }}
         </span>
-        <span class="rounded-full bg-sky-50 px-3 py-1 text-xs text-sky-700">
+        <span
+          v-if="knowledgeSummary.gaps > 0"
+          class="rounded-full bg-sky-50 px-3 py-1 text-xs text-sky-700"
+        >
           {{
             trp('knowledge.gapCount', '{count} open gaps', {
               count: knowledgeSummary.gaps,

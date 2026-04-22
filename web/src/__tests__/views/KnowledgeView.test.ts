@@ -459,7 +459,8 @@ describe('KnowledgeView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('0 unresolved conflicts')
+    expect(wrapper.text()).not.toContain('0 unresolved conflicts')
+    expect(wrapper.text()).not.toContain('0 open gaps')
     expect(wrapper.get('[data-testid="knowledge-repair-conflicts-button"]').attributes('disabled')).toBe(
       ''
     )

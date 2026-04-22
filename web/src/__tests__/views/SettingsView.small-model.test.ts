@@ -565,6 +565,33 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
+  it('hides context compression helper labels in the light-acceleration section', async () => {
+    routeTab = 'proxy'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const contextSection = wrapper.get('[data-testid="small-model-context-section"]')
+
+    expect(contextSection.text()).not.toContain(
+      i18n.global.t('settings.smallModel.contextCompressionHint')
+    )
+    expect(contextSection.text()).not.toContain(
+      i18n.global.t('settings.smallModel.contextCompressionMode')
+    )
+    expect(contextSection.text()).not.toContain(
+      i18n.global.t('settings.smallModel.contextCompressionModeHint')
+    )
+
+    wrapper.unmount()
+  })
+
   it('renders localized fallback reasons in the small-model stats panel', async () => {
     routeTab = 'proxy'
     vi.mocked(settingsApi.getSmallModelStats).mockResolvedValue({

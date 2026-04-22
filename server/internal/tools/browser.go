@@ -259,6 +259,7 @@ func (t *BrowserTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
+					"enum":        browserActionEnum,
 					"description": "navigate, snapshot, snapshot_interactive, snapshot_auto, act, screenshot, tabs, close, recipe, or recipes",
 				},
 				"url": map[string]interface{}{

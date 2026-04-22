@@ -41,6 +41,7 @@ Common read parameters (action=`read`):
 - `path` / `pdf`: Path or URL to a single PDF (workspace path preferred).
 - `pdfs` / `paths`: Multiple PDFs (deduped, capped).
 - `read_mode`: Preset for speed vs coverage (`full` / `auto` / `fast`).
+- `purpose` (Default: `summarize`): High-level intent hint that selects sensible defaults when you did not explicitly set `read_mode` / `max_pages` / `max_chars` / include flags. Values: `summarize` / `facts` / `skim`.
 - `pages`: Page selection like `"1,3-5"` or `[1,3,4,5]`. Use this when you know where the answer is.
 - `max_pages`: Hard cap on number of pages returned.
 - `max_chars`: Hard cap on characters returned.
@@ -75,6 +76,18 @@ Notes:
   - `full`: uses the server defaults (currently coverage-first; typically up to ~35 pages / ~180k chars)
 - `max_pages` / `max_chars` always take priority over `read_mode` (explicit limits win).
 - If you need a specific section, prefer providing `pages` explicitly (e.g., `pages="40-60"`).
+
+## Purpose (Intent Hint)
+
+`purpose` is a higher-level, more semantic alternative to manually choosing `read_mode` and include flags. It only takes effect when you did not explicitly set those lower-level knobs.
+
+- `purpose=summarize` (Default): Coverage-first; best for long reports/papers and end-to-end summaries.
+- `purpose=facts`: Balanced; best for extracting specific answers (numbers, definitions, short Q&A).
+- `purpose=skim`: Speed-first; best for “give me a quick idea what this is”.
+
+Precedence rules:
+- Explicit `read_mode` / `max_pages` / `max_chars` always win over `purpose`.
+- Explicit `include_markdown` / `include_outline` / `include_layout` always win over `purpose`.
 
 ## Output (What To Look For)
 

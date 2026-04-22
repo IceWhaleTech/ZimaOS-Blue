@@ -5,6 +5,7 @@ package ocr
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
@@ -20,23 +21,26 @@ var (
 	visionOnce sync.Once
 	visionErr  error
 
-	selAlloc                          objc.SEL
-	selInit                           objc.SEL
-	selRelease                        objc.SEL
-	selStringWithUTF8String           objc.SEL
-	selUTF8String                     objc.SEL
-	selLocalizedDescription           objc.SEL
-	selDataWithBytesLength            objc.SEL
-	selInitWithDataOptions            objc.SEL
-	selPerformRequestsError           objc.SEL
-	selResults                        objc.SEL
-	selTopCandidates                  objc.SEL
-	selString                         objc.SEL
-	selCount                          objc.SEL
-	selObjectAtIndex                  objc.SEL
-	selAddObject                      objc.SEL
-	selSetRecognitionLanguages        objc.SEL
-	selSetUsesLanguageCorrection      objc.SEL
+	macOSNativeLockOSThread   = runtime.LockOSThread
+	macOSNativeUnlockOSThread = runtime.UnlockOSThread
+
+	selAlloc                           objc.SEL
+	selInit                            objc.SEL
+	selRelease                         objc.SEL
+	selStringWithUTF8String            objc.SEL
+	selUTF8String                      objc.SEL
+	selLocalizedDescription            objc.SEL
+	selDataWithBytesLength             objc.SEL
+	selInitWithDataOptions             objc.SEL
+	selPerformRequestsError            objc.SEL
+	selResults                         objc.SEL
+	selTopCandidates                   objc.SEL
+	selString                          objc.SEL
+	selCount                           objc.SEL
+	selObjectAtIndex                   objc.SEL
+	selAddObject                       objc.SEL
+	selSetRecognitionLanguages         objc.SEL
+	selSetUsesLanguageCorrection       objc.SEL
 	selSetAutomaticallyDetectsLanguage objc.SEL
 )
 
@@ -139,93 +143,95 @@ func extractMacOSNativeText(ctx context.Context, imagePNG []byte, recognitionLan
 		return "", err
 	}
 
-	pool := newAutoreleasePool()
-	if pool != 0 {
-		defer releaseObject(pool)
-	}
-
-	nsDataClass := objc.ID(objc.GetClass("NSData"))
-	requestClass := objc.ID(objc.GetClass("VNRecognizeTextRequest"))
-	handlerClass := objc.ID(objc.GetClass("VNImageRequestHandler"))
-	arrayClass := objc.ID(objc.GetClass("NSMutableArray"))
-	if nsDataClass == 0 || requestClass == 0 || handlerClass == 0 || arrayClass == 0 {
-		return "", fmt.Errorf("required macOS OCR classes are unavailable")
-	}
-
-	data := nsDataClass.Send(selDataWithBytesLength, unsafe.Pointer(&imagePNG[0]), uintptr(len(imagePNG)))
-	if data == 0 {
-		return "", fmt.Errorf("create image data for macOS OCR")
-	}
-
-	request := requestClass.Send(selAlloc).Send(selInit)
-	if request == 0 {
-		return "", fmt.Errorf("create Vision OCR request")
-	}
-	defer releaseObject(request)
-	request.Send(selSetUsesLanguageCorrection, true)
-	if len(recognitionLanguages) > 0 {
-		languageArray := nsStringArray(recognitionLanguages)
-		if languageArray != 0 {
-			request.Send(selSetRecognitionLanguages, languageArray)
-			releaseObject(languageArray)
+	return withMacOSNativeThreadAffinity(func() (string, error) {
+		pool := newAutoreleasePool()
+		if pool != 0 {
+			defer releaseObject(pool)
 		}
-	} else {
-		request.Send(selSetAutomaticallyDetectsLanguage, true)
-	}
 
-	requests := arrayClass.Send(selAlloc).Send(selInit)
-	if requests == 0 {
-		return "", fmt.Errorf("create Vision OCR request array")
-	}
-	defer releaseObject(requests)
-	requests.Send(selAddObject, request)
+		nsDataClass := objc.ID(objc.GetClass("NSData"))
+		requestClass := objc.ID(objc.GetClass("VNRecognizeTextRequest"))
+		handlerClass := objc.ID(objc.GetClass("VNImageRequestHandler"))
+		arrayClass := objc.ID(objc.GetClass("NSMutableArray"))
+		if nsDataClass == 0 || requestClass == 0 || handlerClass == 0 || arrayClass == 0 {
+			return "", fmt.Errorf("required macOS OCR classes are unavailable")
+		}
 
-	handler := handlerClass.Send(selAlloc).Send(selInitWithDataOptions, data, objc.ID(0))
-	if handler == 0 {
-		return "", fmt.Errorf("create Vision OCR handler")
-	}
-	defer releaseObject(handler)
+		data := nsDataClass.Send(selDataWithBytesLength, unsafe.Pointer(&imagePNG[0]), uintptr(len(imagePNG)))
+		if data == 0 {
+			return "", fmt.Errorf("create image data for macOS OCR")
+		}
 
-	var nsErr objc.ID
-	if !objc.Send[bool](handler, selPerformRequestsError, requests, unsafe.Pointer(&nsErr)) {
-		if nsErr != 0 {
-			return "", fmt.Errorf("run macOS OCR: %s", goString(nsErr.Send(selLocalizedDescription)))
+		request := requestClass.Send(selAlloc).Send(selInit)
+		if request == 0 {
+			return "", fmt.Errorf("create Vision OCR request")
 		}
-		return "", fmt.Errorf("run macOS OCR")
-	}
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
+		defer releaseObject(request)
+		request.Send(selSetUsesLanguageCorrection, true)
+		if len(recognitionLanguages) > 0 {
+			languageArray := nsStringArray(recognitionLanguages)
+			if languageArray != 0 {
+				request.Send(selSetRecognitionLanguages, languageArray)
+				releaseObject(languageArray)
+			}
+		} else {
+			request.Send(selSetAutomaticallyDetectsLanguage, true)
+		}
 
-	results := request.Send(selResults)
-	if results == 0 {
-		return "", nil
-	}
-	count := int(objc.Send[uint64](results, selCount))
-	if count <= 0 {
-		return "", nil
-	}
+		requests := arrayClass.Send(selAlloc).Send(selInit)
+		if requests == 0 {
+			return "", fmt.Errorf("create Vision OCR request array")
+		}
+		defer releaseObject(requests)
+		requests.Send(selAddObject, request)
 
-	lines := make([]string, 0, count)
-	for i := 0; i < count; i++ {
-		observation := results.Send(selObjectAtIndex, uintptr(i))
-		if observation == 0 {
-			continue
+		handler := handlerClass.Send(selAlloc).Send(selInitWithDataOptions, data, objc.ID(0))
+		if handler == 0 {
+			return "", fmt.Errorf("create Vision OCR handler")
 		}
-		candidates := observation.Send(selTopCandidates, uintptr(1))
-		if candidates == 0 || int(objc.Send[uint64](candidates, selCount)) == 0 {
-			continue
+		defer releaseObject(handler)
+
+		var nsErr objc.ID
+		if !objc.Send[bool](handler, selPerformRequestsError, requests, unsafe.Pointer(&nsErr)) {
+			if nsErr != 0 {
+				return "", fmt.Errorf("run macOS OCR: %s", goString(nsErr.Send(selLocalizedDescription)))
+			}
+			return "", fmt.Errorf("run macOS OCR")
 		}
-		candidate := candidates.Send(selObjectAtIndex, uintptr(0))
-		if candidate == 0 {
-			continue
+		if err := ctx.Err(); err != nil {
+			return "", err
 		}
-		text := strings.TrimSpace(goString(candidate.Send(selString)))
-		if text != "" {
-			lines = append(lines, text)
+
+		results := request.Send(selResults)
+		if results == 0 {
+			return "", nil
 		}
-	}
-	return strings.Join(lines, "\n"), nil
+		count := int(objc.Send[uint64](results, selCount))
+		if count <= 0 {
+			return "", nil
+		}
+
+		lines := make([]string, 0, count)
+		for i := 0; i < count; i++ {
+			observation := results.Send(selObjectAtIndex, uintptr(i))
+			if observation == 0 {
+				continue
+			}
+			candidates := observation.Send(selTopCandidates, uintptr(1))
+			if candidates == 0 || int(objc.Send[uint64](candidates, selCount)) == 0 {
+				continue
+			}
+			candidate := candidates.Send(selObjectAtIndex, uintptr(0))
+			if candidate == 0 {
+				continue
+			}
+			text := strings.TrimSpace(goString(candidate.Send(selString)))
+			if text != "" {
+				lines = append(lines, text)
+			}
+		}
+		return strings.Join(lines, "\n"), nil
+	})
 }
 
 func visionRecognitionLanguages(preferredModels []string) []string {
@@ -283,6 +289,31 @@ func releaseObject(id objc.ID) {
 		return
 	}
 	id.Send(selRelease)
+}
+
+// Objective-C autorelease pools are thread-local. Keep pool creation, native
+// work, and deferred pool teardown on the same OS thread.
+func withMacOSNativeThreadAffinity(fn func() (string, error)) (string, error) {
+	macOSNativeLockOSThread()
+	defer macOSNativeUnlockOSThread()
+	return fn()
+}
+
+func setMacOSNativeThreadHooksForTest(lock func(), unlock func()) func() {
+	prevLock := macOSNativeLockOSThread
+	prevUnlock := macOSNativeUnlockOSThread
+	if lock == nil {
+		lock = func() {}
+	}
+	if unlock == nil {
+		unlock = func() {}
+	}
+	macOSNativeLockOSThread = lock
+	macOSNativeUnlockOSThread = unlock
+	return func() {
+		macOSNativeLockOSThread = prevLock
+		macOSNativeUnlockOSThread = prevUnlock
+	}
 }
 
 func nsString(value string) objc.ID {

@@ -243,6 +243,31 @@ func TestToolGatewayEmitsRuntimeObserverEvents(t *testing.T) {
 	}
 }
 
+func TestToolGateway_UIReviewerCompatActionPassesSchemaValidation(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(NewUIReviewerTool())
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-ui-review",
+		ToolName:   "ui_reviewer",
+		Arguments:  `{"action":"review webpage","url":"https://example.com"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err == nil {
+		t.Fatal("expected tool execution error, got nil")
+	}
+	if strings.Contains(err.Error(), "arguments did not match schema") {
+		t.Fatalf("expected compat normalization before schema validation, got %v", err)
+	}
+	if result == nil || result.NormalizedCall.Arguments == nil {
+		t.Fatalf("expected normalized call in result, got %+v", result)
+	}
+	if got := asString(result.NormalizedCall.Arguments["action"]); got != "review_url" {
+		t.Fatalf("normalized action = %q, want review_url", got)
+	}
+}
+
 func TestToolGatewayRejectsInvalidArguments(t *testing.T) {
 	registry := NewRegistry()
 	registry.Register(&gatewayResultTool{

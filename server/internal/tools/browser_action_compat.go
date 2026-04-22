@@ -4,6 +4,35 @@ import "strings"
 
 const browserLegacyPageScrollStep = 640
 
+var browserActionEnum = []string{
+	"navigate",
+	"snapshot",
+	"snapshot_interactive",
+	"snapshot_auto",
+	"act",
+	"screenshot",
+	"tabs",
+	"close",
+	"recipe",
+	"recipes",
+}
+
+func normalizeBrowserActionIntentPhrase(action string) (string, bool) {
+	lower := strings.ToLower(strings.TrimSpace(action))
+	switch {
+	case strings.Contains(lower, "interactive"),
+		strings.Contains(lower, "actionable"),
+		strings.Contains(lower, "clickable"),
+		strings.Contains(lower, "elements"),
+		strings.Contains(lower, "element"),
+		strings.Contains(lower, "交互"),
+		strings.Contains(lower, "元素"):
+		return "snapshot_interactive", true
+	default:
+		return "", false
+	}
+}
+
 // NormalizeBrowserActionAlias maps browser CLI and skill aliases to the
 // canonical action family used by browser tooling.
 func NormalizeBrowserActionAlias(action string) (string, bool) {
@@ -56,10 +85,15 @@ func LooksLikeBrowserURL(raw string) bool {
 // Older callers may send action=scroll/click/type/etc. instead of
 // action=act + act_type=<verb>. This keeps those calls working.
 func CanonicalizeBrowserAction(action string, actType string) (string, string) {
-	canonicalAction := strings.ToLower(strings.TrimSpace(action))
+	rawAction := strings.TrimSpace(action)
+	canonicalAction := strings.ToLower(rawAction)
 	canonicalActType := strings.ToLower(strings.TrimSpace(actType))
 	if mappedAction, ok := NormalizeBrowserActionAlias(canonicalAction); ok {
 		canonicalAction = mappedAction
+	} else if intentAction, ok := normalizeBrowserActionIntentPhrase(rawAction); ok {
+		canonicalAction = intentAction
+	} else if fuzzyAction, ok := resolveFuzzySchemaEnumValue(rawAction, browserActionEnum); ok {
+		canonicalAction = fuzzyAction
 	}
 
 	switch canonicalAction {

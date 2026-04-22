@@ -7717,9 +7717,6 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		selection.SurfaceMode = chatToolSurfaceModeClarifyNone
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	case agentcore.NativeSurfaceModeSkillExec:
-		if shouldPreferDirectPublicWebLookup(userMessage, selection) && h.directWebRescueEnabled(policyReq.SessionID) {
-			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, h.applyDirectPublicWebSelection(policyReq, selection)), userMessage)
-		}
 		// Validate capability toggles for cutover-eligible canonical skills
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
 			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
@@ -8630,6 +8627,8 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		debugCopy := selection.Debug
 		toolDebug = &debugCopy
 		switch {
+		case len(selection.Selected) > 0:
+			routed = selection.Selected
 		case shouldSuppressEmptyToolSelection(debugCopy) && !shouldPreserveDeferredSelectorSurface(selectorBase):
 			routed = nil
 		}
@@ -8669,6 +8668,9 @@ func (h *ChatHandler) preserveSelectorCriticalToolSurface(userMessage string, po
 	if len(beforeSelector) == 0 {
 		return current
 	}
+	if shouldPreserveSelectorWorkflowBundle(userMessage, beforeSelector) {
+		current = mergeToolDefsByName(current, beforeSelector)
+	}
 	if len(filterToolDefsToNames(beforeSelector, "tool_search")) > 0 && len(current) > 0 {
 		current = mergeToolDefsByName(current, filterToolDefsToNames(beforeSelector, "tool_search"))
 	}
@@ -8676,6 +8678,31 @@ func (h *ChatHandler) preserveSelectorCriticalToolSurface(userMessage string, po
 		return mergeToolDefsByName(current, filterToolDefsToNames(beforeSelector, "computer_use"))
 	}
 	return h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, current)
+}
+
+func shouldPreserveSelectorWorkflowBundle(userMessage string, beforeSelector []tools.ToolDefinition) bool {
+	if len(beforeSelector) == 0 {
+		return false
+	}
+	if shouldExpandChatToolAllowlistForEmailIntent(userMessage) && hasToolDefName(beforeSelector, "email") {
+		return true
+	}
+	if shouldExpandChatToolAllowlistForCalendarIntent(userMessage) && hasToolDefName(beforeSelector, "calendar") {
+		return true
+	}
+	if shouldPreferPublicArtifactResearchWorkflow(userMessage) ||
+		shouldPreferWorkspaceArtifactWorkflow(userMessage) ||
+		shouldPreferDirectArtifactWriting(userMessage) ||
+		shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage) ||
+		shouldExpandChatToolAllowlistForExplicitNamedNativeTool(userMessage) {
+		return true
+	}
+	for _, name := range []string{"plan_create", "plan_update", "plan_append"} {
+		if hasToolDefName(beforeSelector, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func stringSliceContains(values []string, want string) bool {
@@ -10166,10 +10193,6 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	case agentcore.NativeSurfaceModeLegacy:
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
-	}
-
-	if shouldPreferDirectPublicWebLookup(userMessage, selection) && h.directWebRescueEnabled(policyReq.SessionID) {
-		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, h.applyDirectPublicWebSelection(policyReq, selection)), userMessage)
 	}
 
 	if skillDynamicExposure {

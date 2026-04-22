@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+var uiReviewerActionEnum = []string{"review_url", "review_image", "check_accessibility"}
+
 var uiReviewImageCompatKeys = []string{
 	"image",
 	"image_base64",
@@ -74,6 +76,12 @@ func CanonicalizeUIReviewAction(action string, url string, image string) (string
 	case "accessibility", "a11y", "accessibility_check", "check_a11y", "a11y_check":
 		return "check_accessibility", nil
 	default:
+		if fuzzyAction, ok := resolveFuzzySchemaEnumValue(rawAction, uiReviewerActionEnum); ok {
+			return fuzzyAction, nil
+		}
+		if fuzzyAction, ok := resolveFuzzySchemaEnumValue(canonicalAction, uiReviewerActionEnum); ok {
+			return fuzzyAction, nil
+		}
 		label := rawAction
 		if label == "" {
 			label = action

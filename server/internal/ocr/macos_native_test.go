@@ -8,6 +8,54 @@ import (
 	"testing"
 )
 
+func TestWithMacOSNativeThreadAffinityLocksAndUnlocksInOrder(t *testing.T) {
+	var calls []string
+	restore := setMacOSNativeThreadHooksForTest(
+		func() { calls = append(calls, "lock") },
+		func() { calls = append(calls, "unlock") },
+	)
+	defer restore()
+
+	got, err := withMacOSNativeThreadAffinity(func() (string, error) {
+		calls = append(calls, "body")
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatalf("withMacOSNativeThreadAffinity returned error: %v", err)
+	}
+	if got != "ok" {
+		t.Fatalf("result = %q, want %q", got, "ok")
+	}
+
+	wantCalls := []string{"lock", "body", "unlock"}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("calls = %#v, want %#v", calls, wantCalls)
+	}
+}
+
+func TestWithMacOSNativeThreadAffinityUnlocksOnError(t *testing.T) {
+	var calls []string
+	restore := setMacOSNativeThreadHooksForTest(
+		func() { calls = append(calls, "lock") },
+		func() { calls = append(calls, "unlock") },
+	)
+	defer restore()
+
+	wantErr := context.Canceled
+	_, err := withMacOSNativeThreadAffinity(func() (string, error) {
+		calls = append(calls, "body")
+		return "", wantErr
+	})
+	if err != wantErr {
+		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+
+	wantCalls := []string{"lock", "body", "unlock"}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("calls = %#v, want %#v", calls, wantCalls)
+	}
+}
+
 func TestNewTesseractServiceUsesMacOSNativeOCROnDarwin(t *testing.T) {
 	svc := NewTesseractService(nil, Config{})
 	if _, ok := any(svc).(*MacOSNativeService); !ok {

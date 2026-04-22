@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Common errors
@@ -358,6 +359,7 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 		return record(resolvedName, nil, ErrToolNotFound)
 	}
 
+	args = applyFuzzyEnumCompat(tool.Definition().Parameters, args)
 	result, err := executeToolWithRecovery(ctx, resolvedName, tool, args)
 	return record(resolvedName, result, err)
 }
@@ -435,6 +437,8 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 		return normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return normalizeBrowserCompatArgs(rawName, args)
+	case "ui_reviewer":
+		return normalizeUIReviewerCompatArgs(args)
 	case "research", "deep_research", "research_run", "research_status", "deep-research":
 		return normalizeDeepResearchCompatArgs(rawName, args)
 	case "docx", "xlsx", "pptx", "pdf":
@@ -442,6 +446,470 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 	default:
 		return args
 	}
+}
+
+func applyFuzzyEnumCompat(schema map[string]interface{}, args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 || len(schema) == 0 {
+		return args
+	}
+
+	enumFields := extractSchemaStringEnumCandidates(schema)
+	if len(enumFields) == 0 {
+		return args
+	}
+
+	keys := make([]string, 0, len(enumFields))
+	for key := range enumFields {
+		keys = append(keys, key)
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		if keys[i] == "action" {
+			return true
+		}
+		if keys[j] == "action" {
+			return false
+		}
+		return keys[i] < keys[j]
+	})
+
+	normalized := args
+	cloned := false
+	for _, field := range keys {
+		rawValue := strings.TrimSpace(firstCompatStringDeep(args, compatEnumFieldAliases(field)...))
+		if rawValue == "" {
+			continue
+		}
+		canonical, ok := resolveFuzzySchemaEnumValue(rawValue, enumFields[field])
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(asString(normalized[field])) == canonical {
+			continue
+		}
+		if !cloned {
+			copied := make(map[string]interface{}, len(args)+1)
+			for k, v := range args {
+				copied[k] = v
+			}
+			normalized = copied
+			cloned = true
+		}
+		normalized[field] = canonical
+	}
+	return normalized
+}
+
+func compatEnumFieldAliases(field string) []string {
+	if strings.EqualFold(strings.TrimSpace(field), "action") {
+		return []string{"action", "op", "operation", "command"}
+	}
+	return []string{field}
+}
+
+func extractSchemaStringEnumCandidates(schema map[string]interface{}) map[string][]string {
+	if len(schema) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]map[string]struct{})
+	out := make(map[string][]string)
+	var visit func(node interface{})
+	visit = func(node interface{}) {
+		if node == nil {
+			return
+		}
+		switch typed := node.(type) {
+		case map[string]interface{}:
+			if props, ok := typed["properties"].(map[string]interface{}); ok {
+				for field, rawFieldSchema := range props {
+					fieldSchema, ok := rawFieldSchema.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					if looksLikeStringEnumSchema(fieldSchema) {
+						for _, candidate := range extractEnumStrings(fieldSchema["enum"]) {
+							if seen[field] == nil {
+								seen[field] = make(map[string]struct{})
+							}
+							if _, exists := seen[field][candidate]; exists {
+								continue
+							}
+							seen[field][candidate] = struct{}{}
+							out[field] = append(out[field], candidate)
+						}
+					}
+					visit(fieldSchema)
+				}
+			}
+			for _, key := range []string{"oneOf", "anyOf", "allOf"} {
+				items, ok := typed[key].([]interface{})
+				if !ok {
+					continue
+				}
+				for _, item := range items {
+					visit(item)
+				}
+			}
+			if items, ok := typed["items"]; ok {
+				visit(items)
+			}
+		}
+	}
+	visit(schema)
+	return out
+}
+
+func looksLikeStringEnumSchema(schema map[string]interface{}) bool {
+	enums := extractEnumStrings(schema["enum"])
+	if len(enums) == 0 {
+		return false
+	}
+	typeName := strings.TrimSpace(strings.ToLower(asString(schema["type"])))
+	return typeName == "" || typeName == "string"
+}
+
+func extractEnumStrings(v interface{}) []string {
+	switch typed := v.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if trimmed := strings.TrimSpace(item); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if trimmed := strings.TrimSpace(asString(item)); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func resolveFuzzySchemaEnumValue(rawValue string, candidates []string) (string, bool) {
+	rawValue = strings.TrimSpace(rawValue)
+	if rawValue == "" || len(candidates) == 0 {
+		return "", false
+	}
+
+	for _, candidate := range candidates {
+		if strings.EqualFold(strings.TrimSpace(candidate), rawValue) {
+			return candidate, true
+		}
+		if fuzzyCollapseEnumPhrase(candidate) == fuzzyCollapseEnumPhrase(rawValue) {
+			return candidate, true
+		}
+	}
+
+	type scoredCandidate struct {
+		action string
+		score  float64
+	}
+	scored := make([]scoredCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		score := fuzzySchemaEnumScore(rawValue, candidate)
+		if score <= 0 {
+			continue
+		}
+		scored = append(scored, scoredCandidate{action: candidate, score: score})
+	}
+	if len(scored) == 0 {
+		return "", false
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score == scored[j].score {
+			return scored[i].action < scored[j].action
+		}
+		return scored[i].score > scored[j].score
+	})
+
+	best := scored[0]
+	if best.score < 0.78 {
+		return "", false
+	}
+	if len(scored) > 1 && scored[1].score >= 0.72 && (best.score-scored[1].score) < 0.08 {
+		return "", false
+	}
+	return best.action, true
+}
+
+func fuzzySchemaEnumScore(rawValue string, candidate string) float64 {
+	query := strings.ToLower(strings.TrimSpace(rawValue))
+	candidate = strings.TrimSpace(candidate)
+	if query == "" || candidate == "" {
+		return 0
+	}
+
+	queryCollapsed := fuzzyCollapseEnumPhrase(query)
+	candidateCollapsed := fuzzyCollapseEnumPhrase(candidate)
+	if queryCollapsed == candidateCollapsed {
+		return 1
+	}
+	if candidateCollapsed != "" && strings.Contains(queryCollapsed, candidateCollapsed) {
+		return 0.96
+	}
+
+	candidateTokens := splitEnumCandidateTokens(candidate)
+	if len(candidateTokens) == 0 {
+		return 0
+	}
+
+	total := 0.0
+	for _, token := range candidateTokens {
+		tokenScore := fuzzySchemaEnumTokenScore(query, token)
+		if tokenScore <= 0 {
+			return 0
+		}
+		total += tokenScore
+	}
+
+	score := total / float64(len(candidateTokens))
+	if len(candidateTokens) > 1 && strings.Contains(queryCollapsed, candidateCollapsed) {
+		score += 0.04
+	}
+	return score
+}
+
+func splitEnumCandidateTokens(candidate string) []string {
+	candidate = strings.ToLower(strings.TrimSpace(candidate))
+	if candidate == "" {
+		return nil
+	}
+	fields := strings.Fields(strings.NewReplacer("_", " ", "-", " ", ".", " ").Replace(candidate))
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
+func fuzzyCollapseEnumPhrase(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return ""
+	}
+	return strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r):
+			return r
+		default:
+			return -1
+		}
+	}, raw)
+}
+
+func fuzzySchemaEnumTokenScore(query string, token string) float64 {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return 0
+	}
+
+	best := 0.0
+	for _, alias := range fuzzyEnumTokenAliases(token) {
+		score := fuzzySchemaEnumAliasScore(query, alias)
+		if score > best {
+			best = score
+		}
+	}
+	return best
+}
+
+func fuzzyEnumTokenAliases(token string) []string {
+	if aliases, ok := fuzzyEnumTokenAliasLexicon[token]; ok {
+		out := make([]string, 0, len(aliases)+1)
+		out = append(out, token)
+		out = append(out, aliases...)
+		return out
+	}
+	return []string{token}
+}
+
+var fuzzyEnumTokenAliasLexicon = map[string][]string{
+	"read":          {"open", "view", "inspect", "display", "show", "读取", "查看", "打开"},
+	"create":        {"make", "new", "generate", "draft", "compose", "创建", "新建", "生成", "制作"},
+	"edit":          {"update", "modify", "change", "revise", "编辑", "修改", "更新"},
+	"apply":         {"use", "fill", "populate", "套用", "应用", "使用"},
+	"template":      {"模板"},
+	"validate":      {"check", "verify", "lint", "验证", "校验", "检查"},
+	"search":        {"find", "lookup", "look up", "query", "搜索", "查找", "查询"},
+	"get":           {"fetch", "retrieve", "read", "obtain", "获取", "读取"},
+	"fetch":         {"retrieve", "download", "get", "抓取", "获取", "下载"},
+	"list":          {"show", "browse", "view", "列出", "列表", "查看"},
+	"status":        {"state", "progress", "情况", "状态", "进度"},
+	"summarize":     {"summary", "digest", "overview", "总结", "摘要", "汇总"},
+	"archive":       {"store", "归档"},
+	"label":         {"tag", "categorize", "标签", "打标签"},
+	"delete":        {"remove", "drop", "erase", "删除", "移除", "清除"},
+	"forget":        {"delete", "remove", "遗忘", "删除", "移除"},
+	"remember":      {"save", "store", "record", "记住", "保存", "记录"},
+	"navigate":      {"open", "visit", "goto", "go to", "访问", "打开", "前往"},
+	"snapshot":      {"inspect", "view", "tree", "capture", "查看", "检查", "快照", "树"},
+	"screenshot":    {"capture", "screen", "shot", "截图", "截屏"},
+	"image":         {"screenshot", "picture", "photo", "图像", "图片", "截图", "截屏"},
+	"url":           {"website", "webpage", "page", "site", "link", "网页", "页面", "网址", "链接", "站点"},
+	"review":        {"inspect", "analyze", "audit", "review", "审查", "评审", "分析"},
+	"check":         {"validate", "verify", "inspect", "检查", "校验", "验证"},
+	"accessibility": {"a11y", "accessible", "无障碍"},
+	"history":       {"log", "timeline", "历史", "记录"},
+	"spawn":         {"create", "start", "launch", "启动", "创建"},
+	"send":          {"message", "deliver", "发送"},
+	"run":           {"start", "execute", "launch", "运行", "执行"},
+	"tabs":          {"tab list", "pages", "windows", "标签", "标签页"},
+	"close":         {"remove", "dismiss", "关闭"},
+	"recipe":        {"workflow", "配方", "流程"},
+	"recipes":       {"workflow list", "配方列表"},
+	"interactive":   {"actionable", "clickable", "交互", "可点击"},
+	"elements":      {"controls", "nodes", "元素", "控件"},
+	"capabilities":  {"features", "supported", "能力", "支持项"},
+	"windows":       {"window list", "窗口", "窗口列表"},
+	"focus":         {"activate", "raise", "bring", "聚焦", "激活"},
+	"message":       {"chat", "reply", "dm", "消息", "发消息", "发送消息"},
+	"type":          {"input", "write", "enter", "fill", "输入", "填写", "键入"},
+	"select":        {"choose", "pick", "switch", "选择", "切换"},
+	"toggle":        {"enable", "disable", "switch", "开关", "启用", "关闭"},
+	"click":         {"tap", "press", "hit", "点击", "单击"},
+	"key":           {"keys", "shortcut", "hotkey", "快捷键", "按键", "组合键"},
+	"scroll":        {"swipe", "滚动"},
+	"analyze":       {"inspect", "review", "分析", "检查"},
+	"providers":     {"provider", "providers", "供应商", "服务商"},
+	"settings":      {"setting", "settings", "config", "configuration", "设置", "配置"},
+	"channels":      {"channel", "channels", "通道", "频道"},
+	"skills":        {"skill", "skills", "技能"},
+	"tools":         {"tool", "tools", "工具"},
+	"system":        {"sys", "health", "info", "系统"},
+	"proxy":         {"cache", "proxy", "代理", "缓存"},
+	"users":         {"user", "users", "account", "accounts", "用户", "账号"},
+	"apikeys":       {"api key", "api keys", "key", "keys", "密钥", "api密钥"},
+	"upgrade":       {"update", "updates", "ota", "升级", "更新"},
+}
+
+func fuzzySchemaEnumAliasScore(query string, alias string) float64 {
+	query = strings.ToLower(strings.TrimSpace(query))
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	if query == "" || alias == "" {
+		return 0
+	}
+
+	queryCollapsed := fuzzyCollapseEnumPhrase(query)
+	aliasCollapsed := fuzzyCollapseEnumPhrase(alias)
+	if queryCollapsed == aliasCollapsed {
+		return 1
+	}
+	if aliasCollapsed != "" && strings.Contains(queryCollapsed, aliasCollapsed) {
+		return 0.96
+	}
+
+	queryWords := enumPhraseWordSet(query)
+	if len(queryWords) > 0 {
+		for _, aliasWord := range splitEnumAliasWords(alias) {
+			if _, ok := queryWords[aliasWord]; ok {
+				return 0.9
+			}
+			for queryWord := range queryWords {
+				if fuzzyWordSimilarity(queryWord, aliasWord) >= 0.86 {
+					return 0.8
+				}
+			}
+		}
+	}
+
+	if fuzzyWordSimilarity(queryCollapsed, aliasCollapsed) >= 0.9 {
+		return 0.75
+	}
+	return 0
+}
+
+func enumPhraseWordSet(raw string) map[string]struct{} {
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r):
+			return r
+		default:
+			return ' '
+		}
+	}, strings.ToLower(raw))
+	fields := strings.Fields(cleaned)
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		out[field] = struct{}{}
+	}
+	return out
+}
+
+func splitEnumAliasWords(alias string) []string {
+	return strings.Fields(strings.NewReplacer("_", " ", "-", " ").Replace(strings.ToLower(strings.TrimSpace(alias))))
+}
+
+func fuzzyWordSimilarity(a string, b string) float64 {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return 0
+	}
+	if a == b {
+		return 1
+	}
+	if strings.HasPrefix(a, b) || strings.HasPrefix(b, a) {
+		return 0.92
+	}
+	dist := levenshteinDistance([]rune(a), []rune(b))
+	maxLen := len([]rune(a))
+	if other := len([]rune(b)); other > maxLen {
+		maxLen = other
+	}
+	if maxLen == 0 {
+		return 0
+	}
+	return 1 - float64(dist)/float64(maxLen)
+}
+
+func levenshteinDistance(a []rune, b []rune) int {
+	if len(a) == 0 {
+		return len(b)
+	}
+	if len(b) == 0 {
+		return len(a)
+	}
+
+	prev := make([]int, len(b)+1)
+	curr := make([]int, len(b)+1)
+	for j := 0; j <= len(b); j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		curr[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			curr[j] = minActionCompatInt(
+				curr[j-1]+1,
+				prev[j]+1,
+				prev[j-1]+cost,
+			)
+		}
+		prev, curr = curr, prev
+	}
+	return prev[len(b)]
+}
+
+func minActionCompatInt(values ...int) int {
+	best := values[0]
+	for _, value := range values[1:] {
+		if value < best {
+			best = value
+		}
+	}
+	return best
 }
 
 func normalizeNativeDocumentCompatArgs(args map[string]interface{}) map[string]interface{} {
@@ -1289,6 +1757,58 @@ func normalizeBrowserCompatArgs(rawName string, args map[string]interface{}) map
 	}
 
 	return normalized
+}
+
+func normalizeUIReviewerCompatArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+10)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	NormalizeUIReviewCompatArgs(normalized)
+
+	for _, field := range []struct {
+		key     string
+		aliases []string
+	}{
+		{key: "device", aliases: []string{"device"}},
+		{key: "channel", aliases: []string{"channel"}},
+		{key: "lang", aliases: []string{"lang", "language"}},
+		{key: "format", aliases: []string{"format", "output_format", "outputFormat"}},
+		{key: "profile", aliases: []string{"profile", "quality_profile", "qualityProfile"}},
+	} {
+		if strings.TrimSpace(asString(normalized[field.key])) != "" {
+			continue
+		}
+		if value := firstCompatStringDeep(normalized, field.aliases...); value != "" {
+			normalized[field.key] = value
+		}
+	}
+
+	for _, field := range []struct {
+		key     string
+		aliases []string
+	}{
+		{key: "wait_ms", aliases: []string{"wait_ms", "waitMs"}},
+		{key: "threshold", aliases: []string{"threshold"}},
+	} {
+		if _, ok := normalized[field.key]; ok {
+			continue
+		}
+		if value, ok := firstCompatValueDeep(normalized, field.aliases...); ok {
+			normalized[field.key] = value
+		}
+	}
+
+	if action, err := CanonicalizeUIReviewAction(
+		strings.TrimSpace(asString(normalized["action"])),
+		strings.TrimSpace(asString(normalized["url"])),
+		strings.TrimSpace(asString(normalized["image"])),
+	); err == nil && action != "" {
+		normalized["action"] = action
+	}
+
+	return applyFuzzyEnumCompat(NewUIReviewerTool().Definition().Parameters, normalized)
 }
 
 func inferMemoryActionFromAlias(name string) string {

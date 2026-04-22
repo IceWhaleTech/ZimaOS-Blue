@@ -1262,21 +1262,13 @@ onUnmounted(() => {
                             : t('common.disabled', 'Disabled')
                         }}
                       </div>
-                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {{
-                          t(
-                            'settings.smallModel.contextCompressionHint',
-                            'Lets the lightweight model compress long history, while the latest user message still decides what happens now.'
-                          )
-                        }}
-                      </div>
                       <div class="mt-3">
-                        <label class="text-xs font-medium text-gray-600 dark:text-gray-300">
-                          {{ t('settings.smallModel.contextCompressionMode', 'Compression Mode') }}
-                        </label>
                         <select
                           data-testid="context-compression-mode-select"
                           :value="settingsStore.contextCompressionMode"
+                          :aria-label="
+                            t('settings.smallModel.contextCompressionMode', 'Compression Mode')
+                          "
                           class="settings-select"
                           :disabled="smallModelSaving"
                           @change="
@@ -1308,14 +1300,6 @@ onUnmounted(() => {
                             }}
                           </option>
                         </select>
-                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          {{
-                            t(
-                              'settings.smallModel.contextCompressionModeHint',
-                              'Compression triggers automatically under context pressure. This only chooses which compression path to prefer.'
-                            )
-                          }}
-                        </div>
                       </div>
                     </div>
 

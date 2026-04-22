@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
 )
@@ -395,7 +396,130 @@ func normalizeA11yAction(action string) string {
 	case "pointermove", "movepointer", "mousemove", "moveto":
 		return a11yruntime.ActionPointerMove
 	}
+	if fuzzy := fuzzyNormalizeA11yAction(trimmed); fuzzy != "" {
+		return fuzzy
+	}
 	return trimmed
+}
+
+func fuzzyNormalizeA11yAction(action string) string {
+	if action == "" {
+		return ""
+	}
+	if fuzzy := fuzzyNormalizeA11yActionChinese(action); fuzzy != "" {
+		return fuzzy
+	}
+
+	words := a11yActionWordSet(action)
+	switch {
+	case a11yActionHasAnyWord(words, "screenshot", "screen", "capture", "shot") &&
+		a11yActionHasAnyWord(words, "take", "capture", "grab", "screen", "screenshot", "shot"):
+		return a11yruntime.ActionScreenshot
+	case a11yActionHasAnyWord(words, "interactive", "element", "elements", "control", "controls") &&
+		a11yActionHasAnyWord(words, "show", "inspect", "view", "snapshot", "list"):
+		return a11yruntime.ActionSnapshotInteractive
+	case a11yActionHasAnyWord(words, "accessibility", "ui") &&
+		a11yActionHasAnyWord(words, "tree", "elements", "controls", "inspect", "show"):
+		return a11yruntime.ActionSnapshotInteractive
+	case a11yActionHasAnyWord(words, "window", "windows", "tab", "tabs") &&
+		a11yActionHasAnyWord(words, "list", "show", "view", "inspect"):
+		return a11yruntime.ActionWindows
+	case a11yActionHasAnyWord(words, "focus", "activate", "bring", "raise") &&
+		a11yActionHasAnyWord(words, "window", "app", "application"):
+		return a11yruntime.ActionFocus
+	case a11yActionHasAnyWord(words, "message", "chat", "reply", "dm") &&
+		a11yActionHasAnyWord(words, "send", "write", "compose", "reply", "message", "chat", "dm"):
+		return "message"
+	case a11yActionHasAnyWord(words, "type", "input", "write", "enter", "fill") &&
+		a11yActionHasAnyWord(words, "text", "message", "value", "field", "input", "composer", "textarea"):
+		return "type"
+	case a11yActionHasAnyWord(words, "select", "choose", "pick", "switch", "open") &&
+		a11yActionHasAnyWord(words, "conversation", "thread", "chat", "item", "row", "entry", "target"):
+		return "select"
+	case a11yActionHasAnyWord(words, "toggle", "enable", "disable") &&
+		a11yActionHasAnyWord(words, "setting", "settings", "option", "switch", "toggle"):
+		return "toggle"
+	case a11yActionHasAnyWord(words, "turn") &&
+		a11yActionHasAnyWord(words, "on", "off") &&
+		a11yActionHasAnyWord(words, "setting", "settings", "option", "switch", "toggle"):
+		return "toggle"
+	case a11yActionHasAnyWord(words, "click", "tap", "press", "hit") &&
+		a11yActionHasAnyWord(words, "button", "link", "control", "item", "option"):
+		return "click"
+	case a11yActionHasAnyWord(words, "keyboard", "shortcut", "hotkey", "keys", "key", "keystroke"):
+		return a11yruntime.ActionKey
+	case a11yActionHasAnyWord(words, "scroll", "swipe"):
+		return a11yruntime.ActionScroll
+	}
+
+	return ""
+}
+
+func fuzzyNormalizeA11yActionChinese(action string) string {
+	switch {
+	case strings.Contains(action, "截图"), strings.Contains(action, "截屏"), strings.Contains(action, "截个图"), strings.Contains(action, "屏幕截图"):
+		return a11yruntime.ActionScreenshot
+	case strings.Contains(action, "交互控件"), strings.Contains(action, "交互元素"), strings.Contains(action, "可点击元素"),
+		strings.Contains(action, "无障碍树"), strings.Contains(action, "界面树"):
+		return a11yruntime.ActionSnapshotInteractive
+	case strings.Contains(action, "发送消息"), strings.Contains(action, "发消息"), strings.Contains(action, "发送信息"),
+		strings.Contains(action, "回复消息"), strings.Contains(action, "回消息"):
+		return "message"
+	case strings.Contains(action, "输入文字"), strings.Contains(action, "输入文本"), strings.Contains(action, "键入文字"),
+		strings.Contains(action, "输入内容"), strings.Contains(action, "填写内容"):
+		return "type"
+	case strings.Contains(action, "切换会话"), strings.Contains(action, "选择会话"), strings.Contains(action, "切到会话"),
+		strings.Contains(action, "切换聊天"), strings.Contains(action, "选择对话"):
+		return "select"
+	case strings.Contains(action, "打开开关"), strings.Contains(action, "切换开关"), strings.Contains(action, "启用设置"),
+		strings.Contains(action, "关闭设置"), strings.Contains(action, "打开设置开关"):
+		return "toggle"
+	case strings.Contains(action, "点击按钮"), strings.Contains(action, "点击控件"), strings.Contains(action, "单击按钮"),
+		strings.Contains(action, "点一下按钮"):
+		return "click"
+	case strings.Contains(action, "聚焦窗口"), strings.Contains(action, "激活窗口"), strings.Contains(action, "切到窗口"),
+		strings.Contains(action, "激活应用"):
+		return a11yruntime.ActionFocus
+	case strings.Contains(action, "查看窗口列表"), strings.Contains(action, "列出窗口"), strings.Contains(action, "窗口列表"):
+		return a11yruntime.ActionWindows
+	case strings.Contains(action, "快捷键"), strings.Contains(action, "键盘快捷键"), strings.Contains(action, "按键组合"):
+		return a11yruntime.ActionKey
+	case strings.Contains(action, "滚动页面"), strings.Contains(action, "向下滚动"), strings.Contains(action, "向上滚动"):
+		return a11yruntime.ActionScroll
+	}
+	return ""
+}
+
+func a11yActionWordSet(action string) map[string]struct{} {
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r):
+			return r
+		default:
+			return ' '
+		}
+	}, action)
+	fields := strings.Fields(cleaned)
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		out[field] = struct{}{}
+	}
+	return out
+}
+
+func a11yActionHasAnyWord(words map[string]struct{}, candidates ...string) bool {
+	if len(words) == 0 {
+		return false
+	}
+	for _, candidate := range candidates {
+		if _, ok := words[candidate]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveA11yAction(args map[string]interface{}) string {

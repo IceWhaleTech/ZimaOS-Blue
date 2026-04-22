@@ -87,18 +87,34 @@ end tell`, strings.ReplaceAll(cmdStr, `"`, `\"`))
 	selAlloc := objc.RegisterName("alloc")
 	selInitWithSource := objc.RegisterName("initWithSource:")
 	selExecuteAndReturnError := objc.RegisterName("executeAndReturnError:")
+	selRelease := objc.RegisterName("release")
 
 	script := asClass.Send(selAlloc).Send(selInitWithSource, nsSource)
 	if script == 0 {
 		return fmt.Errorf("failed to create NSAppleScript")
 	}
 
-	// executeAndReturnError: takes a pointer to NSDictionary* (error info)
-	var errDict uintptr
-	script.Send(selExecuteAndReturnError, uintptr(unsafe.Pointer(&errDict)))
-	if errDict != 0 {
-		return fmt.Errorf("NSAppleScript execution error")
-	}
+	return withDarwinOwnedObjectRelease(
+		script,
+		func(id objc.ID) { id.Send(selRelease) },
+		func(id objc.ID) error {
+			// executeAndReturnError: takes a pointer to NSDictionary* (error info)
+			var errDict uintptr
+			id.Send(selExecuteAndReturnError, uintptr(unsafe.Pointer(&errDict)))
+			if errDict != 0 {
+				return fmt.Errorf("NSAppleScript execution error")
+			}
+			return nil
+		},
+	)
+}
 
-	return nil
+func withDarwinOwnedObjectRelease(id objc.ID, release func(objc.ID), run func(objc.ID) error) error {
+	if run == nil {
+		return nil
+	}
+	if id != 0 && release != nil {
+		defer release(id)
+	}
+	return run(id)
 }

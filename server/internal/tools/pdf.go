@@ -33,6 +33,12 @@ const (
 )
 
 const (
+	pdfPurposeSummarize = "summarize"
+	pdfPurposeFacts     = "facts"
+	pdfPurposeSkim      = "skim"
+)
+
+const (
 	pdfReadModeFastMaxPages = 12
 	pdfReadModeFastMaxChars = 60000
 
@@ -102,7 +108,14 @@ func (t *PDFTool) Definition() ToolDefinition {
 				"read_mode": map[string]interface{}{
 					"type":        "string",
 					"enum":        []string{pdfReadModeFull, pdfReadModeFast, pdfReadModeAuto},
+					"default":     pdfReadModeFull,
 					"description": "Controls the speed vs coverage tradeoff when max_pages/max_chars are omitted. full is coverage-first (uses service defaults). fast is speed-first (~12 pages, ~60k chars). auto is balanced (~20 pages, ~120k chars).",
+				},
+				"purpose": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{pdfPurposeSummarize, pdfPurposeFacts, pdfPurposeSkim},
+					"default":     pdfPurposeSummarize,
+					"description": "High-level intent for reading. summarize favors coverage (default). facts is balanced for extracting specific answers. skim favors speed. Has effect only when you do not explicitly set read_mode/max_pages/max_chars/include flags.",
 				},
 				"max_bytes_mb": map[string]interface{}{
 					"type":        "integer",
@@ -122,6 +135,7 @@ func (t *PDFTool) Definition() ToolDefinition {
 				"fallback_mode": map[string]interface{}{
 					"type":        "string",
 					"enum":        []string{"auto", "ocr_only", "vision_only", "text_only"},
+					"default":     "auto",
 					"description": "Fallback strategy for scanned or hard pages. auto tries text extraction and falls back to OCR/vision when needed; text_only disables OCR+vision; ocr_only forces OCR; vision_only forces vision.",
 				},
 				"title":       map[string]interface{}{"type": "string", "description": "Optional title for action=create."},
@@ -541,24 +555,46 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 	includePages, _ := compatBoolArg(args, "include_pages", "includePages")
 	disableOCR, disableVision := parsePDFFallbackFlags(args)
 	includeMarkdown := true
+	includeMarkdownExplicit := false
 	if enabled, ok := compatBoolArg(args, "include_markdown", "includeMarkdown"); ok {
 		includeMarkdown = enabled
+		includeMarkdownExplicit = true
 	}
 	includeOutline := true
+	includeOutlineExplicit := false
 	if enabled, ok := compatBoolArg(args, "include_outline", "includeOutline"); ok {
 		includeOutline = enabled
+		includeOutlineExplicit = true
 	}
 	includeLayout := false
+	includeLayoutExplicit := false
 	if enabled, ok := compatBoolArg(args, "include_layout", "includeLayout"); ok {
 		includeLayout = enabled
+		includeLayoutExplicit = true
 	}
 	includeHeadersFooters := false
 	if enabled, ok := compatBoolArg(args, "include_headers_footers", "includeHeadersFooters"); ok {
 		includeHeadersFooters = enabled
 	}
-	maxPages := compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages")
-	maxChars := compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length")
+	maxPages, maxPagesExplicit := pdfExplicitIntArg(args, "max_pages", "maxPages", "page_limit", "limit_pages")
+	maxChars, maxCharsExplicit := pdfExplicitIntArg(args, "max_chars", "maxChars", "char_limit", "limit", "max_length")
 	mode := pdfReadMode(args)
+	modeExplicit := pdfReadModeExplicit(args)
+
+	purpose := pdfPurpose(args)
+	mode, includeMarkdown, includeOutline, includeLayout = applyPDFPurpose(
+		purpose,
+		mode,
+		modeExplicit,
+		maxPagesExplicit,
+		maxCharsExplicit,
+		includeMarkdown,
+		includeMarkdownExplicit,
+		includeOutline,
+		includeOutlineExplicit,
+		includeLayout,
+		includeLayoutExplicit,
+	)
 	maxPages, maxChars, err = applyPDFReadMode(mode, maxPages, maxChars)
 	if err != nil {
 		return nil, err
@@ -700,11 +736,91 @@ func pdfReadMode(args map[string]interface{}) string {
 	mode := strings.TrimSpace(strings.ToLower(firstCompatString(args, "read_mode", "readMode", "read")))
 	switch mode {
 	case "":
-		return ""
+		return pdfReadModeFull
 	case pdfReadModeFull, pdfReadModeFast, pdfReadModeAuto:
 		return mode
 	default:
 		return mode
+	}
+}
+
+func pdfReadModeExplicit(args map[string]interface{}) bool {
+	_, ok := compatArgValue(args, "read_mode", "readMode", "read")
+	return ok
+}
+
+func pdfPurpose(args map[string]interface{}) string {
+	purpose := strings.TrimSpace(strings.ToLower(firstCompatString(args, "purpose", "intent")))
+	switch purpose {
+	case "":
+		return pdfPurposeSummarize
+	case pdfPurposeSummarize, pdfPurposeFacts, pdfPurposeSkim:
+		return purpose
+	default:
+		return purpose
+	}
+}
+
+func pdfExplicitIntArg(args map[string]interface{}, keys ...string) (int, bool) {
+	for _, key := range keys {
+		if _, ok := compatArgValue(args, key); ok {
+			return compatInt(args, key), true
+		}
+	}
+	// fallback: preserve existing compatInt behavior (0 means unset)
+	for _, key := range keys {
+		value := compatInt(args, key)
+		if value != 0 {
+			return value, true
+		}
+	}
+	return 0, false
+}
+
+func applyPDFPurpose(
+	purpose string,
+	mode string,
+	modeExplicit bool,
+	maxPagesExplicit bool,
+	maxCharsExplicit bool,
+	includeMarkdown bool,
+	includeMarkdownExplicit bool,
+	includeOutline bool,
+	includeOutlineExplicit bool,
+	includeLayout bool,
+	includeLayoutExplicit bool,
+) (string, bool, bool, bool) {
+	purpose = strings.TrimSpace(strings.ToLower(purpose))
+	if purpose == "" {
+		return mode, includeMarkdown, includeOutline, includeLayout
+	}
+	switch purpose {
+	case pdfPurposeSkim:
+		if !modeExplicit && !maxPagesExplicit && !maxCharsExplicit {
+			mode = pdfReadModeFast
+		}
+		if !includeMarkdownExplicit {
+			includeMarkdown = false
+		}
+		if !includeOutlineExplicit {
+			includeOutline = false
+		}
+		if !includeLayoutExplicit {
+			includeLayout = false
+		}
+		return mode, includeMarkdown, includeOutline, includeLayout
+	case pdfPurposeFacts:
+		if !modeExplicit && !maxPagesExplicit && !maxCharsExplicit {
+			mode = pdfReadModeAuto
+		}
+		// Keep defaults for outline/markdown unless the caller specified otherwise.
+		return mode, includeMarkdown, includeOutline, includeLayout
+	case pdfPurposeSummarize:
+		// Default behavior: coverage-first; keep current defaults.
+		return mode, includeMarkdown, includeOutline, includeLayout
+	default:
+		// Unknown purposes should not silently change behavior.
+		return mode, includeMarkdown, includeOutline, includeLayout
 	}
 }
 
