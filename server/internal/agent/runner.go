@@ -3383,7 +3383,6 @@ func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
 		return
 	}
 	persistCtx := context.Background()
-	task.Status = TaskStatusFailed
 	task.Error = errMsg
 	task.Result = buildBaseResultSummary(task, TaskStatusFailed, errMsg)
 	reflection := r.runReflection(persistCtx, task, TaskStatusFailed, errMsg)

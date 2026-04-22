@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +33,13 @@ import (
 )
 
 const optimizationTestRunnerRepoURL = "https://github.com/IceWhaleTech/ZimaOS-Blue"
+
+var optimizationTestBuildCaches struct {
+	once       sync.Once
+	goCache    string
+	goModCache string
+	err        error
+}
 
 func TestBindHarnessRuntimeOptimizationWiresControllerTriggerer(t *testing.T) {
 	manager, err := optimization.NewManager(t.TempDir())
@@ -240,6 +248,18 @@ func TestHarnessOptimizationTriggererPersistsRunnerErrorWhenPreparedBinaryChecks
 	}
 	if got := strings.TrimSpace(asStringForOptimizationTest(record["runner_stop_reason"])); got != "" {
 		t.Fatalf("runner_stop_reason = %q, want empty on checksum failure; record=%s", got, string(data))
+	}
+}
+
+func TestOptimizationTestGoBuildEnv_ReusesSharedCachesAcrossCalls(t *testing.T) {
+	envA := optimizationTestGoBuildEnv(t, filepath.Join(t.TempDir(), "build-a"))
+	envB := optimizationTestGoBuildEnv(t, filepath.Join(t.TempDir(), "build-b"))
+
+	if gotA, gotB := optimizationTestEnvValue(envA, "GOCACHE"), optimizationTestEnvValue(envB, "GOCACHE"); gotA == "" || gotA != gotB {
+		t.Fatalf("GOCACHE mismatch: %q vs %q", gotA, gotB)
+	}
+	if gotA, gotB := optimizationTestEnvValue(envA, "GOMODCACHE"), optimizationTestEnvValue(envB, "GOMODCACHE"); gotA == "" || gotA != gotB {
+		t.Fatalf("GOMODCACHE mismatch: %q vs %q", gotA, gotB)
 	}
 }
 
@@ -1601,16 +1621,9 @@ func writeJSON(payload map[string]interface{}) {
 	return bin
 }
 
-func optimizationTestGoBuildEnv(t *testing.T, cacheRoot string) []string {
+func optimizationTestGoBuildEnv(t *testing.T, _ string) []string {
 	t.Helper()
-	goCache := filepath.Join(cacheRoot, "gocache")
-	goModCache := filepath.Join(cacheRoot, "gomodcache")
-	if err := os.MkdirAll(goCache, 0o755); err != nil {
-		t.Fatalf("MkdirAll gocache: %v", err)
-	}
-	if err := os.MkdirAll(goModCache, 0o755); err != nil {
-		t.Fatalf("MkdirAll gomodcache: %v", err)
-	}
+	goCache, goModCache := optimizationTestSharedGoBuildCaches(t)
 
 	goFlags := strings.TrimSpace(os.Getenv("GOFLAGS"))
 	if !strings.Contains(goFlags, "-modcacherw") {
@@ -1644,6 +1657,41 @@ func optimizationTestGoBuildEnv(t *testing.T, cacheRoot string) []string {
 		pairs = append(pairs, key+"="+value)
 	}
 	return pairs
+}
+
+func optimizationTestSharedGoBuildCaches(t *testing.T) (string, string) {
+	t.Helper()
+	optimizationTestBuildCaches.once.Do(func() {
+		root, err := os.MkdirTemp("", "bootstrap-opt-build-cache-*")
+		if err != nil {
+			optimizationTestBuildCaches.err = err
+			return
+		}
+		optimizationTestBuildCaches.goCache = filepath.Join(root, "gocache")
+		optimizationTestBuildCaches.goModCache = filepath.Join(root, "gomodcache")
+		if err := os.MkdirAll(optimizationTestBuildCaches.goCache, 0o755); err != nil {
+			optimizationTestBuildCaches.err = err
+			return
+		}
+		if err := os.MkdirAll(optimizationTestBuildCaches.goModCache, 0o755); err != nil {
+			optimizationTestBuildCaches.err = err
+			return
+		}
+	})
+	if optimizationTestBuildCaches.err != nil {
+		t.Fatalf("prepare shared optimization test caches: %v", optimizationTestBuildCaches.err)
+	}
+	return optimizationTestBuildCaches.goCache, optimizationTestBuildCaches.goModCache
+}
+
+func optimizationTestEnvValue(env []string, key string) string {
+	prefix := key + "="
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			return strings.TrimPrefix(item, prefix)
+		}
+	}
+	return ""
 }
 
 type bootstrapSelectorEvalDriver struct {

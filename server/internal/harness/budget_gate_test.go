@@ -21,6 +21,9 @@ func TestSkillCutoverIncreaseRate_IgnoresNearZeroLatencyJitter(t *testing.T) {
 	if got := skillCutoverIncreaseRate(0, 350); got != 0 {
 		t.Fatalf("skillCutoverIncreaseRate(0, 350) = %#v, want 0 within selector warmup band", got)
 	}
+	if got := skillCutoverIncreaseRate(350, 450); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(350, 450) = %#v, want 0 within low-latency selector jitter band", got)
+	}
 	if got := skillCutoverIncreaseRate(-38.1598125, 100); got != 0 {
 		t.Fatalf("skillCutoverIncreaseRate(-38.1598125, 100) = %#v, want 0 when baseline latency is negative jitter", got)
 	}

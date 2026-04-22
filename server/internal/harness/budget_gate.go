@@ -20,6 +20,9 @@ const (
 	// the absolute latency is still small. Linux full-suite runs have shown unchanged
 	// selector surfaces landing around 350ms, so treat medians up to 400ms as warmup noise.
 	skillCutoverLowLatencyWarmupCeilingMs = 8 * skillCutoverLatencyNoiseFloorMs
+	// Allow one extra jitter step once the baseline is already inside the low-latency
+	// warmup band so small Linux scheduler/load swings do not look like real regressions.
+	skillCutoverLowLatencyJitterAllowanceMs = 2 * skillCutoverLatencyNoiseFloorMs
 )
 
 var defaultSkillCutoverAllowedFinalNativeTools = []string{"exec"}
@@ -434,6 +437,8 @@ func skillCutoverIncreaseRate(base, target float64) float64 {
 	case base <= 0 && target <= 0:
 		return 0
 	case target <= skillCutoverLowLatencyWarmupCeilingMs:
+		return 0
+	case base > 0 && base <= skillCutoverLowLatencyWarmupCeilingMs && target-base <= skillCutoverLowLatencyJitterAllowanceMs:
 		return 0
 	case base < skillCutoverLatencyNoiseFloorMs:
 		return (target - skillCutoverLatencyNoiseFloorMs) / skillCutoverLatencyNoiseFloorMs

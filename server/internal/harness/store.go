@@ -434,8 +434,8 @@ type harnessRunRow struct {
 	MetadataJSON   string       `zorm:"metadata_json"`
 	CreatedAt      time.Time    `zorm:"created_at"`
 	UpdatedAt      time.Time    `zorm:"updated_at"`
-	StartedAt      sql.NullTime `zorm:"started_at"`
-	FinishedAt     sql.NullTime `zorm:"finished_at"`
+	StartedAt      nullableSQLiteTime `zorm:"started_at"`
+	FinishedAt     nullableSQLiteTime `zorm:"finished_at"`
 }
 
 type harnessEventRow struct {
@@ -476,8 +476,8 @@ type harnessGroupRow struct {
 	SummaryJSON   string       `zorm:"summary_json"`
 	CreatedAt     time.Time    `zorm:"created_at"`
 	UpdatedAt     time.Time    `zorm:"updated_at"`
-	StartedAt     sql.NullTime `zorm:"started_at"`
-	FinishedAt    sql.NullTime `zorm:"finished_at"`
+	StartedAt     nullableSQLiteTime `zorm:"started_at"`
+	FinishedAt    nullableSQLiteTime `zorm:"finished_at"`
 }
 
 type harnessGroupItemRow struct {
@@ -494,7 +494,7 @@ type harnessGroupItemRow struct {
 	AttemptCount   int          `zorm:"attempt_count"`
 	MaxAttempts    int          `zorm:"max_attempts"`
 	LeaseOwner     string       `zorm:"lease_owner"`
-	LeaseExpiresAt sql.NullTime `zorm:"lease_expires_at"`
+	LeaseExpiresAt nullableSQLiteTime `zorm:"lease_expires_at"`
 	CreatedAt      time.Time    `zorm:"created_at"`
 	UpdatedAt      time.Time    `zorm:"updated_at"`
 }
@@ -874,51 +874,39 @@ func (s *SQLiteStore) UpdateRunIfMaterialStateMatches(ctx context.Context, expec
 }
 
 func (s *SQLiteStore) GetRun(ctx context.Context, id string) (*Run, error) {
-	rows, err := s.selectRunRows(ctx, s.reader(), id)
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 && s.reader() != s.db {
-		rows, err = s.selectRunRows(ctx, s.db, id)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if len(rows) == 0 {
+	id = strings.TrimSpace(id)
+	if id == "" {
 		return nil, sql.ErrNoRows
 	}
-	run := harnessRunFromRow(rows[0])
-	return &run, nil
-}
-
-func (s *SQLiteStore) selectRunRows(ctx context.Context, db *sql.DB, id string) ([]harnessRunRow, error) {
-	var rows []harnessRunRow
-	if _, err := z.TableContext(ctx, db, "harness_runs").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
-		return nil, err
+	query := `SELECT ` + harnessRunSelectColumns + ` FROM harness_runs WHERE id = ? LIMIT 1`
+	run, err := s.querySingleRun(ctx, s.reader(), query, id)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, errors.Is(err, sql.ErrNoRows)) {
+			return nil, err
+		}
+		return s.querySingleRun(ctx, s.db, query, id)
 	}
-	return rows, nil
+	return run, nil
 }
 
 func (s *SQLiteStore) ListRuns(ctx context.Context, filter RunFilter) ([]Run, error) {
-	rows, err := s.listRunRows(ctx, s.reader(), filter)
+	query, args := buildListRunsQuery(filter)
+	runs, err := s.queryRuns(ctx, s.reader(), query, args...)
 	if err != nil {
 		if !s.shouldFallbackToWriter(err, false) {
 			return nil, err
 		}
-		rows, err = s.listRunRows(ctx, s.db, filter)
+		runs, err = s.queryRuns(ctx, s.db, query, args...)
 		if err != nil {
 			return nil, err
 		}
 	} else if s.hasSeparateReader() {
-		writerRows, writerErr := s.listRunRows(ctx, s.db, filter)
+		writerRuns, writerErr := s.queryRuns(ctx, s.db, query, args...)
 		if writerErr == nil {
-			rows = mergeUniqueRowsByKey(rows, writerRows, filter.Limit, func(row harnessRunRow) string { return row.ID })
+			runs = mergeUniqueRowsByKey(runs, writerRuns, filter.Limit, func(run Run) string { return run.ID })
 		}
 	}
-	return harnessRunsFromRows(rows), nil
+	return runs, nil
 }
 
 func (s *SQLiteStore) listRunRows(ctx context.Context, db *sql.DB, filter RunFilter) ([]harnessRunRow, error) {
@@ -983,6 +971,105 @@ func (s *SQLiteStore) listRunRows(ctx context.Context, db *sql.DB, filter RunFil
 		return nil, err
 	}
 	return rows, nil
+}
+
+func buildListRunsQuery(filter RunFilter) (string, []interface{}) {
+	query := `SELECT ` + harnessRunSelectColumns + ` FROM harness_runs`
+	clauses := make([]string, 0, 8)
+	args := make([]interface{}, 0, 16)
+	appendEquality := func(column, value string) {
+		if value = strings.TrimSpace(value); value != "" {
+			clauses = append(clauses, column+" = ?")
+			args = append(args, value)
+		}
+	}
+	appendIn := func(column string, values []string) {
+		if len(values) == 0 {
+			return
+		}
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
+		clauses = append(clauses, column+" IN ("+placeholders+")")
+		for _, value := range values {
+			args = append(args, value)
+		}
+	}
+	appendEquality("user_id", filter.UserID)
+	if filter.Kind != "" {
+		appendEquality("kind", string(filter.Kind))
+	} else if len(filter.Kinds) > 0 {
+		kinds := make([]string, 0, len(filter.Kinds))
+		for _, kind := range filter.Kinds {
+			if kind != "" {
+				kinds = append(kinds, string(kind))
+			}
+		}
+		appendIn("kind", kinds)
+	}
+	if len(filter.Statuses) > 0 {
+		statuses := make([]string, 0, len(filter.Statuses))
+		for _, status := range filter.Statuses {
+			if status != "" {
+				statuses = append(statuses, string(status))
+			}
+		}
+		appendIn("status", statuses)
+	}
+	appendEquality("conversation_id", filter.ConversationID)
+	appendEquality("group_id", filter.GroupID)
+	appendEquality("group_item_id", filter.GroupItemID)
+	appendEquality("parent_run_id", filter.ParentRunID)
+	appendEquality("root_run_id", filter.RootRunID)
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	query += " ORDER BY created_at DESC LIMIT ?"
+	args = append(args, limit)
+	return query, args
+}
+
+func (s *SQLiteStore) querySingleRun(ctx context.Context, db *sql.DB, query string, args ...interface{}) (*Run, error) {
+	if db == nil {
+		return nil, sql.ErrNoRows
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, sql.ErrNoRows
+	}
+	return scanRunRows(rows)
+}
+
+func (s *SQLiteStore) queryRuns(ctx context.Context, db *sql.DB, query string, args ...interface{}) ([]Run, error) {
+	if db == nil {
+		return nil, sql.ErrNoRows
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	runs := make([]Run, 0)
+	for rows.Next() {
+		run, err := scanRunRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, *run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return runs, nil
 }
 
 func (s *SQLiteStore) FindRunByMetadata(ctx context.Context, kind RunKind, key, value string) (*Run, error) {
@@ -1529,9 +1616,74 @@ func nullableTime(value *time.Time) interface{} {
 	return *value
 }
 
+type nullableSQLiteTime struct {
+	Time  time.Time
+	Valid bool
+}
+
+func (n *nullableSQLiteTime) Scan(value interface{}) error {
+	if n == nil {
+		return fmt.Errorf("nullableSQLiteTime scanner is nil")
+	}
+	switch typed := value.(type) {
+	case nil:
+		n.Time = time.Time{}
+		n.Valid = false
+		return nil
+	case time.Time:
+		n.Time = typed
+		n.Valid = true
+		return nil
+	case string:
+		return n.scanString(typed)
+	case []byte:
+		return n.scanString(string(typed))
+	default:
+		return fmt.Errorf("unsupported sqlite time type %T", value)
+	}
+}
+
+func (n *nullableSQLiteTime) scanString(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		n.Time = time.Time{}
+		n.Valid = false
+		return nil
+	}
+	formats := []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05",
+	}
+	for _, format := range formats {
+		if ts, err := time.Parse(format, raw); err == nil {
+			n.Time = ts
+			n.Valid = true
+			return nil
+		}
+	}
+	return fmt.Errorf("parse sqlite time %q", raw)
+}
+
+func nullableSQLiteTimePtr(value nullableSQLiteTime) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	ts := value.Time
+	return &ts
+}
+
 type rowScanner interface {
 	Scan(dest ...interface{}) error
 }
+
+const harnessRunSelectColumns = `id, root_run_id, parent_run_id, group_id, group_item_id, attempt_index, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
+	goal, provider_id, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
+	approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
+	created_at, updated_at, started_at, finished_at`
 
 func scanRun(scanner rowScanner) (*Run, error) {
 	var (
@@ -1541,7 +1693,7 @@ func scanRun(scanner rowScanner) (*Run, error) {
 		approvalMode          string
 		metadataJSON          string
 		maxDurationNs         int64
-		startedAt, finishedAt sql.NullTime
+		startedAt, finishedAt nullableSQLiteTime
 	)
 	err := scanner.Scan(
 		&run.ID, &run.RootRunID, &run.ParentRunID, &run.GroupID, &run.GroupItemID, &run.AttemptIndex, &kind, &status, &runtimeState, &run.UserID, &run.ConversationID, &run.SessionID, &run.AgentID,
@@ -1558,14 +1710,8 @@ func scanRun(scanner rowScanner) (*Run, error) {
 	run.ApprovalMode = ApprovalMode(approvalMode)
 	run.MaxDuration = time.Duration(maxDurationNs)
 	run.Metadata = unmarshalMetadata(metadataJSON)
-	if startedAt.Valid {
-		ts := startedAt.Time
-		run.StartedAt = &ts
-	}
-	if finishedAt.Valid {
-		ts := finishedAt.Time
-		run.FinishedAt = &ts
-	}
+	run.StartedAt = nullableSQLiteTimePtr(startedAt)
+	run.FinishedAt = nullableSQLiteTimePtr(finishedAt)
 	return &run, nil
 }
 
@@ -1579,7 +1725,7 @@ func scanGroup(scanner rowScanner) (*RunGroup, error) {
 		kind, status                             string
 		schedulerJSON, scoringJSON, metadataJSON string
 		summaryJSON                              string
-		startedAt, finishedAt                    sql.NullTime
+		startedAt, finishedAt                    nullableSQLiteTime
 	)
 	if err := scanner.Scan(
 		&group.ID, &kind, &group.Title, &status, &group.OwnerUserID, &group.Subject, &schedulerJSON, &scoringJSON, &metadataJSON, &summaryJSON,
@@ -1593,14 +1739,8 @@ func scanGroup(scanner rowScanner) (*RunGroup, error) {
 	_ = unmarshalInto(scoringJSON, &group.ScoringConfig)
 	group.Metadata = unmarshalMetadata(metadataJSON)
 	group.Summary = unmarshalMetadata(summaryJSON)
-	if startedAt.Valid {
-		ts := startedAt.Time
-		group.StartedAt = &ts
-	}
-	if finishedAt.Valid {
-		ts := finishedAt.Time
-		group.FinishedAt = &ts
-	}
+	group.StartedAt = nullableSQLiteTimePtr(startedAt)
+	group.FinishedAt = nullableSQLiteTimePtr(finishedAt)
 	return &group, nil
 }
 
@@ -1613,7 +1753,7 @@ func scanGroupItem(scanner rowScanner) (*RunGroupItem, error) {
 		item                                  RunGroupItem
 		runKind, status                       string
 		inputJSON, expectedJSON, metadataJSON string
-		leaseExpiresAt                        sql.NullTime
+		leaseExpiresAt                        nullableSQLiteTime
 	)
 	if err := scanner.Scan(
 		&item.ID, &item.GroupID, &item.Index, &runKind, &item.Profile, &inputJSON, &expectedJSON, &metadataJSON, &status, &item.LatestRunID,
@@ -1626,10 +1766,7 @@ func scanGroupItem(scanner rowScanner) (*RunGroupItem, error) {
 	item.Input = unmarshalMetadata(inputJSON)
 	item.Expected = unmarshalMetadata(expectedJSON)
 	item.Metadata = unmarshalMetadata(metadataJSON)
-	if leaseExpiresAt.Valid {
-		ts := leaseExpiresAt.Time
-		item.LeaseExpiresAt = &ts
-	}
+	item.LeaseExpiresAt = nullableSQLiteTimePtr(leaseExpiresAt)
 	return &item, nil
 }
 

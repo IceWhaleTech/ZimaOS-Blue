@@ -25973,7 +25973,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if plan == nil {
 			return
 		}
-		emitSSE(map[string]interface{}{
+		payload := map[string]interface{}{
 			"execution_plan": plan,
 			"process_event":  "request_summary",
 			"process_status": "info",
@@ -25984,7 +25984,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			),
 			"process_detail": buildExecutionPlanDetail(plan),
 			"stream_id":      streamID,
-		})
+		}
+		if !streamHeadersFlushed {
+			pendingProcessEvents = append(pendingProcessEvents, payload)
+			return
+		}
+		writeSSEPayload(payload)
 	}
 	emitRuntimeError := func(err error, retryKind string, errorMessage string, extra map[string]interface{}) {
 		payload := map[string]interface{}{

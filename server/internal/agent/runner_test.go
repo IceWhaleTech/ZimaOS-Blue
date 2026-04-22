@@ -1629,6 +1629,40 @@ func (o *captureTaskEventObserver) HandleTaskEvent(event TaskEvent) {
 	o.events = append(o.events, event)
 }
 
+type taskSnapshotObserver struct {
+	store     *Store
+	targetTo  RuntimeState
+	snapshots chan *Task
+	errs      chan error
+}
+
+func newTaskSnapshotObserver(store *Store, targetTo RuntimeState) *taskSnapshotObserver {
+	return &taskSnapshotObserver{
+		store:     store,
+		targetTo:  targetTo,
+		snapshots: make(chan *Task, 1),
+		errs:      make(chan error, 1),
+	}
+}
+
+func (o *taskSnapshotObserver) HandleTaskEvent(event TaskEvent) {
+	if strings.TrimSpace(event.EventType) != "task_state_transition" || event.ToState != o.targetTo {
+		return
+	}
+	task, err := o.store.Get(context.Background(), event.TaskID)
+	if err != nil {
+		select {
+		case o.errs <- err:
+		default:
+		}
+		return
+	}
+	select {
+	case o.snapshots <- task:
+	default:
+	}
+}
+
 func taskEventSeen(events []TaskEvent, eventType string) bool {
 	for _, event := range events {
 		if strings.TrimSpace(event.EventType) == strings.TrimSpace(eventType) {
@@ -2158,6 +2192,49 @@ func TestRunner_AutoReflectFailedTask(t *testing.T) {
 	}
 	if !strings.Contains(got.Result, "Learned:") {
 		t.Fatalf("expected failed task summary to include learned section, got %q", got.Result)
+	}
+}
+
+func TestRunner_FailedTaskDoesNotPersistTerminalStatusAtReportTransition(t *testing.T) {
+	s := testStore(t)
+	m := &scriptedLLM{calls: []scriptedLLMCall{
+		{content: `{"goal":"build","subtasks":[{"description":"primary step"}],"success_criteria":["verify passes"],"fallback_plan":["recover once"]}`},
+		{content: "not-json"},
+		{content: "not-json"},
+	}}
+	observer := newTaskSnapshotObserver(s, RuntimeStateReport)
+	runner := NewRunner(s, m, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	runner.SetEventObserver(observer)
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task, err := runner.Submit(context.Background(), "u1", "execute and verify", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var reportTask *Task
+	select {
+	case err := <-observer.errs:
+		t.Fatalf("unexpected observer store error: %v", err)
+	case reportTask = <-observer.snapshots:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for report transition snapshot")
+	}
+
+	if reportTask.RuntimeState != RuntimeStateReport {
+		t.Fatalf("runtime_state at report transition = %q, want %q", reportTask.RuntimeState, RuntimeStateReport)
+	}
+	switch reportTask.Status {
+	case TaskStatusCompleted, TaskStatusFailed, TaskStatusAborted, TaskStatusCancelled:
+		t.Fatalf("status at report transition = %q, want non-terminal until DONE", reportTask.Status)
+	}
+
+	got := waitForTerminalTask(t, s, task.ID, 5*time.Second)
+	if got.Status != TaskStatusFailed {
+		t.Fatalf("final status = %q, want failed", got.Status)
+	}
+	if got.RuntimeState != RuntimeStateDone {
+		t.Fatalf("final runtime_state = %q, want DONE", got.RuntimeState)
 	}
 }
 

@@ -55,6 +55,10 @@ func (h *Handler) Stream(c echo.Context) error {
 	// Subscribe to events
 	ch := h.broker.Subscribe(userID)
 	defer h.broker.Unsubscribe(userID, ch)
+	if _, err := fmt.Fprint(w, "event: connected\ndata: {}\n\n"); err != nil {
+		return nil
+	}
+	flusher.Flush()
 
 	ctx := c.Request().Context()
 	ticker := time.NewTicker(h.keepalive)

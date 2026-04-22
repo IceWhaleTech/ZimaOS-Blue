@@ -31,6 +31,7 @@ type Service struct {
 	jobs         map[string]*Job
 	cancelFuncs  map[string]context.CancelFunc
 	subscribers  map[string]map[chan Event]struct{}
+	lastBrief    map[string]Event
 	lastTerminal map[string]Event
 
 	userActiveJobs       map[string]int
@@ -133,6 +134,7 @@ func NewService(planner Planner, searcher Searcher) *Service {
 		jobs:                  make(map[string]*Job),
 		cancelFuncs:           make(map[string]context.CancelFunc),
 		subscribers:           make(map[string]map[chan Event]struct{}),
+		lastBrief:             make(map[string]Event),
 		lastTerminal:          make(map[string]Event),
 		userActiveJobs:        make(map[string]int),
 		userCreateWindow:      make(map[string][]time.Time),
@@ -383,6 +385,9 @@ func (s *Service) SubscribeForUser(jobID, userID, tenantID string) (<-chan Event
 		Type:      "job_snapshot",
 		Timestamp: timeutil.NowTime(),
 		Payload:   cloneJob(job),
+	}
+	if briefEv, ok := s.lastBrief[jobID]; ok {
+		ch <- briefEv
 	}
 	if termEv, ok := s.lastTerminal[jobID]; ok {
 		ch <- termEv
@@ -886,6 +891,9 @@ func (s *Service) broadcast(jobID, eventType string, payload interface{}) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if eventType == "brief_augmented" {
+		s.lastBrief[jobID] = ev
+	}
 	if terminal {
 		// Store terminal event for late subscribers.
 		s.lastTerminal[jobID] = ev
@@ -1211,6 +1219,7 @@ func (s *Service) removeJobLocked(jobID string) {
 		}
 		delete(s.subscribers, jobID)
 	}
+	delete(s.lastBrief, jobID)
 	delete(s.lastTerminal, jobID)
 	delete(s.cancelFuncs, jobID)
 	delete(s.jobs, jobID)

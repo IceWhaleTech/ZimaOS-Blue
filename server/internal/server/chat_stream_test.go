@@ -3349,6 +3349,7 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 		t.Fatalf("expected continuation failure fallback text in stream body, got=%s", body)
 	}
 	events := extractJSONSSEEvents(t, body)
+	requireProcessEvent(t, events, "request_summary", "info")
 	retryScheduled := requireProcessEvent(t, events, "pre_content_retry_scheduled", "pending")
 	if attempt, ok := retryScheduled["process_attempt"].(float64); !ok || int(attempt) != 1 {
 		t.Fatalf("expected retry attempt=1, got event=%v", retryScheduled)

@@ -179,11 +179,20 @@ skill_market:
 		t.Fatalf("sse status = %d, want 200", sseResp.StatusCode)
 	}
 
+	readyCh := make(chan struct{}, 1)
 	eventCh := make(chan skillmarket.DiscoverProgressEvent, 16)
 	errCh := make(chan error, 1)
-	go captureBinaryDiscoverProgressEvents(sseResp.Body, eventCh, errCh)
+	go captureBinaryDiscoverProgressEvents(sseResp.Body, readyCh, eventCh, errCh)
 
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-readyCh:
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("sse readiness error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for sse readiness event")
+	}
 
 	refreshReq, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/skills/discover/refresh", nil)
 	if err != nil {
@@ -758,7 +767,7 @@ func waitForDiscoverIdle(t *testing.T, baseURL, token string) {
 	}, "timed out waiting for startup discover to finish")
 }
 
-func captureBinaryDiscoverProgressEvents(body io.Reader, events chan<- skillmarket.DiscoverProgressEvent, errCh chan<- error) {
+func captureBinaryDiscoverProgressEvents(body io.Reader, ready chan<- struct{}, events chan<- skillmarket.DiscoverProgressEvent, errCh chan<- error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 
@@ -769,6 +778,14 @@ func captureBinaryDiscoverProgressEvents(body io.Reader, events chan<- skillmark
 		case strings.HasPrefix(line, "event: "):
 			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
 		case strings.HasPrefix(line, "data: "):
+			if currentEvent == "connected" {
+				select {
+				case ready <- struct{}{}:
+				default:
+				}
+				currentEvent = ""
+				continue
+			}
 			if currentEvent != "skill.market.discover.progress" {
 				currentEvent = ""
 				continue

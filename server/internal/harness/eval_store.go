@@ -76,8 +76,8 @@ type evalRunRow struct {
 	SummaryJSON       string       `zorm:"summary_json"`
 	CreatedAt         time.Time    `zorm:"created_at"`
 	UpdatedAt         time.Time    `zorm:"updated_at"`
-	StartedAt         sql.NullTime `zorm:"started_at"`
-	FinishedAt        sql.NullTime `zorm:"finished_at"`
+	StartedAt         nullableSQLiteTime `zorm:"started_at"`
+	FinishedAt        nullableSQLiteTime `zorm:"finished_at"`
 }
 
 type baselineRow struct {
@@ -945,7 +945,7 @@ func scanEvalRun(scanner rowScanner) (*EvalRun, error) {
 		evalRun                   EvalRun
 		status                    string
 		metadataJSON, summaryJSON string
-		startedAt, finishedAt     sql.NullTime
+		startedAt, finishedAt     nullableSQLiteTime
 	)
 	if err := scanner.Scan(
 		&evalRun.ID, &evalRun.EvalSpecID, &evalRun.GroupID, &evalRun.DatasetVersionID, &evalRun.BaselineEvalRunID, &evalRun.Title, &evalRun.OwnerUserID,
@@ -957,14 +957,8 @@ func scanEvalRun(scanner rowScanner) (*EvalRun, error) {
 	evalRun.Status = RunGroupStatus(status)
 	evalRun.Metadata = unmarshalMetadata(metadataJSON)
 	evalRun.Summary = unmarshalMetadata(summaryJSON)
-	if startedAt.Valid {
-		ts := startedAt.Time
-		evalRun.StartedAt = &ts
-	}
-	if finishedAt.Valid {
-		ts := finishedAt.Time
-		evalRun.FinishedAt = &ts
-	}
+	evalRun.StartedAt = nullableSQLiteTimePtr(startedAt)
+	evalRun.FinishedAt = nullableSQLiteTimePtr(finishedAt)
 	return &evalRun, nil
 }
 

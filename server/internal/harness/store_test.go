@@ -70,6 +70,61 @@ func TestSQLiteStore_CreateGetListRun(t *testing.T) {
 	}
 }
 
+func TestSQLiteStore_UpdateRunRoundTripsLifecycleTimes(t *testing.T) {
+	store := newTestHarnessStore(t)
+	ctx := context.Background()
+	run := &Run{
+		ID:            "run-lifecycle",
+		RootRunID:     "run-lifecycle",
+		Kind:          RunKindAgentTask,
+		Status:        RunStatusPending,
+		UserID:        "user-1",
+		Goal:          "persist lifecycle times",
+		ArtifactRoot:  "./data/harness/artifacts/run-lifecycle",
+		ApprovalMode:  ApprovalModeAsk,
+		MaxDuration:   2 * time.Minute,
+		MaxSteps:      10,
+		MaxToolRounds: 5,
+	}
+	if err := store.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun failed: %v", err)
+	}
+
+	startedAt := time.Date(2026, time.April, 22, 15, 12, 5, 937059000, time.UTC)
+	finishedAt := startedAt.Add(350 * time.Millisecond)
+	run.Status = RunStatusCompleted
+	run.StartedAt = &startedAt
+	run.FinishedAt = &finishedAt
+	if err := store.UpdateRun(ctx, run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+
+	got, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun failed: %v", err)
+	}
+	if got.StartedAt == nil || !got.StartedAt.Equal(startedAt) {
+		t.Fatalf("GetRun StartedAt = %v, want %s", got.StartedAt, startedAt.Format(time.RFC3339Nano))
+	}
+	if got.FinishedAt == nil || !got.FinishedAt.Equal(finishedAt) {
+		t.Fatalf("GetRun FinishedAt = %v, want %s", got.FinishedAt, finishedAt.Format(time.RFC3339Nano))
+	}
+
+	runs, err := store.ListRuns(ctx, RunFilter{UserID: "user-1", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListRuns failed: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("len(ListRuns) = %d, want 1", len(runs))
+	}
+	if runs[0].StartedAt == nil || !runs[0].StartedAt.Equal(startedAt) {
+		t.Fatalf("ListRuns StartedAt = %v, want %s", runs[0].StartedAt, startedAt.Format(time.RFC3339Nano))
+	}
+	if runs[0].FinishedAt == nil || !runs[0].FinishedAt.Equal(finishedAt) {
+		t.Fatalf("ListRuns FinishedAt = %v, want %s", runs[0].FinishedAt, finishedAt.Format(time.RFC3339Nano))
+	}
+}
+
 func TestSQLiteStore_EventsAndArtifacts(t *testing.T) {
 	store := newTestHarnessStore(t)
 	ctx := context.Background()

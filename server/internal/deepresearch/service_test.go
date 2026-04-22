@@ -1424,6 +1424,7 @@ done:
 }
 
 func TestServiceSubscribe_EmitsRetryGuidanceInBriefEvent(t *testing.T) {
+	release := make(chan struct{})
 	svc := NewService(&mockPlanner{
 		plan: func(query string, mode Mode, lang string) []Task {
 			return []Task{{
@@ -1436,6 +1437,11 @@ func TestServiceSubscribe_EmitsRetryGuidanceInBriefEvent(t *testing.T) {
 		},
 	}, &mockSearcher{
 		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 			return []SearchHit{{
 				Title:       "Official rollout note",
 				URL:         "https://docs.example.com/rollout",
@@ -1458,11 +1464,30 @@ func TestServiceSubscribe_EmitsRetryGuidanceInBriefEvent(t *testing.T) {
 		t.Fatalf("create job failed: %v", err)
 	}
 
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		current, err := svc.GetJob(job.ID)
+		if err != nil {
+			t.Fatalf("get job failed: %v", err)
+		}
+		if current.Status == JobStatusFailed {
+			t.Fatalf("job failed before subscribe: %s", current.Error)
+		}
+		if current.Status == JobStatusRunning && current.Stage == "retrieve" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for retrieve stage before subscribe, status=%s stage=%s", current.Status, current.Stage)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	events, unsubscribe, err := svc.Subscribe(job.ID)
 	if err != nil {
 		t.Fatalf("subscribe failed: %v", err)
 	}
 	defer unsubscribe()
+	defer close(release)
 
 	timeout := time.After(3 * time.Second)
 	for {
