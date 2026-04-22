@@ -296,6 +296,79 @@ func TestApprovalAuthorizeToolCallObserverLifecycle(t *testing.T) {
 	}
 }
 
+func TestApprovalAuthorizeToolCall_PopulatesPresentationFields(t *testing.T) {
+	broker := sse.NewBroker()
+	defer broker.Close()
+	sub := broker.Subscribe("user-1")
+	defer broker.Unsubscribe("user-1", sub)
+
+	h := NewApprovalHandler(broker)
+	h.config.DefaultPolicy = "ask"
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := h.AuthorizeToolCall(context.Background(), tools.ToolApprovalRequest{
+			ToolName:  "file_write",
+			Arguments: map[string]interface{}{"path": "/tmp/demo.txt", "content": "hello"},
+			SessionID: "conv-approval-presentation",
+			UserID:    "user-1",
+			RiskLevel: "high",
+		})
+		done <- err
+	}()
+
+	var pending map[string]any
+	for i := 0; i < 100; i++ {
+		pending = h.GetPendingBySession("conv-approval-presentation")
+		if pending != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pending == nil {
+		t.Fatal("expected pending approval request")
+	}
+	if strings.TrimSpace(asString(pending["purpose"])) == "" {
+		t.Fatal("expected purpose presentation field")
+	}
+	if strings.TrimSpace(asString(pending["risk_summary"])) == "" {
+		t.Fatal("expected risk_summary presentation field")
+	}
+	if strings.TrimSpace(asString(pending["scope_summary"])) == "" {
+		t.Fatal("expected scope_summary presentation field")
+	}
+	if strings.TrimSpace(asString(pending["expected_effects"])) == "" {
+		t.Fatal("expected expected_effects presentation field")
+	}
+	targets, _ := pending["affected_targets"].([]string)
+	if len(targets) == 0 {
+		t.Fatalf("expected affected_targets, got %#v", pending["affected_targets"])
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/approval/resolve", strings.NewReader(`{"request_id":"`+asString(pending["id"])+`","decision":"approve","binding_hash":"`+asString(pending["binding_hash"])+`"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	if err := h.Resolve(c); err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Resolve status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("AuthorizeToolCall() error = %v", err)
+	}
+}
+
+func asString(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	default:
+		return ""
+	}
+}
+
 func TestApprovalAuthorizeToolCall_DeniesRecursiveFileDelete(t *testing.T) {
 	h := NewApprovalHandler(nil)
 

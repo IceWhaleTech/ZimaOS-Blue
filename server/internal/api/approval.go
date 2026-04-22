@@ -54,6 +54,11 @@ type PendingRequest struct {
 	PolicySource string         `json:"policy_source,omitempty"`
 	RiskLevel    string         `json:"risk_level,omitempty"`
 	BindingHash  string         `json:"binding_hash,omitempty"`
+	Purpose      string         `json:"purpose,omitempty"`
+	RiskSummary  string         `json:"risk_summary,omitempty"`
+	ScopeSummary string         `json:"scope_summary,omitempty"`
+	ExpectedEffects string      `json:"expected_effects,omitempty"`
+	AffectedTargets []string    `json:"affected_targets,omitempty"`
 	CreatedAt    string         `json:"created_at"`
 	ExpiresAt    int64          `json:"expires_at,omitempty"`
 	UserID       string         `json:"-"`
@@ -291,24 +296,30 @@ func clonePendingRequestPayload(req *PendingRequest) map[string]any {
 	for key, value := range req.Arguments {
 		arguments[key] = value
 	}
+	affectedTargets := append([]string(nil), req.AffectedTargets...)
 	return map[string]any{
-		"id":            strings.TrimSpace(req.ID),
-		"run_id":        strings.TrimSpace(req.RunID),
-		"step_index":    req.StepIndex,
-		"tool_name":     strings.TrimSpace(req.ToolName),
-		"tool_call_id":  strings.TrimSpace(req.ToolCallID),
-		"arguments":     arguments,
-		"session_id":    strings.TrimSpace(req.SessionID),
-		"route_kind":    strings.TrimSpace(req.RouteKind),
-		"provider":      strings.TrimSpace(req.Provider),
-		"provider_id":   strings.TrimSpace(req.ProviderID),
-		"model":         strings.TrimSpace(req.Model),
-		"agent_id":      strings.TrimSpace(req.AgentID),
-		"policy_source": strings.TrimSpace(req.PolicySource),
-		"risk_level":    strings.TrimSpace(req.RiskLevel),
-		"binding_hash":  strings.TrimSpace(req.BindingHash),
-		"created_at":    strings.TrimSpace(req.CreatedAt),
-		"expires_at":    req.ExpiresAt,
+		"id":               strings.TrimSpace(req.ID),
+		"run_id":           strings.TrimSpace(req.RunID),
+		"step_index":       req.StepIndex,
+		"tool_name":        strings.TrimSpace(req.ToolName),
+		"tool_call_id":     strings.TrimSpace(req.ToolCallID),
+		"arguments":        arguments,
+		"session_id":       strings.TrimSpace(req.SessionID),
+		"route_kind":       strings.TrimSpace(req.RouteKind),
+		"provider":         strings.TrimSpace(req.Provider),
+		"provider_id":      strings.TrimSpace(req.ProviderID),
+		"model":            strings.TrimSpace(req.Model),
+		"agent_id":         strings.TrimSpace(req.AgentID),
+		"policy_source":    strings.TrimSpace(req.PolicySource),
+		"risk_level":       strings.TrimSpace(req.RiskLevel),
+		"binding_hash":     strings.TrimSpace(req.BindingHash),
+		"purpose":          strings.TrimSpace(req.Purpose),
+		"risk_summary":     strings.TrimSpace(req.RiskSummary),
+		"scope_summary":    strings.TrimSpace(req.ScopeSummary),
+		"expected_effects": strings.TrimSpace(req.ExpectedEffects),
+		"affected_targets": affectedTargets,
+		"created_at":       strings.TrimSpace(req.CreatedAt),
+		"expires_at":       req.ExpiresAt,
 	}
 }
 
@@ -440,22 +451,28 @@ func (h *ApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolA
 		if tools.GetAutoConfirm(ctx) {
 			return decision, nil
 		}
+		presentation := tools.BuildToolApprovalPresentation(req, tools.GetLang(ctx))
 		pending := &PendingRequest{
-			ID:           uuid.NewString(),
-			RunID:        tools.GetRunID(ctx),
-			StepIndex:    tools.GetRunStep(ctx),
-			ToolName:     strings.TrimSpace(req.ToolName),
-			ToolCallID:   strings.TrimSpace(req.ToolCallID),
-			Arguments:    cloneApprovalArgs(req.Arguments),
-			SessionID:    strings.TrimSpace(req.SessionID),
-			RouteKind:    strings.TrimSpace(string(req.RouteKind)),
-			Provider:     strings.TrimSpace(req.Provider),
-			ProviderID:   strings.TrimSpace(req.ProviderID),
-			Model:        strings.TrimSpace(req.Model),
-			AgentID:      strings.TrimSpace(req.AgentID),
-			PolicySource: decision.Approval.PolicySource,
-			RiskLevel:    decision.Approval.RiskLevel,
-			BindingHash:  decision.Approval.BindingHash,
+			ID:              uuid.NewString(),
+			RunID:           tools.GetRunID(ctx),
+			StepIndex:       tools.GetRunStep(ctx),
+			ToolName:        strings.TrimSpace(req.ToolName),
+			ToolCallID:      strings.TrimSpace(req.ToolCallID),
+			Arguments:       cloneApprovalArgs(req.Arguments),
+			SessionID:       strings.TrimSpace(req.SessionID),
+			RouteKind:       strings.TrimSpace(string(req.RouteKind)),
+			Provider:        strings.TrimSpace(req.Provider),
+			ProviderID:      strings.TrimSpace(req.ProviderID),
+			Model:           strings.TrimSpace(req.Model),
+			AgentID:         strings.TrimSpace(req.AgentID),
+			PolicySource:    decision.Approval.PolicySource,
+			RiskLevel:       decision.Approval.RiskLevel,
+			BindingHash:     decision.Approval.BindingHash,
+			Purpose:         strings.TrimSpace(presentation.Purpose),
+			RiskSummary:     strings.TrimSpace(presentation.RiskSummary),
+			ScopeSummary:    strings.TrimSpace(presentation.ScopeSummary),
+			ExpectedEffects: strings.TrimSpace(presentation.ExpectedEffects),
+			AffectedTargets: append([]string(nil), presentation.AffectedTargets...),
 		}
 		resolution, waitErr := h.waitForApproval(ctx, nonEmpty(strings.TrimSpace(req.UserID), tools.GetUserID(ctx)), pending)
 		decision.Approval.Required = true

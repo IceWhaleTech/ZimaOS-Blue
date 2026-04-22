@@ -253,11 +253,16 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 			provider.ResetParsedURL()
 			changed = true
 		}
-		if result.RecommendedAPIFormat != "" && provider.DetectedFormat != result.RecommendedAPIFormat {
-			provider.DetectedFormat = result.RecommendedAPIFormat
-			provider.DetectedAt = now
-			changed = true
-		}
+	if result.RecommendedAPIFormat != "" && provider.DetectedFormat != result.RecommendedAPIFormat {
+		provider.DetectedFormat = result.RecommendedAPIFormat
+		provider.DetectedAt = now
+		changed = true
+	}
+	profile := deriveCapabilityProfile(provider, result)
+	if provider.CapabilityProfile == nil || *provider.CapabilityProfile != profile {
+		provider.CapabilityProfile = &profile
+		changed = true
+	}
 		if changed {
 			provider.UpdatedAt = now
 		}

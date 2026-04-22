@@ -51,6 +51,62 @@ func TestBrowserLegacyPageScrollDelta(t *testing.T) {
 	}
 }
 
+func TestBrowserLegacyPageScrollDelta_CanonicalScrollPageDirection(t *testing.T) {
+	tests := []struct {
+		name      string
+		action    string
+		actType   string
+		wantDir   string
+		wantDelta int
+	}{
+		{name: "down", action: "scroll_page", actType: "down", wantDir: "down", wantDelta: browserLegacyPageScrollStep},
+		{name: "up", action: "scroll_page", actType: "up", wantDir: "up", wantDelta: -browserLegacyPageScrollStep},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			direction, x, y, ok := BrowserLegacyPageScrollDelta(tt.action, tt.actType)
+			if !ok {
+				t.Fatalf("expected %s/%s to map to a page scroll delta", tt.action, tt.actType)
+			}
+			if direction != tt.wantDir {
+				t.Fatalf("direction = %q, want %q", direction, tt.wantDir)
+			}
+			if x != 0 {
+				t.Fatalf("x = %d, want 0", x)
+			}
+			if y != tt.wantDelta {
+				t.Fatalf("y = %d, want %d", y, tt.wantDelta)
+			}
+		})
+	}
+}
+
+func TestCanonicalizeBrowserAction_PreservesScrollPageDirection(t *testing.T) {
+	tests := []struct {
+		name        string
+		action      string
+		actType     string
+		wantAction  string
+		wantActType string
+	}{
+		{name: "down", action: "scroll_page", actType: "down", wantAction: "scroll_page", wantActType: "down"},
+		{name: "up", action: "scroll_page", actType: "up", wantAction: "scroll_page", wantActType: "up"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotAction, gotActType := CanonicalizeBrowserAction(tt.action, tt.actType)
+			if gotAction != tt.wantAction {
+				t.Fatalf("action = %q, want %q", gotAction, tt.wantAction)
+			}
+			if gotActType != tt.wantActType {
+				t.Fatalf("act_type = %q, want %q", gotActType, tt.wantActType)
+			}
+		})
+	}
+}
+
 func TestCanonicalizeBrowserAction_FuzzyIntentPhrases(t *testing.T) {
 	tests := []struct {
 		name        string

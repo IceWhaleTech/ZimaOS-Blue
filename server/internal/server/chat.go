@@ -22947,6 +22947,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if defaultPinnedProviderID == "" {
 		if aff := h.getProviderAffinity(convID); aff != nil {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
+		} else if strings.TrimSpace(convState.LastGoodProviderID) != "" {
+			defaultPinnedProviderID = strings.TrimSpace(convState.LastGoodProviderID)
 		}
 	}
 	clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(c.Request().Context(), routingMessage, tools.ToolPolicyRequest{
@@ -25366,7 +25368,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if defaultPinnedProviderID == "" {
 		if aff := h.getProviderAffinity(convID); aff != nil {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
+		} else if strings.TrimSpace(convState.LastGoodProviderID) != "" {
+			defaultPinnedProviderID = strings.TrimSpace(convState.LastGoodProviderID)
 		}
+	}
+	toolPolicyReq := tools.ToolPolicyRequest{
+		Model:               model,
+		SessionID:           convID,
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: req.DeepResearchEnabled,
 	}
 	clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(c.Request().Context(), routingMessage, tools.ToolPolicyRequest{
 		Model:               model,
@@ -25420,6 +25430,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get first-turn tool definitions using the full static chat allowlist.
+	toolSurfaceSelection := h.previewChatToolSurfacesForRequest(
+		c.Request().Context(),
+		routingMessage,
+		toolPolicyReq,
+		req.WebSearchEnabled,
+		req.DeepResearchEnabled,
+	)
 	selectedTools := h.selectChatToolsForRequest(c.Request().Context(), routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
@@ -25428,6 +25445,29 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			Str("conversation_title", structuredEvaluatorNoToolsTitle).
 			Msg("[chat] disabling stream tool exposure for structured evaluator conversation")
 	}
+	toolSurfaceSnapshot := buildChatToolSurfaceLogSnapshotWithSelected(toolSurfaceSelection, selectedTools)
+	executionPlanClarifyReason := ""
+	executionPlanFallbackReason := ""
+	if reason := strings.TrimSpace(toolSurfaceSnapshot.DecisionReason); reason != "" {
+		if toolSurfaceSnapshot.NeedClarify {
+			executionPlanClarifyReason = reason
+		} else {
+			executionPlanFallbackReason = reason
+		}
+	}
+	if executionPlanFallbackReason == "" && strings.TrimSpace(toolSurfaceSnapshot.AbortReason) != "" {
+		executionPlanFallbackReason = strings.TrimSpace(toolSurfaceSnapshot.AbortReason)
+	}
+	if executionPlanFallbackReason == "" && strings.TrimSpace(toolSurfaceSnapshot.ActivationFailureReason) != "" {
+		executionPlanFallbackReason = strings.TrimSpace(toolSurfaceSnapshot.ActivationFailureReason)
+	}
+	executionPlan := buildChatExecutionPlan(chatExecutionPlanInput{
+		UserMessage:       routingMessage,
+		SelectedTools:     toolDefinitionNames(selectedTools),
+		NativeSurfaceMode: toolSurfaceSnapshot.NativeMode,
+		ClarifyReason:     executionPlanClarifyReason,
+		FallbackReason:    executionPlanFallbackReason,
+	})
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {
 		if attempt == nil {
@@ -25889,6 +25929,162 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			modelLabel = strings.TrimSpace(h.resolveResponseModel(chatReq.Model, resolvedRoute.Model))
 		}
 		return providerLabel, modelLabel
+	}
+	buildExecutionPlanDetail := func(plan *chatExecutionPlan) string {
+		if plan == nil {
+			return ""
+		}
+		zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(streamLocale)), "zh")
+		lines := make([]string, 0, 5)
+		if summary := strings.TrimSpace(plan.Summary); summary != "" {
+			lines = append(lines, summary)
+		}
+		if len(plan.SelectedTools) > 0 {
+			lines = append(lines, chatRuntimeText(
+				zh,
+				"将使用的工具："+strings.Join(plan.SelectedTools, "、"),
+				"Selected tools: "+strings.Join(plan.SelectedTools, ", "),
+			))
+		}
+		if mode := strings.TrimSpace(plan.NativeSurfaceMode); mode != "" {
+			lines = append(lines, chatRuntimeText(
+				zh,
+				"原生工具面："+mode,
+				"Native surface mode: "+mode,
+			))
+		}
+		if reason := strings.TrimSpace(plan.ClarifyReason); reason != "" {
+			lines = append(lines, chatRuntimeText(
+				zh,
+				"为什么需要确认："+reason,
+				"Why clarification is needed: "+reason,
+			))
+		}
+		if reason := strings.TrimSpace(plan.FallbackReason); reason != "" {
+			lines = append(lines, chatRuntimeText(
+				zh,
+				"为什么正在调整路由："+reason,
+				"Why the route is changing: "+reason,
+			))
+		}
+		return strings.Join(lines, "\n")
+	}
+	emitExecutionPlan := func(plan *chatExecutionPlan) {
+		if plan == nil {
+			return
+		}
+		emitSSE(map[string]interface{}{
+			"execution_plan": plan,
+			"process_event":  "request_summary",
+			"process_status": "info",
+			"process_message": chatRuntimeText(
+				strings.HasPrefix(strings.ToLower(strings.TrimSpace(streamLocale)), "zh"),
+				"执行计划已准备",
+				"Execution plan ready",
+			),
+			"process_detail": buildExecutionPlanDetail(plan),
+			"stream_id":      streamID,
+		})
+	}
+	emitRuntimeError := func(err error, retryKind string, errorMessage string, extra map[string]interface{}) {
+		payload := map[string]interface{}{
+			"done":      true,
+			"stream_id": streamID,
+			"delta":     "",
+		}
+		if message := strings.TrimSpace(errorMessage); message != "" {
+			payload["error"] = message
+		}
+		if envelope := buildChatRuntimeErrorEnvelope(err, chatRuntimeErrorContext{RetryKind: retryKind}); envelope != nil {
+			payload["runtime_error"] = envelope
+			if _, ok := payload["error"]; !ok {
+				if message := strings.TrimSpace(envelope.Message); message != "" {
+					payload["error"] = message
+				} else if code := strings.TrimSpace(envelope.Code); code != "" {
+					payload["error"] = code
+				}
+			}
+		}
+		for key, value := range extra {
+			if value == nil {
+				continue
+			}
+			payload[key] = value
+		}
+		emitSSE(payload)
+	}
+	resolveExecutionPreferenceInstruction := func(answers []tools.QuestionAnswerResult) string {
+		if len(answers) == 0 {
+			return ""
+		}
+		zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(streamLocale)), "zh")
+		selected := ""
+		for _, answer := range answers {
+			if len(answer.Selected) > 0 {
+				selected = strings.TrimSpace(answer.Selected[0])
+				if selected != "" {
+					break
+				}
+			}
+		}
+		switch selected {
+		case "prioritize_workspace":
+			return chatRuntimeText(
+				zh,
+				"用户已经明确要求先看本地工作区与仓库内容，再视需要补充实时网页信息。请把本地检查作为第一步。",
+				"The user explicitly chose to inspect the local workspace first and only use live web sources afterward if needed. Treat local inspection as the first step.",
+			)
+		case "prioritize_web":
+			return chatRuntimeText(
+				zh,
+				"用户已经明确要求先查实时网页与官方文档，再视需要回到本地工作区。请把网页研究作为第一步。",
+				"The user explicitly chose to research live web and official docs first, then return to the local workspace if needed. Treat web research as the first step.",
+			)
+		case "do_both_local_first":
+			return chatRuntimeText(
+				zh,
+				"用户希望本地工作区与实时网页信息都使用，但先从本地工作区开始，再补充网页信息。",
+				"The user wants both local workspace work and live web research, but to begin with the local workspace before expanding to the web.",
+			)
+		default:
+			return ""
+		}
+	}
+	if executionPlan != nil {
+		emitExecutionPlan(executionPlan)
+	}
+	if questionReq, ok := buildStructuredClarifyQuestion(routingMessage, streamLocale); ok && h.questionManager != nil {
+		contextPayload := questionReq.Context
+		if contextPayload == nil {
+			contextPayload = make(map[string]interface{})
+		}
+		if executionPlan != nil {
+			contextPayload["execution_plan"] = executionPlan
+		}
+		emitSSE(map[string]interface{}{
+			"awaiting_user_input": true,
+			"stream_id":           streamID,
+		})
+		answers, silent, askErr := h.questionManager.AskQuestionsWithContext(
+			ctx,
+			streamUserID,
+			convID,
+			questionReq.Questions,
+			contextPayload,
+		)
+		if askErr != nil {
+			emitRuntimeError(askErr, "send", askErr.Error(), nil)
+			h.flushConversationOnResponse(convID)
+			return nil
+		}
+		if !silent {
+			if instruction := strings.TrimSpace(resolveExecutionPreferenceInstruction(answers)); instruction != "" {
+				chatReq.Messages = prependSystemMessages(chatReq.Messages, []llm.Message{{
+					Role:    llm.RoleSystem,
+					Content: instruction,
+				}})
+			}
+		}
 	}
 
 	// Tool execution loop for streaming — collect tool calls, execute, re-stream
@@ -26366,12 +26562,11 @@ STREAM_LOOP:
 				if providerpool.IsTrialProvider(actualProviderID) {
 					chunkErr = "trial_service_busy"
 				}
-				// Send error to client
-				emitSSE(map[string]interface{}{
-					"error":     chunkErr,
-					"done":      true,
-					"stream_id": streamID,
-				})
+				retryKind := "send"
+				if toolRound > 0 || autoContinueCount > 0 {
+					retryKind = "continue"
+				}
+				emitRuntimeError(errors.New(chunk.Error), retryKind, chunkErr, nil)
 				// Persist partial content if any was streamed before the error
 				if fullContent != "" {
 					if streamingMsgID != "" {
@@ -26860,12 +27055,12 @@ STREAM_LOOP:
 								"process_last_status_code":      failoverStatusCode,
 							},
 						)
-						emitSSE(map[string]interface{}{
-							"error":     providerFailoverConfirmationRequiredError,
-							"done":      true,
-							"delta":     "",
-							"stream_id": streamID,
-						})
+						emitRuntimeError(
+							errors.New(providerFailoverConfirmationRequiredError),
+							"continue",
+							providerFailoverConfirmationRequiredError,
+							nil,
+						)
 						h.flushConversationOnResponse(convID)
 						return nil
 					}
@@ -27059,12 +27254,12 @@ STREAM_LOOP:
 								"process_last_status_code":      failoverStatusCode,
 							},
 						)
-						emitSSE(map[string]interface{}{
-							"error":     providerFailoverConfirmationRequiredError,
-							"done":      true,
-							"delta":     "",
-							"stream_id": streamID,
-						})
+						emitRuntimeError(
+							errors.New(providerFailoverConfirmationRequiredError),
+							"continue",
+							providerFailoverConfirmationRequiredError,
+							nil,
+						)
 						h.flushConversationOnResponse(convID)
 						return nil
 					}
@@ -28842,11 +29037,7 @@ STREAM_LOOP:
 				})
 				currentBudgetAttempt = budgetPlan.Current()
 				if currentBudgetAttempt == nil {
-					emitSSE(map[string]interface{}{
-						"error":     "context_window_exceeded",
-						"done":      true,
-						"stream_id": streamID,
-					})
+					emitRuntimeError(errors.New("context_window_exceeded"), "continue", "context_window_exceeded", nil)
 					return nil
 				}
 				previousResponseID = injectedPreviousResponseID
@@ -29188,13 +29379,9 @@ STREAM_LOOP:
 			"post_tool_terminal": true,
 			"post_tool_error":    errMsg,
 		})
-		emitSSE(map[string]interface{}{
-			"error":     errMsg,
-			"done":      true,
-			"delta":     "",
-			"provider":  actualProvider, // Help frontend identify which provider failed
-			"model":     actualModel,
-			"stream_id": streamID,
+		emitRuntimeError(err, "send", errMsg, map[string]interface{}{
+			"provider": actualProvider, // Help frontend identify which provider failed
+			"model":    actualModel,
 		})
 		h.flushConversationOnResponse(convID)
 		return nil

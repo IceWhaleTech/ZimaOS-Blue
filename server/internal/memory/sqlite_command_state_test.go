@@ -28,12 +28,15 @@ func TestConversationCommandStateRoundTrip(t *testing.T) {
 	}
 
 	err = store.UpsertConversationCommandState(ctx, ConversationCommandState{
-		ConversationID:      conv.ID,
-		SelectedProviderID:  "openai",
-		SelectedModelID:     "gpt-5",
-		Offline:             true,
-		WebSearchEnabled:    false,
-		DeepResearchEnabled: true,
+		ConversationID:            conv.ID,
+		SelectedProviderID:        "openai",
+		SelectedModelID:           "gpt-5",
+		LastGoodProviderID:        "openai",
+		LastGoodModelID:           "gpt-5-mini",
+		LastGoodNativeSurfaceMode: "lite_native",
+		Offline:                   true,
+		WebSearchEnabled:          false,
+		DeepResearchEnabled:       true,
 	})
 	if err != nil {
 		t.Fatalf("UpsertConversationCommandState: %v", err)
@@ -43,7 +46,14 @@ func TestConversationCommandStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetConversationCommandState: %v", err)
 	}
-	if state.SelectedProviderID != "openai" || state.SelectedModelID != "gpt-5" || !state.Offline || !state.WebSearchEnabled || !state.DeepResearchEnabled {
+	if state.SelectedProviderID != "openai" ||
+		state.SelectedModelID != "gpt-5" ||
+		state.LastGoodProviderID != "openai" ||
+		state.LastGoodModelID != "gpt-5-mini" ||
+		state.LastGoodNativeSurfaceMode != "lite_native" ||
+		!state.Offline ||
+		!state.WebSearchEnabled ||
+		!state.DeepResearchEnabled {
 		t.Fatalf("unexpected stored state: %+v", state)
 	}
 
@@ -54,7 +64,14 @@ func TestConversationCommandStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetConversationCommandState(after clear): %v", err)
 	}
-	if state.SelectedProviderID != "" || state.SelectedModelID != "" || state.Offline || !state.WebSearchEnabled || !state.DeepResearchEnabled {
+	if state.SelectedProviderID != "" ||
+		state.SelectedModelID != "" ||
+		state.LastGoodProviderID != "" ||
+		state.LastGoodModelID != "" ||
+		state.LastGoodNativeSurfaceMode != "" ||
+		state.Offline ||
+		!state.WebSearchEnabled ||
+		!state.DeepResearchEnabled {
 		t.Fatalf("unexpected cleared state: %+v", state)
 	}
 }

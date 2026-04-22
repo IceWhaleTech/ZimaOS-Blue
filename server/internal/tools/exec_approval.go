@@ -50,6 +50,11 @@ type ApprovalRequest struct {
 	ReferencedPaths []string               `json:"referenced_paths,omitempty"`
 	EnvKeys         []string               `json:"env_keys,omitempty"`
 	PathSnapshots   []ApprovalPathSnapshot `json:"path_snapshots,omitempty"`
+	Purpose         string                 `json:"purpose,omitempty"`
+	RiskSummary     string                 `json:"risk_summary,omitempty"`
+	ScopeSummary    string                 `json:"scope_summary,omitempty"`
+	ExpectedEffects string                 `json:"expected_effects,omitempty"`
+	AffectedTargets []string               `json:"affected_targets,omitempty"`
 	ExpiresAt       int64                  `json:"expires_at"` // Unix ms
 }
 
@@ -136,6 +141,12 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 	if req.Command != "" {
 		req.CommandDigest = approvalCommandDigest(req.Command)
 	}
+	presentation := BuildExecApprovalPresentation(req, GetLang(ctx))
+	req.Purpose = strings.TrimSpace(presentation.Purpose)
+	req.RiskSummary = strings.TrimSpace(presentation.RiskSummary)
+	req.ScopeSummary = strings.TrimSpace(presentation.ScopeSummary)
+	req.ExpectedEffects = strings.TrimSpace(presentation.ExpectedEffects)
+	req.AffectedTargets = append([]string(nil), presentation.AffectedTargets...)
 	req.PathSnapshots = approvalSnapshotsForRequest(req)
 	if req.BindingHash == "" {
 		req.BindingHash = approvalBindingHash(req)

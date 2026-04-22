@@ -116,13 +116,16 @@ type messageAttachmentFileRow struct {
 }
 
 type conversationCommandStateRow struct {
-	SelectedProviderID  string `json:"selected_provider_id" zorm:"selected_provider_id"`
-	SelectedModelID     string `json:"selected_model_id" zorm:"selected_model_id"`
-	AgentcoreRunnerRef  string `json:"agentcore_runner_ref" zorm:"agentcore_runner_ref"`
-	Offline             bool   `json:"offline" zorm:"offline"`
-	WebSearchEnabled    bool   `json:"web_search_enabled" zorm:"web_search_enabled"`
-	DeepResearchEnabled bool   `json:"deep_research_enabled" zorm:"deep_research_enabled"`
-	UpdatedAt           string `json:"updated_at" zorm:"updated_at"`
+	SelectedProviderID        string `json:"selected_provider_id" zorm:"selected_provider_id"`
+	SelectedModelID           string `json:"selected_model_id" zorm:"selected_model_id"`
+	LastGoodProviderID        string `json:"last_good_provider_id" zorm:"last_good_provider_id"`
+	LastGoodModelID           string `json:"last_good_model_id" zorm:"last_good_model_id"`
+	LastGoodNativeSurfaceMode string `json:"last_good_native_surface_mode" zorm:"last_good_native_surface_mode"`
+	AgentcoreRunnerRef        string `json:"agentcore_runner_ref" zorm:"agentcore_runner_ref"`
+	Offline                   bool   `json:"offline" zorm:"offline"`
+	WebSearchEnabled          bool   `json:"web_search_enabled" zorm:"web_search_enabled"`
+	DeepResearchEnabled       bool   `json:"deep_research_enabled" zorm:"deep_research_enabled"`
+	UpdatedAt                 string `json:"updated_at" zorm:"updated_at"`
 }
 
 type conversationScopeRow struct {
@@ -160,14 +163,17 @@ func conversationValues(conv *Conversation) z.V {
 
 func conversationCommandStateValues(conversationID string, state ConversationCommandState) z.V {
 	return z.V{
-		"conversation_id":       conversationID,
-		"selected_provider_id":  state.SelectedProviderID,
-		"selected_model_id":     state.SelectedModelID,
-		"agentcore_runner_ref":  state.AgentcoreRunnerRef,
-		"offline":               state.Offline,
-		"web_search_enabled":    state.WebSearchEnabled,
-		"deep_research_enabled": state.DeepResearchEnabled,
-		"updated_at":            formatStoreTime(state.UpdatedAt),
+		"conversation_id":               conversationID,
+		"selected_provider_id":          state.SelectedProviderID,
+		"selected_model_id":             state.SelectedModelID,
+		"last_good_provider_id":         state.LastGoodProviderID,
+		"last_good_model_id":            state.LastGoodModelID,
+		"last_good_native_surface_mode": state.LastGoodNativeSurfaceMode,
+		"agentcore_runner_ref":          state.AgentcoreRunnerRef,
+		"offline":                       state.Offline,
+		"web_search_enabled":            state.WebSearchEnabled,
+		"deep_research_enabled":         state.DeepResearchEnabled,
+		"updated_at":                    formatStoreTime(state.UpdatedAt),
 	}
 }
 
@@ -279,6 +285,9 @@ func rowToConversationCommandState(conversationID string, row conversationComman
 	state := defaultConversationCommandState(conversationID)
 	state.SelectedProviderID = strings.TrimSpace(row.SelectedProviderID)
 	state.SelectedModelID = strings.TrimSpace(row.SelectedModelID)
+	state.LastGoodProviderID = strings.TrimSpace(row.LastGoodProviderID)
+	state.LastGoodModelID = strings.TrimSpace(row.LastGoodModelID)
+	state.LastGoodNativeSurfaceMode = strings.TrimSpace(row.LastGoodNativeSurfaceMode)
 	state.AgentcoreRunnerRef = strings.TrimSpace(row.AgentcoreRunnerRef)
 	state.Offline = row.Offline
 	state.WebSearchEnabled = row.WebSearchEnabled

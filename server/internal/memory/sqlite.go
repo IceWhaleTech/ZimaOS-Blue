@@ -73,14 +73,17 @@ type Message struct {
 
 // ConversationCommandState stores persisted per-conversation deterministic chat command state.
 type ConversationCommandState struct {
-	ConversationID      string    `json:"conversation_id"`
-	SelectedProviderID  string    `json:"selected_provider_id,omitempty"`
-	SelectedModelID     string    `json:"selected_model_id,omitempty"`
-	AgentcoreRunnerRef  string    `json:"agentcore_runner_ref,omitempty"`
-	Offline             bool      `json:"offline"`
-	WebSearchEnabled    bool      `json:"web_search_enabled"`
-	DeepResearchEnabled bool      `json:"deep_research_enabled"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ConversationID            string    `json:"conversation_id"`
+	SelectedProviderID        string    `json:"selected_provider_id,omitempty"`
+	SelectedModelID           string    `json:"selected_model_id,omitempty"`
+	LastGoodProviderID        string    `json:"last_good_provider_id,omitempty"`
+	LastGoodModelID           string    `json:"last_good_model_id,omitempty"`
+	LastGoodNativeSurfaceMode string    `json:"last_good_native_surface_mode,omitempty"`
+	AgentcoreRunnerRef        string    `json:"agentcore_runner_ref,omitempty"`
+	Offline                   bool      `json:"offline"`
+	WebSearchEnabled          bool      `json:"web_search_enabled"`
+	DeepResearchEnabled       bool      `json:"deep_research_enabled"`
+	UpdatedAt                 time.Time `json:"updated_at"`
 }
 
 // Store provides conversation storage using SQLite.
@@ -209,6 +212,9 @@ func (s *Store) migrate() error {
 		conversation_id TEXT PRIMARY KEY,
 		selected_provider_id TEXT NOT NULL DEFAULT '',
 		selected_model_id TEXT NOT NULL DEFAULT '',
+		last_good_provider_id TEXT NOT NULL DEFAULT '',
+		last_good_model_id TEXT NOT NULL DEFAULT '',
+		last_good_native_surface_mode TEXT NOT NULL DEFAULT '',
 		agentcore_runner_ref TEXT NOT NULL DEFAULT '',
 		offline BOOLEAN NOT NULL DEFAULT 0,
 		web_search_enabled BOOLEAN NOT NULL DEFAULT 1,
@@ -250,6 +256,9 @@ func (s *Store) migrate() error {
 		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
 		"ALTER TABLE conversations ADD COLUMN pinned BOOLEAN DEFAULT 0",
 		"ALTER TABLE conversations ADD COLUMN auto_title_finalized BOOLEAN NOT NULL DEFAULT 0",
+		"ALTER TABLE conversation_command_state ADD COLUMN last_good_provider_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE conversation_command_state ADD COLUMN last_good_model_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE conversation_command_state ADD COLUMN last_good_native_surface_mode TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE conversation_command_state ADD COLUMN agentcore_runner_ref TEXT NOT NULL DEFAULT ''",
 	}
 
@@ -924,7 +933,7 @@ func (s *Store) getPersistedConversationCommandState(ctx context.Context, conver
 
 	var rows []conversationCommandStateRow
 	_, err := s.conversationCommandStateRead(ctx).Select(&rows,
-		z.Fields("selected_provider_id", "selected_model_id", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
+		z.Fields("selected_provider_id", "selected_model_id", "last_good_provider_id", "last_good_model_id", "last_good_native_surface_mode", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
 		z.Where(z.Eq("conversation_id", conversationID)),
 		z.Limit(1),
 	)
@@ -1073,6 +1082,9 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 	state.ConversationID = conversationID
 	state.SelectedProviderID = strings.TrimSpace(state.SelectedProviderID)
 	state.SelectedModelID = strings.TrimSpace(state.SelectedModelID)
+	state.LastGoodProviderID = strings.TrimSpace(state.LastGoodProviderID)
+	state.LastGoodModelID = strings.TrimSpace(state.LastGoodModelID)
+	state.LastGoodNativeSurfaceMode = strings.TrimSpace(state.LastGoodNativeSurfaceMode)
 	state.AgentcoreRunnerRef = strings.TrimSpace(state.AgentcoreRunnerRef)
 	state = normalizeConversationCommandStateToolDefaults(state)
 	state.UpdatedAt = timeutil.NowTime()
@@ -1093,13 +1105,16 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 		}
 
 		conversationScopedState := defaultConversationCommandState(conversationID)
+		conversationScopedState.LastGoodProviderID = state.LastGoodProviderID
+		conversationScopedState.LastGoodModelID = state.LastGoodModelID
+		conversationScopedState.LastGoodNativeSurfaceMode = state.LastGoodNativeSurfaceMode
 		conversationScopedState.AgentcoreRunnerRef = state.AgentcoreRunnerRef
 		conversationScopedState.UpdatedAt = state.UpdatedAt
 		_, err = s.conversationCommandState(ctx).Insert(
 			conversationCommandStateValues(conversationID, conversationScopedState),
 			z.OnConflictDoUpdateSet(
 				[]string{"conversation_id"},
-				[]string{"selected_provider_id", "selected_model_id", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
+				[]string{"selected_provider_id", "selected_model_id", "last_good_provider_id", "last_good_model_id", "last_good_native_surface_mode", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
 			),
 		)
 		if err != nil {
@@ -1112,7 +1127,7 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 		conversationCommandStateValues(state.ConversationID, state),
 		z.OnConflictDoUpdateSet(
 			[]string{"conversation_id"},
-			[]string{"selected_provider_id", "selected_model_id", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
+			[]string{"selected_provider_id", "selected_model_id", "last_good_provider_id", "last_good_model_id", "last_good_native_surface_mode", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
 		),
 	)
 	if err != nil {

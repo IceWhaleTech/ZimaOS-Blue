@@ -45,7 +45,7 @@ func NormalizeBrowserActionAlias(action string) (string, bool) {
 		return "snapshot_interactive", true
 	case "snapshot_auto", "read", "page":
 		return "snapshot_auto", true
-	case "act", "click", "type", "focus", "hover", "scroll", "select", "scroll_down", "scroll_up":
+	case "act", "click", "type", "focus", "hover", "scroll", "select", "scroll_down", "scroll_up", "scroll_page":
 		return strings.ToLower(strings.TrimSpace(action)), true
 	case "screenshot", "shot", "capture", "screen":
 		return "screenshot", true

@@ -138,8 +138,9 @@ type Provider struct {
 	UpdatedAt    time.Time            `json:"updated_at"`
 
 	// Detected capabilities (persisted across restarts)
-	DetectedFormat APIFormat `json:"detected_format,omitempty"` // Probed API format that works (persisted)
-	DetectedAt     time.Time `json:"detected_at,omitempty"`     // When format was last probed
+	DetectedFormat    APIFormat          `json:"detected_format,omitempty"`     // Probed API format that works (persisted)
+	DetectedAt        time.Time          `json:"detected_at,omitempty"`         // When format was last probed
+	CapabilityProfile *CapabilityProfile `json:"capability_profile,omitempty"` // Derived routing/runtime capability surface
 
 	// AlternateBaseURLs is a list of alternate base URLs to try when auth fails on the primary BaseURL.
 	// The system will probe these in order when the primary endpoint returns 401/403.
