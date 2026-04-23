@@ -173,6 +173,58 @@ func TestRelayServerBridgesExtensionAndCDP(t *testing.T) {
 	}
 }
 
+func TestRelayServerReplaysKnownTargetsToNewCDPClient(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RelayEnabled = true
+	cfg.RelayPort = freeRelayPort(t)
+	cfg.RelayToken = "test-token"
+
+	relay, err := StartRelayServer(cfg, "")
+	if err != nil {
+		t.Fatalf("StartRelayServer() error = %v", err)
+	}
+	defer func() { _ = relay.Close() }()
+
+	info := relay.Info()
+	extensionConn := mustDialRelayWS(t, "ws://"+net.JoinHostPort(info.Host, itoa(info.Port))+relayExtensionWebSocketPath+"?token="+info.Token)
+	defer func() { _ = extensionConn.Close() }()
+
+	if err := extensionConn.WriteJSON(map[string]interface{}{
+		"method": "forwardCDPEvent",
+		"params": map[string]interface{}{
+			"method": "Target.attachedToTarget",
+			"params": map[string]interface{}{
+				"sessionId": "blue-tab-2",
+				"targetInfo": map[string]interface{}{
+					"targetId": "target-2",
+					"type":     "page",
+					"title":    "Checkout",
+					"url":      "https://shop.example/checkout",
+					"attached": true,
+				},
+				"waitingForDebugger": false,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("extension WriteJSON(attach event) error = %v", err)
+	}
+
+	waitForRelayCondition(t, 3*time.Second, func() bool {
+		return len(relay.snapshotTargets()) == 1
+	})
+
+	cdpConn := mustDialRelayWS(t, "ws://"+net.JoinHostPort(info.Host, itoa(info.Port))+relayCDPWebSocketPath+"?token="+info.Token)
+	defer func() { _ = cdpConn.Close() }()
+
+	event := readJSONMessage(t, cdpConn, func(msg map[string]interface{}) bool {
+		return msg["method"] == "Target.attachedToTarget"
+	})
+	params, _ := event["params"].(map[string]interface{})
+	if got := params["sessionId"]; got != "blue-tab-2" {
+		t.Fatalf("attached event sessionId = %v, want %v", got, "blue-tab-2")
+	}
+}
+
 func TestRodServiceStartSucceedsAgainstBuiltInRelay(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.RelayEnabled = true
@@ -260,6 +312,19 @@ func readJSONMessage(t *testing.T, conn *websocket.Conn, match func(map[string]i
 			return msg
 		}
 	}
+}
+
+func waitForRelayCondition(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("condition not met before timeout")
 }
 
 func itoa(v int) string {

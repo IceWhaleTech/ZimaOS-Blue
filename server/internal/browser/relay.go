@@ -510,9 +510,14 @@ func (s *RelayServer) handleCDPWebSocket(w http.ResponseWriter, r *http.Request)
 		_ = client.Close()
 		return
 	}
+	knownTargets := make([]relayConnectedTarget, 0, len(s.connectedTargets))
+	for _, target := range s.connectedTargets {
+		knownTargets = append(knownTargets, target)
+	}
 	s.cdpClients[client] = struct{}{}
 	s.mu.Unlock()
 
+	s.emitTargetsToClient(client, knownTargets, "autoAttach")
 	go s.runCDPSocket(client)
 }
 
@@ -952,6 +957,10 @@ func (s *RelayServer) handleExtensionDisconnectGraceExpired() {
 
 func (s *RelayServer) emitKnownTargetsToClient(client *relaySocket, mode string) {
 	targets := s.snapshotTargets()
+	s.emitTargetsToClient(client, targets, mode)
+}
+
+func (s *RelayServer) emitTargetsToClient(client *relaySocket, targets []relayConnectedTarget, mode string) {
 	for _, target := range targets {
 		info := target.TargetInfo
 		info.Attached = true
