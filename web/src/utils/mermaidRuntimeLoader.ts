@@ -6,8 +6,8 @@ export type MermaidRuntime = {
 }
 
 const MERMAID_CDN_URLS = [
-  'https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.esm.min.mjs',
-  'https://unpkg.com/mermaid@10.6.1/dist/mermaid.esm.min.mjs',
+  'https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.esm.min.mjs',
+  'https://unpkg.com/mermaid@11.14.0/dist/mermaid.esm.min.mjs',
 ] as const
 
 export const embeddedMermaidBundleDisabled =

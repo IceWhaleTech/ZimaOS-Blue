@@ -1421,6 +1421,11 @@ func TestProcessChannelMessage_DefaultModel502RollsBackToAuto(t *testing.T) {
 	}
 	defer store.Close()
 
+	convID := channelConversationID("feishu", "chat_fallback_auto")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "manual title"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+
 	registry := llm.NewProviderRegistry()
 	registry.Register(&scriptedChatProvider{
 		name:   "model-catalog",
