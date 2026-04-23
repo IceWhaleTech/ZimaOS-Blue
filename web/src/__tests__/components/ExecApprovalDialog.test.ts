@@ -82,6 +82,14 @@ describe('ExecApprovalDialog', () => {
       type: 'command',
       command: 'rm -rf /tmp/demo',
       workdir: '/Users/orca/.zimaos-blue/data/workspace',
+      purpose: 'Allow running the requested command',
+      risk_summary: 'High risk: this execution may write files, access the network, or launch subprocesses.',
+      scope_summary: 'Working directory: /Users/orca/.zimaos-blue/data/workspace',
+      expected_effects: 'May create, modify, or overwrite files.',
+      affected_targets: [
+        '/Users/orca/.zimaos-blue/data/workspace',
+        '/Users/orca/.zimaos-blue/data/workspace/config.yaml',
+      ],
       expires_at: Date.now() + 60_000,
       session_id: 'conv-1',
     }
@@ -93,6 +101,9 @@ describe('ExecApprovalDialog', () => {
     expect(wrapper.text()).toContain('/Users/orca/.zimaos-blue/data/workspace')
     expect(wrapper.text()).toContain('Allow Exact Command')
     expect(wrapper.text()).toContain('does not add the directory to the allowlist')
+    expect(wrapper.text()).toContain('Allow running the requested command')
+    expect(wrapper.text()).toContain('High risk')
+    expect(wrapper.text()).toContain('May create, modify, or overwrite files')
     expect(wrapper.text()).not.toContain('Directory Access Request')
 
     wrapper.unmount()

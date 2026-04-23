@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useTaskProjectionsStore } from '@/stores/taskProjections'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const chatStore = useChatStore()
 const taskProjections = useTaskProjectionsStore()
 
@@ -26,6 +26,41 @@ const shouldShowWorkdir = computed(() => {
   if (!current?.workdir) return false
   return current.type === 'command' || current.workdir !== current.directory
 })
+
+function resolveText(key: string, fallback: string) {
+  return te(key) ? String(t(key)) : fallback
+}
+
+const summaryItems = computed(() => {
+  const current = approval.value
+  if (!current) return []
+  return [
+    {
+      key: 'purpose',
+      label: resolveText('execApproval.purpose', 'Purpose'),
+      value: current.purpose?.trim() || '',
+    },
+    {
+      key: 'risk',
+      label: resolveText('execApproval.risk', 'Risk'),
+      value: current.risk_summary?.trim() || '',
+    },
+    {
+      key: 'scope',
+      label: resolveText('execApproval.scope', 'Scope'),
+      value: current.scope_summary?.trim() || '',
+    },
+    {
+      key: 'effects',
+      label: resolveText('execApproval.effects', 'Expected Effects'),
+      value: current.expected_effects?.trim() || '',
+    },
+  ].filter((item) => item.value)
+})
+
+const affectedTargets = computed(() =>
+  (approval.value?.affected_targets || []).map((target) => target.trim()).filter(Boolean)
+)
 
 // Countdown timer
 const remainingSeconds = ref(0)
@@ -157,6 +192,40 @@ function deny() {
               <code
                 class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words max-h-32 overflow-y-auto"
               >{{ approval.command }}</code>
+            </div>
+            <div
+              v-if="summaryItems.length > 0"
+              class="space-y-2"
+            >
+              <div
+                v-for="item in summaryItems"
+                :key="item.key"
+                class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-2"
+              >
+                <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {{ item.label }}
+                </p>
+                <p class="mt-1 text-sm leading-6 text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                  {{ item.value }}
+                </p>
+              </div>
+            </div>
+            <div
+              v-if="affectedTargets.length > 0"
+              class="space-y-1"
+            >
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {{ resolveText('execApproval.targets', 'Affected Targets') }}
+              </p>
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 space-y-1 max-h-40 overflow-y-auto">
+                <p
+                  v-for="target in affectedTargets"
+                  :key="target"
+                  class="font-mono text-xs text-gray-700 dark:text-gray-300 break-all"
+                >
+                  {{ target }}
+                </p>
+              </div>
             </div>
             <p
               v-if="isCommandApproval"

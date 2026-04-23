@@ -15011,6 +15011,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			}
 			h.setProviderAffinity(convID, resp.ProviderID, baseURL)
 		}
+		h.rememberLastGoodRoute(ctx, convID, resp.ProviderID, resp.Model, "")
 		return responseContent, nil
 	}
 
@@ -15603,6 +15604,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 		h.setProviderAffinity(convID, resp.ProviderID, baseURL)
 	}
+	h.rememberLastGoodRoute(ctx, convID, resp.ProviderID, resp.Model, "")
 
 	return responseContent, nil
 }
@@ -24574,6 +24576,47 @@ func (h *ChatHandler) setProviderAffinity(convID, providerID, baseURL string) {
 	logger.Debug().Str("conv_id", convID).Str("provider_id", providerID).Msg("[affinity] set provider affinity")
 }
 
+func (h *ChatHandler) rememberLastGoodRoute(ctx context.Context, convID, providerID, modelID, nativeSurfaceMode string) {
+	if h == nil || h.store == nil {
+		return
+	}
+
+	convID = strings.TrimSpace(convID)
+	providerID = strings.TrimSpace(providerID)
+	modelID = strings.TrimSpace(modelID)
+	nativeSurfaceMode = strings.TrimSpace(nativeSurfaceMode)
+	if convID == "" || (providerID == "" && modelID == "" && nativeSurfaceMode == "") {
+		return
+	}
+
+	state, err := h.store.GetConversationCommandState(ctx, convID)
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Str("conversation_id", convID).
+			Msg("[command-state] failed to load state for last-good route persistence")
+		return
+	}
+	if providerID != "" {
+		state.LastGoodProviderID = providerID
+	}
+	if modelID != "" {
+		state.LastGoodModelID = modelID
+	}
+	if nativeSurfaceMode != "" {
+		state.LastGoodNativeSurfaceMode = nativeSurfaceMode
+	}
+	if err := h.store.UpsertConversationCommandState(ctx, state); err != nil {
+		logger.Warn().
+			Err(err).
+			Str("conversation_id", convID).
+			Str("provider_id", providerID).
+			Str("model_id", modelID).
+			Str("native_surface_mode", nativeSurfaceMode).
+			Msg("[command-state] failed to persist last-good route")
+	}
+}
+
 // getProviderAffinity returns the preferred provider for a conversation, or nil if expired/absent.
 func (h *ChatHandler) getProviderAffinity(convID string) *providerAffinity {
 	h.providerAffinityMu.Lock()
@@ -29600,6 +29643,7 @@ STREAM_LOOP:
 			}
 			h.setProviderAffinity(convID, actualProviderID, baseURL)
 		}
+		h.rememberLastGoodRoute(ctx, convID, actualProviderID, actualModel, toolSurfaceSnapshot.NativeMode)
 		h.recordProviderAccelerationTurnResult(
 			convID,
 			accelerationTurn,

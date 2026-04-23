@@ -7,7 +7,11 @@ import { type CloseBehavior, type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore, type Theme } from '@/stores/theme'
 import { backupApi } from '@/api/index'
-import { type ContextCompressionMode } from '@/api/settings'
+import {
+  settingsApi,
+  type ContextCompressionMode,
+  type SelectorDryRunResponse,
+} from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
 import TrustedHtml from '@/components/common/TrustedHtml.vue'
@@ -162,6 +166,12 @@ const backupRestoring = ref<string | null>(null)
 const backupDeleting = ref<string | null>(null)
 const generalTabInitialized = ref(false)
 const proxyTabInitialized = ref(false)
+const selectorDebugOpen = ref(false)
+const selectorDebugQuery = ref('')
+const selectorDebugModel = ref('')
+const selectorDebugLoading = ref(false)
+const selectorDebugError = ref('')
+const selectorDebugResult = ref<SelectorDryRunResponse | null>(null)
 
 function clearSaveStatus() {
   if (saveStatusTimer) {
@@ -183,6 +193,117 @@ function showSaveStatus(message: string, action?: SaveStatusAction) {
     },
     action ? 6000 : 2000
   )
+}
+
+const selectorDebugHighlights = computed(() => {
+  const result = selectorDebugResult.value
+  if (!result) return []
+
+  return [
+    {
+      key: 'surface',
+      label: tWithFallback('settings.selectorDebug.nativeSurface', 'Native surface'),
+      value: result.selected_native_surface_mode || 'legacy',
+    },
+    {
+      key: 'tools',
+      label: tWithFallback('settings.selectorDebug.selectedTools', 'Selected tools'),
+      value:
+        result.selected_tools && result.selected_tools.length > 0
+          ? result.selected_tools.join(', ')
+          : tWithFallback('settings.selectorDebug.none', 'None'),
+    },
+    ...(result.clarify_reason
+      ? [
+          {
+            key: 'clarify',
+            label: tWithFallback('settings.selectorDebug.clarifyReason', 'Clarify reason'),
+            value: result.clarify_reason,
+          },
+        ]
+      : []),
+    ...(result.fallback_reason
+      ? [
+          {
+            key: 'fallback',
+            label: tWithFallback('settings.selectorDebug.fallbackReason', 'Fallback reason'),
+            value: result.fallback_reason,
+          },
+        ]
+      : []),
+  ]
+})
+
+const selectorDebugStructuredBlocks = computed(() => {
+  const result = selectorDebugResult.value
+  if (!result) return []
+  return [
+    result.tool_debug
+      ? {
+          key: 'tool_debug',
+          label: tWithFallback('settings.selectorDebug.toolDebug', 'Tool debug'),
+          value: JSON.stringify(result.tool_debug, null, 2),
+        }
+      : null,
+    result.discovery_runtime
+      ? {
+          key: 'discovery_runtime',
+          label: tWithFallback('settings.selectorDebug.discoveryRuntime', 'Discovery runtime'),
+          value: JSON.stringify(result.discovery_runtime, null, 2),
+        }
+      : null,
+    result.skill_advice
+      ? {
+          key: 'skill_advice',
+          label: tWithFallback('settings.selectorDebug.skillAdvice', 'Skill advice'),
+          value: JSON.stringify(result.skill_advice, null, 2),
+        }
+      : null,
+    result.skill_decision
+      ? {
+          key: 'skill_decision',
+          label: tWithFallback('settings.selectorDebug.skillDecision', 'Skill decision'),
+          value: JSON.stringify(result.skill_decision, null, 2),
+        }
+      : null,
+  ].filter((block): block is { key: string; label: string; value: string } => !!block)
+})
+
+async function runSelectorDryRun() {
+  const query = selectorDebugQuery.value.trim()
+  if (!query) {
+    selectorDebugError.value = tWithFallback(
+      'settings.selectorDebug.queryRequired',
+      'Enter a message to dry-run.'
+    )
+    selectorDebugResult.value = null
+    return
+  }
+
+  try {
+    selectorDebugLoading.value = true
+    selectorDebugError.value = ''
+    const response = await settingsApi.selectorDryRun(
+      query,
+      selectorDebugModel.value.trim() || undefined
+    )
+    selectorDebugResult.value = response.data
+  } catch (error) {
+    selectorDebugResult.value = null
+    selectorDebugError.value =
+      error instanceof Error
+        ? error.message
+        : tWithFallback('settings.selectorDebug.failed', 'Dry run failed')
+  } finally {
+    selectorDebugLoading.value = false
+  }
+}
+
+function resetSelectorDryRun() {
+  selectorDebugQuery.value = ''
+  selectorDebugModel.value = ''
+  selectorDebugError.value = ''
+  selectorDebugResult.value = null
 }
 
 async function handleLocaleChange(locale: string) {
@@ -926,6 +1047,150 @@ onUnmounted(() => {
             </div>
             <div class="dashboard-card-subsurface settings-field-card settings-field-card--flush">
               <ProviderPoolSection />
+            </div>
+          </section>
+
+          <section class="settings-module">
+            <div class="settings-module__header">
+              <div>
+                <span class="settings-module__eyebrow">{{
+                  tWithFallback('settings.selectorDebug.eyebrow', 'Advanced routing')
+                }}</span>
+                <h2 class="settings-module__title">
+                  {{ tWithFallback('settings.selectorDebug.title', 'Selector / Route Debug') }}
+                </h2>
+                <p class="settings-module__description">
+                  {{
+                    tWithFallback(
+                      'settings.selectorDebug.description',
+                      'Runs the existing selector dry-run so you can inspect native surface mode, clarify reasons, fallback reasons, and debug payloads without changing live routing.'
+                    )
+                  }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                @click="selectorDebugOpen = !selectorDebugOpen"
+              >
+                {{
+                  selectorDebugOpen
+                    ? tWithFallback('settings.selectorDebug.hide', 'Hide panel')
+                    : tWithFallback('settings.selectorDebug.show', 'Open panel')
+                }}
+              </button>
+            </div>
+
+            <div
+              v-if="selectorDebugOpen"
+              class="settings-card-grid"
+            >
+              <div class="dashboard-card-subsurface settings-field-card">
+                <div class="space-y-4">
+                  <div class="space-y-2">
+                    <label class="settings-field-label">
+                      {{ tWithFallback('settings.selectorDebug.query', 'Message / Query') }}
+                    </label>
+                    <textarea
+                      v-model="selectorDebugQuery"
+                      rows="4"
+                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+                      :placeholder="
+                        tWithFallback(
+                          'settings.selectorDebug.queryPlaceholder',
+                          'Describe the user request you want to inspect.'
+                        )
+                      "
+                    />
+                  </div>
+                  <div class="space-y-2">
+                    <label class="settings-field-label">
+                      {{ tWithFallback('settings.selectorDebug.model', 'Model override') }}
+                    </label>
+                    <input
+                      v-model="selectorDebugModel"
+                      type="text"
+                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+                      :placeholder="
+                        tWithFallback(
+                          'settings.selectorDebug.modelPlaceholder',
+                          'Optional: force a specific model name for the dry run.'
+                        )
+                      "
+                    />
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      class="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      :disabled="selectorDebugLoading"
+                      @click="runSelectorDryRun"
+                    >
+                      {{
+                        selectorDebugLoading
+                          ? tWithFallback('settings.selectorDebug.running', 'Running...')
+                          : tWithFallback('settings.selectorDebug.run', 'Run dry run')
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                      @click="resetSelectorDryRun"
+                    >
+                      {{ tWithFallback('settings.selectorDebug.clear', 'Clear') }}
+                    </button>
+                  </div>
+                  <p
+                    v-if="selectorDebugError"
+                    class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+                  >
+                    {{ selectorDebugError }}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                v-if="selectorDebugResult"
+                class="dashboard-card-subsurface settings-field-card"
+              >
+                <div class="space-y-3">
+                  <div
+                    v-for="item in selectorDebugHighlights"
+                    :key="item.key"
+                    class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      {{ item.label }}
+                    </p>
+                    <p class="mt-1 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
+                      {{ item.value }}
+                    </p>
+                  </div>
+
+                  <div
+                    v-if="selectorDebugResult.skill_prompt_hint"
+                    class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      {{ tWithFallback('settings.selectorDebug.promptHint', 'Prompt hint') }}
+                    </p>
+                    <p class="mt-1 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
+                      {{ selectorDebugResult.skill_prompt_hint }}
+                    </p>
+                  </div>
+
+                  <div
+                    v-for="block in selectorDebugStructuredBlocks"
+                    :key="block.key"
+                    class="rounded-2xl border border-slate-200 bg-slate-950 text-slate-100"
+                  >
+                    <div class="border-b border-slate-800 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                      {{ block.label }}
+                    </div>
+                    <pre class="max-h-80 overflow-auto px-4 py-3 text-xs leading-6 whitespace-pre-wrap">{{ block.value }}</pre>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 

@@ -74,10 +74,34 @@ export interface SendMessageResponse {
   }
 }
 
+export interface ChatRecoveryAction {
+  code: string
+}
+
+export interface ChatExecutionPlan {
+  summary?: string
+  selected_tools?: string[]
+  native_surface_mode?: string
+  clarify_reason?: string
+  fallback_reason?: string
+  recovery_actions?: ChatRecoveryAction[]
+}
+
+export interface ChatRuntimeError {
+  code?: string
+  message?: string
+  detail?: string
+  retry_kind?: string
+  recovery_actions?: ChatRecoveryAction[]
+}
+
 export interface ConversationCommandState {
   conversation_id?: string
   selected_provider_id?: string
   selected_model_id?: string
+  last_good_provider_id?: string
+  last_good_model_id?: string
+  last_good_native_surface_mode?: string
   agentcore_runner_ref?: string
   offline: boolean
 }
@@ -120,6 +144,8 @@ export interface StreamChunk {
   done: boolean
   finalization_mode?: 'replace' | 'merge_process_cards'
   error?: string
+  runtime_error?: ChatRuntimeError
+  execution_plan?: ChatExecutionPlan
   stream_progress?: string
   stream_id?: string
   seq?: number

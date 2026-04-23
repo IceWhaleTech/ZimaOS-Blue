@@ -2,6 +2,10 @@ import type { StreamChunk, SendMessageRequest } from '@/api/chat'
 import { ensureFreshToken } from '@/api/client'
 import { getStoredAccessToken } from '@/utils/authStorage'
 
+type SSERuntimeError = Error & {
+  runtimeError?: StreamChunk['runtime_error']
+}
+
 export interface SSEClientOptions {
   /** Called when stream ID is known (from response header or chunk payload). */
   onStreamId?: (streamId: string) => void
@@ -392,7 +396,11 @@ export class SSEClient {
                 // Check for error in chunk
                 if (chunk.error) {
                   clearFinalChunkFallback()
-                  options.onError?.(new Error(chunk.error))
+                  const error = new Error(chunk.error) as SSERuntimeError
+                  if (chunk.runtime_error) {
+                    error.runtimeError = chunk.runtime_error
+                  }
+                  options.onError?.(error)
                   this.isConnected = false
                   break
                 }

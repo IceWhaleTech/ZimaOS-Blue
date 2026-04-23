@@ -17,6 +17,11 @@ export interface PendingRequest {
   arguments: Record<string, unknown>
   session_id?: string
   binding_hash?: string
+  purpose?: string
+  risk_summary?: string
+  scope_summary?: string
+  expected_effects?: string
+  affected_targets?: string[]
   created_at: string
 }
 

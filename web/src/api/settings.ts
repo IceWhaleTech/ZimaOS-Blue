@@ -314,9 +314,50 @@ export interface SelectorDryRunResponse {
   query: string
   model: string
   selected_tools: string[]
+  selected_tool_surface?: Record<string, unknown>
+  selected_native_tools?: string[]
+  selected_native_tool_surface?: Record<string, unknown>
+  selected_native_surface_mode?: string
+  selected_native_surface_reason?: string
+  clarify_reason?: string
+  fallback_reason?: string
+  tool_debug?: Record<string, unknown>
+  discovery_decision?: Record<string, unknown>
+  selected_canonical_skill?: string
+  selected_alias?: string
+  execution_profile?: string
+  skill_exec_cutover?: boolean
+  forked_skill_execution?: boolean
+  clarify_outcome?: string
+  discovery_runtime?: Record<string, unknown>
+  selected_canonical_entry?: Record<string, unknown>
+  selected_canonical_cutover_eligible?: boolean
   skill_decision?: unknown
   skill_prompt_hint?: string
   skill_selector_error?: string
+  canonical_skill_id?: string
+  skill_need_clarify?: boolean
+  skill_route_outcome?: string
+  decision_reason?: string
+  decision_stage?: string
+  active_skill_count?: number
+  dormant_skill_count?: number
+  skill_cache_invalidation_count?: number
+  skill_discovered_dirs?: string[]
+  skill_activated_conditional_skills?: string[]
+  activation_state?: string
+  activation_source?: string
+  model_invocable?: boolean
+  user_invocable?: boolean
+  selected_skill_runtime?: Record<string, unknown>
+  selected_skill_runtime_error?: string
+  candidate_runtime?: Record<string, unknown>
+  tool_surface_alias_rewrite_count?: number
+  tool_surface_cache_invalidation_count?: number
+  tool_surface_exec_cutover_count?: number
+  skill_advice?: Record<string, unknown>
+  skill_advice_error?: string
+  skill_debug_error?: string
 }
 
 // Settings API

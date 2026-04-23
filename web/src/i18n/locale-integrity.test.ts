@@ -143,6 +143,17 @@ describe('locale integrity', () => {
     }
   })
 
+  it('keeps selector debug copy in shared backfills instead of raw locale source files', () => {
+    for (const [modulePath, source] of Object.entries(localeSourceModules)) {
+      const locale = localeFromModulePath(modulePath)
+
+      expect(
+        source,
+        `${locale} should source settings.selectorDebug from shared backfills`
+      ).not.toMatch(/\bselectorDebug\s*:/)
+    }
+  })
+
   it('keeps provider recovery copy in raw locale files without runtime-only backfills', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
 
@@ -519,6 +530,70 @@ describe('locale integrity', () => {
           `${locale} should translate ${path}`
         ).not.toEqual(getPathValue(referenceMessages, path))
       }
+    }
+  })
+
+  it('keeps selector debug and approval presentation copy translated outside English locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSEntry = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))
+
+    expect(enUSEntry).toBeTruthy()
+    if (!enUSEntry) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    const referenceLocale = localeFromModulePath(enUSEntry[0])
+    const referenceMessages = resolveRuntimeMessages(referenceLocale, enUSEntry[1].default)
+    const protectedPaths = [
+      'settings.selectorDebug.title',
+      'settings.selectorDebug.description',
+      'settings.selectorDebug.show',
+      'settings.selectorDebug.query',
+      'settings.selectorDebug.queryRequired',
+      'settings.selectorDebug.nativeSurface',
+      'approval.purpose',
+      'approval.risk',
+      'approval.scope',
+      'approval.effects',
+      'approval.targets',
+      'execApproval.purpose',
+      'execApproval.risk',
+      'execApproval.scope',
+      'execApproval.effects',
+      'execApproval.targets',
+    ] as const
+
+    for (const [modulePath, mod] of entries) {
+      const locale = localeFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+
+      for (const path of protectedPaths) {
+        const value = getPathValue(runtimeMessages, path)
+        expect(typeof value, `${locale} missing runtime locale key ${path}`).toBe('string')
+        expect(String(value).trim().length, `${locale} empty runtime locale key ${path}`).toBeGreaterThan(
+          0
+        )
+
+        if (locale !== 'en-US' && locale !== 'en-GB') {
+          expect(value, `${locale} should translate ${path}`).not.toEqual(
+            getPathValue(referenceMessages, path)
+          )
+        }
+      }
+    }
+  })
+
+  it('keeps selector debug native surface labels aligned for English and Norwegian locales', () => {
+    const expectedLabels = {
+      'en-GB': 'Native surface',
+      'en-US': 'Native surface',
+      'nb-NO': 'Innebygd overflate',
+    } as const
+
+    for (const [locale, expected] of Object.entries(expectedLabels)) {
+      const runtimeMessages = resolveRuntimeMessages(locale, localeMessages(locale))
+
+      expect(getPathValue(runtimeMessages, 'settings.selectorDebug.nativeSurface')).toBe(expected)
     }
   })
 

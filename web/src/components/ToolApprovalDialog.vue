@@ -18,6 +18,10 @@ const translatedToolName = computed(() => {
   return getLocalizedToolName(approval.value.tool_name, t, te)
 })
 
+function resolveText(key: string, fallback: string) {
+  return te(key) ? String(t(key)) : fallback
+}
+
 const argsDisplay = computed(() => {
   if (!approval.value?.arguments) return []
   return Object.entries(approval.value.arguments).map(([key, value]) => ({
@@ -25,6 +29,37 @@ const argsDisplay = computed(() => {
     value: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
   }))
 })
+
+const summaryItems = computed(() => {
+  const current = approval.value
+  if (!current) return []
+  return [
+    {
+      key: 'purpose',
+      label: resolveText('approval.purpose', 'Purpose'),
+      value: current.purpose?.trim() || '',
+    },
+    {
+      key: 'risk',
+      label: resolveText('approval.risk', 'Risk'),
+      value: current.risk_summary?.trim() || '',
+    },
+    {
+      key: 'scope',
+      label: resolveText('approval.scope', 'Scope'),
+      value: current.scope_summary?.trim() || '',
+    },
+    {
+      key: 'effects',
+      label: resolveText('approval.effects', 'Expected Effects'),
+      value: current.expected_effects?.trim() || '',
+    },
+  ].filter((item) => item.value)
+})
+
+const affectedTargets = computed(() =>
+  (approval.value?.affected_targets || []).map((target) => target.trim()).filter(Boolean)
+)
 
 async function runDecision(
   decision: 'deny' | 'approve' | 'always-allow',
@@ -106,6 +141,42 @@ function deny() {
               >
                 {{ translatedToolName }}
               </span>
+            </div>
+
+            <div
+              v-if="summaryItems.length > 0"
+              class="space-y-2"
+            >
+              <div
+                v-for="item in summaryItems"
+                :key="item.key"
+                class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-2"
+              >
+                <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {{ item.label }}
+                </p>
+                <p class="mt-1 text-sm leading-6 text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                  {{ item.value }}
+                </p>
+              </div>
+            </div>
+
+            <div
+              v-if="affectedTargets.length > 0"
+              class="space-y-1"
+            >
+              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{
+                resolveText('approval.targets', 'Affected Targets')
+              }}</span>
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 space-y-1 max-h-40 overflow-y-auto">
+                <p
+                  v-for="target in affectedTargets"
+                  :key="target"
+                  class="font-mono text-xs text-gray-700 dark:text-gray-300 break-all"
+                >
+                  {{ target }}
+                </p>
+              </div>
             </div>
 
             <!-- Arguments -->

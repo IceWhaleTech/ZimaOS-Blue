@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, computed, watch, triggerRef } from 'vue'
 import type {
   Conversation,
+  ChatExecutionPlan,
+  ChatRuntimeError,
   Message,
   SendMessageRequest,
   MessageStats,
@@ -41,6 +43,11 @@ type PendingApprovalState = {
   arguments: Record<string, unknown>
   session_id?: string
   binding_hash?: string
+  purpose?: string
+  risk_summary?: string
+  scope_summary?: string
+  expected_effects?: string
+  affected_targets?: string[]
 }
 type PendingQuestionState = {
   id: string
@@ -54,6 +61,7 @@ type PendingQuestionState = {
   }>
   context?: {
     kind?: string
+    execution_plan?: ChatExecutionPlan
     checkpoint_id?: string
     required?: boolean
     risk_level?: 'low' | 'high'
@@ -77,6 +85,11 @@ type PendingExecApprovalState = {
   session_id?: string
   conversation_id?: string
   binding_hash?: string
+  purpose?: string
+  risk_summary?: string
+  scope_summary?: string
+  expected_effects?: string
+  affected_targets?: string[]
   expires_at: number
 }
 
@@ -110,6 +123,30 @@ function createLazyApiProxy<T extends object>(load: () => Promise<T>): T {
       },
     }
   ) as T
+}
+
+type RuntimeErrorCarrier = Error & {
+  runtimeError?: ChatRuntimeError
+}
+
+function extractRuntimeErrorEnvelope(error: unknown): ChatRuntimeError | null {
+  if (!error || typeof error !== 'object') return null
+  const candidate = (error as RuntimeErrorCarrier).runtimeError
+  if (!candidate || typeof candidate !== 'object') return null
+  return candidate
+}
+
+function resolveRuntimeErrorState(error: unknown, fallbackMessage = '') {
+  const runtimeError = extractRuntimeErrorEnvelope(error)
+  const errorMessage = error instanceof Error ? error.message.trim() : ''
+  const normalizedFallback = fallbackMessage.trim()
+  const message = runtimeError?.message?.trim() || errorMessage || normalizedFallback
+  const detail = runtimeError?.detail?.trim() || message
+  return {
+    runtimeError,
+    message,
+    detail,
+  }
 }
 
 async function loadChatApiModule() {
@@ -608,6 +645,14 @@ function isProviderFailoverConfirmationErrorText(message: string): boolean {
     .toLowerCase()
   if (!normalized) return false
   return normalized.includes(providerFailoverConfirmationRequiredError)
+}
+
+function isModelUnavailableRuntimeError(runtimeError?: ChatRuntimeError | null): boolean {
+  return runtimeError?.code?.trim() === 'model_unavailable'
+}
+
+function isProviderFailoverRuntimeError(runtimeError?: ChatRuntimeError | null): boolean {
+  return runtimeError?.code?.trim() === providerFailoverConfirmationRequiredError
 }
 
 function resolveProcessTraceDetail(_event: string, detail?: string): string {
@@ -1964,6 +2009,7 @@ export const useChatStore = defineStore('chat', () => {
           const nextSummary = resolveProcessTraceStatusLabel(item)
           upsertProcessTraceItem(conversationId, item, {
             replaceLatestByEvent:
+              item.event === 'request_summary' ||
               item.event === 'pre_content_retry_scheduled' ||
               item.event === 'pre_content_retry_started' ||
               item.event === 'continuation_recovery_started' ||
@@ -2341,16 +2387,24 @@ export const useChatStore = defineStore('chat', () => {
   function queueProviderFailoverRetry(params: {
     conversationId: string
     errorMessage: string
+    runtimeError?: ChatRuntimeError | null
     retryKind: ModelAutoFallbackRetryKind
   }): boolean {
-    if (!isProviderFailoverConfirmationErrorText(params.errorMessage)) return false
+    const runtimeError = params.runtimeError
+    if (
+      !isProviderFailoverRuntimeError(runtimeError) &&
+      !isProviderFailoverConfirmationErrorText(params.errorMessage)
+    ) {
+      return false
+    }
     const draft = pendingProviderFailoverDraft.value
     if (!draft || draft.conversationId !== params.conversationId) return false
 
     pendingProviderFailoverRetry.value = {
       ...draft,
       retryKind: params.retryKind,
-      errorMessage: params.errorMessage,
+      errorMessage: runtimeError?.message?.trim() || params.errorMessage,
+      detail: runtimeError?.detail?.trim() || draft.detail,
     }
     clearPendingProviderFailoverDraft(params.conversationId)
     error.value = null
@@ -2362,11 +2416,18 @@ export const useChatStore = defineStore('chat', () => {
     conversationId: string
     request: SendMessageRequest
     errorMessage: string
+    runtimeError?: ChatRuntimeError | null
     retryKind: ModelAutoFallbackRetryKind
   }): boolean {
     const currentPreference = modelPreference.value.trim()
     if (!isFixedModelPreferenceValue(currentPreference)) return false
-    if (!isModelUnavailableErrorText(params.errorMessage)) return false
+    const runtimeError = params.runtimeError
+    if (
+      !isModelUnavailableRuntimeError(runtimeError) &&
+      !isModelUnavailableErrorText(params.errorMessage)
+    ) {
+      return false
+    }
 
     const parsedPreference = splitModelPreference(currentPreference)
     const requestedModelId =
@@ -2379,7 +2440,7 @@ export const useChatStore = defineStore('chat', () => {
       requestedModelId,
       requestedProviderId:
         params.request.provider.trim() || parsedPreference.selected_provider_id?.trim() || '',
-      errorMessage: params.errorMessage,
+      errorMessage: runtimeError?.message?.trim() || params.errorMessage,
     }
     error.value = null
     streamError.value = null
@@ -2834,6 +2895,14 @@ export const useChatStore = defineStore('chat', () => {
     return undefined
   }
 
+  function stringifyList(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined
+    const normalized = value
+      .map((entry) => stringifyOptional(entry))
+      .filter((entry): entry is string => !!entry)
+    return normalized.length > 0 ? normalized : undefined
+  }
+
   function hasPendingConfirmationState(
     data: Partial<PendingConfirmationSnapshot> | null | undefined
   ): data is PendingConfirmationSnapshot {
@@ -2910,6 +2979,11 @@ export const useChatStore = defineStore('chat', () => {
       session_id: stringifyOptional(source.session_id),
       conversation_id: stringifyOptional(source.conversation_id),
       binding_hash: stringifyOptional(source.binding_hash ?? source.bindingHash),
+      purpose: stringifyOptional(source.purpose),
+      risk_summary: stringifyOptional(source.risk_summary ?? source.riskSummary),
+      scope_summary: stringifyOptional(source.scope_summary ?? source.scopeSummary),
+      expected_effects: stringifyOptional(source.expected_effects ?? source.expectedEffects),
+      affected_targets: stringifyList(source.affected_targets ?? source.affectedTargets),
       expires_at: expiresAt,
     }
 
@@ -3565,17 +3639,13 @@ export const useChatStore = defineStore('chat', () => {
 
       if (page === 0) {
         clearRecentTodoCompletion()
-        // Only restore metadata if server didn't return it (for backwards compatibility)
         savedMetadata.forEach((meta, index) => {
           if (fetchedMessages[index] && fetchedMessages[index].role === 'assistant') {
-            // Only use saved metadata if server didn't return stats
-            if (!fetchedMessages[index].stats && meta.stats) {
-              fetchedMessages[index] = {
-                ...fetchedMessages[index],
-                provider: fetchedMessages[index].provider || meta.provider,
-                model: fetchedMessages[index].model || meta.model,
-                stats: meta.stats,
-              }
+            fetchedMessages[index] = {
+              ...fetchedMessages[index],
+              provider: fetchedMessages[index].provider || meta.provider,
+              model: fetchedMessages[index].model || meta.model,
+              stats: fetchedMessages[index].stats || meta.stats,
             }
           }
         })
@@ -3832,6 +3902,11 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== sendConvId) return
           flushPendingStreamDelta(sendConvId)
           streamProgress.value = null
+          const {
+            runtimeError,
+            message: runtimeErrorMessage,
+            detail: runtimeErrorDetail,
+          } = resolveRuntimeErrorState(err)
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           // Map error codes to i18n keys for accurate error messages.
@@ -3930,7 +4005,7 @@ export const useChatStore = defineStore('chat', () => {
           // For transient empty-response errors, try fetching server-persisted content first.
           // The backend may have persisted partial content or tool results even though
           // the stream appeared empty to the frontend.
-          if (transientErrors.has(err.message)) {
+          if (transientErrors.has(runtimeErrorMessage)) {
             streaming.value = false
             fetchMessages(conversationId)
               .then(() => {
@@ -3940,15 +4015,15 @@ export const useChatStore = defineStore('chat', () => {
                 // Only show error if server also has no new content
                 const lastMsg = serverMessages[serverMessages.length - 1]
                 if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content?.trim()) {
-                  const errorKey = resolveErrorKey(err.message)
-                  streamError.value = errorKey || err.message
+                  const errorKey = resolveErrorKey(runtimeErrorMessage)
+                  streamError.value = errorKey || runtimeErrorMessage
                 } else {
                   streamError.value = null
                 }
               })
               .catch(() => {
-                const errorKey = resolveErrorKey(err.message)
-                streamError.value = errorKey || err.message
+                const errorKey = resolveErrorKey(runtimeErrorMessage)
+                streamError.value = errorKey || runtimeErrorMessage
                 messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
               })
             return
@@ -3957,7 +4032,8 @@ export const useChatStore = defineStore('chat', () => {
           if (
             queueProviderFailoverRetry({
               conversationId,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'send',
             })
           ) {
@@ -3971,7 +4047,8 @@ export const useChatStore = defineStore('chat', () => {
             queueModelAutoFallbackRetry({
               conversationId,
               request,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'send',
             })
           ) {
@@ -3981,21 +4058,23 @@ export const useChatStore = defineStore('chat', () => {
             return
           }
 
-          const errorKey = resolveErrorKey(err.message)
+          const errorKey = resolveErrorKey(runtimeErrorMessage)
           if (errorKey) {
             streamError.value = errorKey
           } else {
-            streamError.value = err.message
+            streamError.value = runtimeErrorMessage
           }
           providerAccelerationActive.value = false
           updateActiveStreamState(sendConvId, { providerAccelerationActive: false })
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
-            detail: errorKey || err.message,
+            detail: errorKey || runtimeErrorDetail,
             canRetry: true,
           })
           // Log error to server
-          systemApi.writeLog('error', `Chat stream error: ${err.message}`, 'chat').catch(() => {})
+          systemApi
+            .writeLog('error', `Chat stream error: ${runtimeErrorMessage}`, 'chat')
+            .catch(() => {})
           // If streaming message has content, keep it and mark as interrupted
           // Otherwise remove the empty placeholder
           const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
@@ -4092,11 +4171,16 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(conversationId)
-      const caughtMessage = e instanceof Error ? e.message : 'Failed to send message'
+      const {
+        runtimeError,
+        message: caughtMessage,
+        detail: caughtDetail,
+      } = resolveRuntimeErrorState(e, 'Failed to send message')
       if (
         queueProviderFailoverRetry({
           conversationId,
           errorMessage: caughtMessage,
+          runtimeError,
           retryKind: 'send',
         })
       ) {
@@ -4108,6 +4192,7 @@ export const useChatStore = defineStore('chat', () => {
           conversationId,
           request,
           errorMessage: caughtMessage,
+          runtimeError,
           retryKind: 'send',
         })
       ) {
@@ -4118,7 +4203,7 @@ export const useChatStore = defineStore('chat', () => {
         error.value = caughtMessage
         streamUIState.value = createStreamUIState('interrupted', {
           label: resolveStreamUIStateLabel('interrupted'),
-          detail: error.value,
+          detail: caughtDetail,
           canRetry: true,
         })
         // Keep streaming message with content, mark as interrupted; remove empty placeholders
@@ -4381,10 +4466,16 @@ export const useChatStore = defineStore('chat', () => {
           flushPendingStreamDelta(convId)
           streamProgress.value = null
           toolExecuting.value = false
+          const {
+            runtimeError,
+            message: runtimeErrorMessage,
+            detail: runtimeErrorDetail,
+          } = resolveRuntimeErrorState(err)
           if (
             queueProviderFailoverRetry({
               conversationId: convId,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'continue',
             })
           ) {
@@ -4396,7 +4487,8 @@ export const useChatStore = defineStore('chat', () => {
             queueModelAutoFallbackRetry({
               conversationId: convId,
               request: request!,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'continue',
             })
           ) {
@@ -4404,10 +4496,10 @@ export const useChatStore = defineStore('chat', () => {
             streaming.value = false
             return
           }
-          streamError.value = err.message
+          streamError.value = runtimeErrorMessage
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
-            detail: err.message,
+            detail: runtimeErrorDetail,
             canRetry: true,
           })
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
@@ -4455,13 +4547,17 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(convId)
-      const fallbackMessage =
-        e instanceof Error ? e.message : resolveI18nText('chat.streamError', 'Stream error')
+      const {
+        runtimeError,
+        message: fallbackMessage,
+        detail: fallbackDetail,
+      } = resolveRuntimeErrorState(e, resolveI18nText('chat.streamError', 'Stream error'))
       if (
         request &&
         queueProviderFailoverRetry({
           conversationId: convId,
           errorMessage: fallbackMessage,
+          runtimeError,
           retryKind: 'continue',
         })
       ) {
@@ -4472,6 +4568,7 @@ export const useChatStore = defineStore('chat', () => {
           conversationId: convId,
           request,
           errorMessage: fallbackMessage,
+          runtimeError,
           retryKind: 'continue',
         })
       ) {
@@ -4479,7 +4576,7 @@ export const useChatStore = defineStore('chat', () => {
       } else {
         streamUIState.value = createStreamUIState('interrupted', {
           label: resolveStreamUIStateLabel('interrupted'),
-          detail: fallbackMessage,
+          detail: fallbackDetail,
           canRetry: true,
         })
         messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
@@ -4591,10 +4688,16 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
           streamProgress.value = null
+          const {
+            runtimeError,
+            message: runtimeErrorMessage,
+            detail: runtimeErrorDetail,
+          } = resolveRuntimeErrorState(err)
           if (
             queueProviderFailoverRetry({
               conversationId,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'continue',
             })
           ) {
@@ -4607,7 +4710,8 @@ export const useChatStore = defineStore('chat', () => {
             queueModelAutoFallbackRetry({
               conversationId,
               request: request!,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'continue',
             })
           ) {
@@ -4616,12 +4720,12 @@ export const useChatStore = defineStore('chat', () => {
             toolExecuting.value = false
             return
           }
-          error.value = err.message
+          error.value = runtimeErrorMessage
           streaming.value = false
           toolExecuting.value = false
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
-            detail: err.message,
+            detail: runtimeErrorDetail,
             canRetry: true,
           })
         },
@@ -4679,12 +4783,17 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(conversationId)
-      const caughtMessage = e instanceof Error ? e.message : 'Failed to continue message'
+      const {
+        runtimeError,
+        message: caughtMessage,
+        detail: caughtDetail,
+      } = resolveRuntimeErrorState(e, 'Failed to continue message')
       if (
         request &&
         queueProviderFailoverRetry({
           conversationId,
           errorMessage: caughtMessage,
+          runtimeError,
           retryKind: 'continue',
         })
       ) {
@@ -4695,6 +4804,7 @@ export const useChatStore = defineStore('chat', () => {
           conversationId,
           request,
           errorMessage: caughtMessage,
+          runtimeError,
           retryKind: 'continue',
         })
       ) {
@@ -4703,7 +4813,7 @@ export const useChatStore = defineStore('chat', () => {
         error.value = caughtMessage
         streamUIState.value = createStreamUIState('interrupted', {
           label: resolveStreamUIStateLabel('interrupted'),
-          detail: error.value,
+          detail: caughtDetail,
           canRetry: true,
         })
       }
@@ -4829,13 +4939,19 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
           streamProgress.value = null
+          const {
+            runtimeError,
+            message: runtimeErrorMessage,
+            detail: runtimeErrorDetail,
+          } = resolveRuntimeErrorState(err)
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           if (
             !wasToolExecuting &&
             queueProviderFailoverRetry({
               conversationId,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'regenerate',
             })
           ) {
@@ -4847,17 +4963,18 @@ export const useChatStore = defineStore('chat', () => {
             queueModelAutoFallbackRetry({
               conversationId,
               request: request!,
-              errorMessage: err.message,
+              errorMessage: runtimeErrorMessage,
+              runtimeError,
               retryKind: 'regenerate',
             })
           ) {
             messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
             return
           }
-          error.value = err.message
+          error.value = runtimeErrorMessage
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
-            detail: err.message,
+            detail: runtimeErrorDetail,
             canRetry: true,
           })
           // If error happened during tool execution, fetch server-persisted content
@@ -4937,12 +5054,17 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(conversationId)
-      const caughtMessage = e instanceof Error ? e.message : 'Failed to regenerate message'
+      const {
+        runtimeError,
+        message: caughtMessage,
+        detail: caughtDetail,
+      } = resolveRuntimeErrorState(e, 'Failed to regenerate message')
       if (
         request &&
         queueProviderFailoverRetry({
           conversationId,
           errorMessage: caughtMessage,
+          runtimeError,
           retryKind: 'regenerate',
         })
       ) {
@@ -4953,6 +5075,7 @@ export const useChatStore = defineStore('chat', () => {
           conversationId,
           request,
           errorMessage: caughtMessage,
+          runtimeError,
           retryKind: 'regenerate',
         })
       ) {
@@ -4961,7 +5084,7 @@ export const useChatStore = defineStore('chat', () => {
         error.value = caughtMessage
         streamUIState.value = createStreamUIState('interrupted', {
           label: resolveStreamUIStateLabel('interrupted'),
-          detail: error.value,
+          detail: caughtDetail,
           canRetry: true,
         })
         const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
@@ -5158,6 +5281,11 @@ export const useChatStore = defineStore('chat', () => {
       arguments: isUnknownRecord(data.arguments) ? data.arguments : {},
       session_id: sessionId || undefined,
       binding_hash: stringifyOptional(data.binding_hash ?? data.bindingHash),
+      purpose: stringifyOptional(data.purpose),
+      risk_summary: stringifyOptional(data.risk_summary ?? data.riskSummary),
+      scope_summary: stringifyOptional(data.scope_summary ?? data.scopeSummary),
+      expected_effects: stringifyOptional(data.expected_effects ?? data.expectedEffects),
+      affected_targets: stringifyList(data.affected_targets ?? data.affectedTargets),
     }
     clearPendingRecoveryRetryTimer()
     awaitingConfirmation.value = true

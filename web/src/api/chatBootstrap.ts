@@ -29,6 +29,9 @@ export const chatBootstrapApi = {
           command_state: {
             conversation_id: '',
             offline: false,
+            last_good_provider_id: '',
+            last_good_model_id: '',
+            last_good_native_surface_mode: '',
           },
           active_stream: {
             conversation_id: '',

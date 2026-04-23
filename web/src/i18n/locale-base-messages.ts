@@ -1,8 +1,11 @@
 import type { LocaleKey } from './locale-catalog'
 import processTraceLocaleBackfills from './process-trace-locale-backfills'
+import selectorDebugApprovalBackfills from './selector-debug-approval-backfills'
 
-// Locale modules import this tiny shim so the heavy harness-specific merge logic
-// can be loaded on demand by i18n/index.ts instead of on every initial locale load.
+// Locale modules import this tiny shim so shared locale overlays can stay
+// centralized here. Stable core copy should live in `locales/*.ts`; backfills are
+// reserved for structural overlays and cross-locale feature bundles such as
+// selector-debug/process-trace surfaces.
 type MergeHarnessLocale = <T extends Record<string, unknown>>(
   localeKey: LocaleKey,
   messages: T
@@ -37,7 +40,10 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
   messages: T
 ): T {
   const mergedBaseMessages = mergeLocaleNodes(
-    (processTraceLocaleBackfills[localeKey] ?? {}) as Record<string, unknown> as T,
+    mergeLocaleNodes(
+      (processTraceLocaleBackfills[localeKey] ?? {}) as Record<string, unknown>,
+      (selectorDebugApprovalBackfills[localeKey] ?? {}) as Record<string, unknown>
+    ) as T,
     messages
   )
 

@@ -349,3 +349,70 @@ func TestChatHandlerClearResetsCommandState(t *testing.T) {
 		t.Fatalf("expected cleared command state, got %+v", state)
 	}
 }
+
+func TestRememberLastGoodRoutePersistsConversationScopedState(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	conv1, err := store.CreateConversation(ctx, "User A #1", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-a #1): %v", err)
+	}
+	conv2, err := store.CreateConversation(ctx, "User A #2", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-a #2): %v", err)
+	}
+
+	if err := store.UpsertConversationCommandState(ctx, memory.ConversationCommandState{
+		ConversationID:      conv1.ID,
+		SelectedProviderID:  "openai",
+		SelectedModelID:     "gpt-5",
+		AgentcoreRunnerRef:  "release/v1",
+		WebSearchEnabled:    true,
+		DeepResearchEnabled: true,
+	}); err != nil {
+		t.Fatalf("UpsertConversationCommandState(conv1): %v", err)
+	}
+	if err := store.UpsertConversationCommandState(ctx, memory.ConversationCommandState{
+		ConversationID:      conv2.ID,
+		SelectedProviderID:  "openai",
+		SelectedModelID:     "gpt-5",
+		AgentcoreRunnerRef:  "release/v2",
+		WebSearchEnabled:    true,
+		DeepResearchEnabled: true,
+	}); err != nil {
+		t.Fatalf("UpsertConversationCommandState(conv2): %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.rememberLastGoodRoute(ctx, conv1.ID, "openrouter", "gpt-4o-mini", "lite_native")
+
+	state1, err := store.GetConversationCommandState(ctx, conv1.ID)
+	if err != nil {
+		t.Fatalf("GetConversationCommandState(conv1): %v", err)
+	}
+	if state1.LastGoodProviderID != "openrouter" || state1.LastGoodModelID != "gpt-4o-mini" {
+		t.Fatalf("unexpected last-good route on conv1: %+v", state1)
+	}
+	if state1.LastGoodNativeSurfaceMode != "lite_native" {
+		t.Fatalf("conv1 native surface mode = %q, want lite_native", state1.LastGoodNativeSurfaceMode)
+	}
+	if state1.SelectedProviderID != "openai" || state1.SelectedModelID != "gpt-5" {
+		t.Fatalf("expected selected route to stay intact on conv1, got %+v", state1)
+	}
+	if state1.AgentcoreRunnerRef != "release/v1" {
+		t.Fatalf("expected runner ref to stay conversation-scoped on conv1, got %+v", state1)
+	}
+
+	state2, err := store.GetConversationCommandState(ctx, conv2.ID)
+	if err != nil {
+		t.Fatalf("GetConversationCommandState(conv2): %v", err)
+	}
+	if state2.LastGoodProviderID != "" || state2.LastGoodModelID != "" || state2.LastGoodNativeSurfaceMode != "" {
+		t.Fatalf("expected conv2 last-good route to stay untouched, got %+v", state2)
+	}
+}

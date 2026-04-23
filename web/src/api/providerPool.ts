@@ -26,6 +26,16 @@ export type APIFormat =
 export type APIFormatMode = 'auto' | 'pinned' | ''
 export type ProviderMetadataMode = 'catalog' | 'dynamic'
 
+export interface CapabilityProfile {
+  tool_call_mode?: 'full_native' | 'lite_native' | 'exec_only' | 'clarify_only' | 'text_only'
+  supports_parallel_tool_calls?: boolean
+  supports_streaming_tool_calls?: boolean
+  supports_json_schema?: boolean
+  max_tool_schema_bytes?: number
+  supports_vision?: boolean
+  supports_audio?: boolean
+}
+
 export type FormatResolutionSource =
   | 'endpoint_lock'
   | 'user_pinned'
@@ -62,6 +72,7 @@ export interface Provider {
   models?: Model[]
   oauth?: OAuthConfig
   is_builtin?: boolean
+  capability_profile?: CapabilityProfile
 }
 
 export interface APIKey {

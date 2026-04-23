@@ -90,6 +90,29 @@ function makeTypelessBlock(payload: Record<string, unknown>) {
   return ['```typeless', JSON.stringify(payload), '```'].join('\n')
 }
 
+function makeRuntimeError(
+  message: string,
+  runtimeError: {
+    code: string
+    message?: string
+    detail?: string
+    retry_kind?: string
+    recovery_actions?: Array<{ code: string }>
+  }
+) {
+  const error = new Error(message) as Error & {
+    runtimeError?: {
+      code: string
+      message?: string
+      detail?: string
+      retry_kind?: string
+      recovery_actions?: Array<{ code: string }>
+    }
+  }
+  error.runtimeError = runtimeError
+  return error
+}
+
 async function settleAsyncWork() {
   await Promise.resolve()
   await Promise.resolve()
@@ -1482,7 +1505,19 @@ describe('Chat Store', () => {
           process_requires_confirmation: true,
           process_retry_attempts: 2,
         })
-        options.onError?.(new Error('provider_failover_confirmation_required'))
+        options.onError?.(
+          makeRuntimeError('confirmation required', {
+            code: 'provider_failover_confirmation_required',
+            message: 'confirmation required',
+            detail:
+              'The tool follow-up on prov_primary hit retryable upstream failures (latest status 529) and still failed after 2 backoff retries.',
+            retry_kind: 'send',
+            recovery_actions: [
+              { code: 'switch_to_auto_retry' },
+              { code: 'choose_route_manually' },
+            ],
+          })
+        )
       })
 
       await store.sendMessage('hello')
@@ -1554,11 +1589,23 @@ describe('Chat Store', () => {
             process_message: 'Waiting for switch confirmation',
             process_detail:
               'The tool follow-up on prov_primary hit retryable upstream failures (latest status 502) and still failed after 1 backoff retry. Because Smart Resume and Auto-Confirm are not both enabled, confirm before switching to another available route or choose one manually.',
-            process_provider: 'prov_primary',
-            process_requires_confirmation: true,
-            process_retry_attempts: 1,
-          })
-          options.onError?.(new Error('provider_failover_confirmation_required'))
+          process_provider: 'prov_primary',
+          process_requires_confirmation: true,
+          process_retry_attempts: 1,
+        })
+          options.onError?.(
+            makeRuntimeError('confirmation required', {
+              code: 'provider_failover_confirmation_required',
+              message: 'confirmation required',
+              detail:
+                'The tool follow-up on prov_primary hit retryable upstream failures (latest status 502) and still failed after 1 backoff retry.',
+              retry_kind: 'send',
+              recovery_actions: [
+                { code: 'switch_to_auto_retry' },
+                { code: 'choose_route_manually' },
+              ],
+            })
+          )
         })
         .mockImplementationOnce(async (_conversationId, request, options: any) => {
           retryRequest = request as Record<string, unknown>
@@ -3154,9 +3201,13 @@ describe('Chat Store', () => {
           })
         )
         options.onError?.(
-          new Error(
-            "HTTP 400: No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked."
-          )
+          makeRuntimeError('route unavailable', {
+            code: 'model_unavailable',
+            message:
+              "No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked.",
+            retry_kind: 'continue',
+            recovery_actions: [{ code: 'switch_to_auto_retry' }, { code: 'open_settings' }],
+          })
         )
       })
 
@@ -3210,9 +3261,13 @@ describe('Chat Store', () => {
             })
           )
           options.onError?.(
-            new Error(
-              "HTTP 400: No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked."
-            )
+            makeRuntimeError('route unavailable', {
+              code: 'model_unavailable',
+              message:
+                "No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked.",
+              retry_kind: 'continue',
+              recovery_actions: [{ code: 'switch_to_auto_retry' }, { code: 'open_settings' }],
+            })
           )
         })
 

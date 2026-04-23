@@ -1053,6 +1053,9 @@ func (s *Store) GetConversationCommandState(ctx context.Context, conversationID 
 			return state, err
 		}
 		if ok {
+			merged.LastGoodProviderID = strings.TrimSpace(convState.LastGoodProviderID)
+			merged.LastGoodModelID = strings.TrimSpace(convState.LastGoodModelID)
+			merged.LastGoodNativeSurfaceMode = strings.TrimSpace(convState.LastGoodNativeSurfaceMode)
 			merged.AgentcoreRunnerRef = strings.TrimSpace(convState.AgentcoreRunnerRef)
 		}
 		return merged, nil

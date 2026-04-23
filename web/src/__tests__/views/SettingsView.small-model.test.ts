@@ -100,6 +100,7 @@ vi.mock('@/api/settings', () => ({
     get: vi.fn(),
     update: vi.fn(),
     patch: vi.fn(),
+    selectorDryRun: vi.fn(),
     getSkillRerankerModelStatus: vi.fn(),
     downloadSkillRerankerModel: vi.fn(),
     cancelSkillRerankerModelDownload: vi.fn(),
@@ -204,6 +205,14 @@ function primeApiMocks() {
   vi.mocked(settingsApi.patch).mockImplementation(
     async (payload: unknown) => ({ data: payload }) as never
   )
+  vi.mocked(settingsApi.selectorDryRun).mockResolvedValue({
+    data: {
+      query: 'Inspect workspace and latest docs',
+      model: '',
+      selected_tools: ['file_read'],
+      selected_native_surface_mode: 'legacy',
+    },
+  } as never)
   vi.mocked(settingsApi.getSkillRerankerModelStatus).mockResolvedValue({
     data: { ready: false, downloading: false, state: 'idle' },
   } as never)
@@ -754,6 +763,68 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'ExternalAgentsSection' }).exists()).toBe(true)
     expect(routerReplace).toHaveBeenCalledWith({ query: { tab: 'llm' } })
+
+    wrapper.unmount()
+  })
+
+  it('runs the selector dry-run from the llm debug panel and renders structured output', async () => {
+    routeTab = 'llm'
+    vi.mocked(settingsApi.selectorDryRun).mockResolvedValue({
+      data: {
+        query: 'Check workspace and latest docs',
+        model: 'gpt-5-mini',
+        selected_tools: ['file_read', 'web_search'],
+        selected_native_surface_mode: 'clarify_none',
+        clarify_reason: 'Need a first step before mixing workspace and web work.',
+        tool_debug: {
+          query_signals: ['workspace', 'web'],
+        },
+        skill_advice: {
+          suggested_surface: 'clarify_none',
+        },
+      },
+    } as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await settleSettingsAsyncTabComponents()
+
+    const openPanelButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open panel'))
+    expect(openPanelButton).toBeTruthy()
+    await openPanelButton!.trigger('click')
+
+    const textareas = wrapper.findAll('textarea')
+    expect(textareas.length).toBeGreaterThan(0)
+    await textareas[0]!.setValue('Check workspace and latest docs')
+
+    const textInputs = wrapper.findAll('input[type="text"]')
+    expect(textInputs.length).toBeGreaterThan(0)
+    await textInputs[0]!.setValue('gpt-5-mini')
+
+    const runButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Run dry run'))
+    expect(runButton).toBeTruthy()
+    await runButton!.trigger('click')
+    await settleSettingsAsyncTabComponents()
+
+    expect(settingsApi.selectorDryRun).toHaveBeenCalledWith(
+      'Check workspace and latest docs',
+      'gpt-5-mini'
+    )
+    expect(wrapper.text()).toContain('clarify_none')
+    expect(wrapper.text()).toContain('file_read, web_search')
+    expect(wrapper.text()).toContain('Need a first step before mixing workspace and web work.')
+    expect(wrapper.text()).toContain('Tool debug')
+    expect(wrapper.text()).toContain('Skill advice')
 
     wrapper.unmount()
   })

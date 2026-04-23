@@ -53,6 +53,11 @@ function createPendingApproval() {
     tool_name: 'file_write',
     session_id: 'conv-1',
     binding_hash: 'binding-tool-1',
+    purpose: 'Allow tool to write a local file',
+    risk_summary: 'High risk: this tool call may modify data or access sensitive resources.',
+    scope_summary: 'Targets: /tmp/approved.txt',
+    expected_effects: 'May create new files or modify existing file content.',
+    affected_targets: ['/tmp/approved.txt'],
     arguments: {
       path: 'approved.txt',
       content: 'hello after approval',
@@ -98,6 +103,9 @@ describe('ToolApprovalDialog', () => {
     expect(wrapper.text()).toContain('File Write')
     expect(wrapper.text()).toContain('approved.txt')
     expect(wrapper.text()).toContain('hello after approval')
+    expect(wrapper.text()).toContain('Allow tool to write a local file')
+    expect(wrapper.text()).toContain('High risk')
+    expect(wrapper.text()).toContain('Targets: /tmp/approved.txt')
 
     mockChatStore.pendingApproval = null
     await nextTick()
