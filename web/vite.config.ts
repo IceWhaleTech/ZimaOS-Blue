@@ -54,12 +54,34 @@ const routeRuntimeBundles = [
   },
 ] as const
 
+const mermaidRuntimePackages = [
+  'node_modules/mermaid',
+  'node_modules/@mermaid-js/parser',
+  'node_modules/@iconify/utils',
+  'node_modules/@upsetjs/venn.js',
+  'node_modules/cytoscape',
+  'node_modules/d3',
+  'node_modules/dagre',
+  'node_modules/dayjs',
+  'node_modules/dompurify',
+  'node_modules/elkjs',
+  'node_modules/khroma',
+  'node_modules/marked',
+  'node_modules/roughjs',
+  'node_modules/stylis',
+  'node_modules/uuid',
+] as const
+
 function getRouteRuntimeBundle(id: string): string | undefined {
   for (const bundle of routeRuntimeBundles) {
     if (bundle.modules.some((moduleId) => id.includes(moduleId))) {
       return bundle.name
     }
   }
+}
+
+function isMermaidRuntimeDependency(id: string): boolean {
+  return mermaidRuntimePackages.some((pkgId) => id.includes(pkgId))
 }
 
 // https://vite.dev/config/
@@ -242,19 +264,13 @@ export default defineConfig({
               normalizedId.includes('node_modules/ts-dedent')) {
             return 'richtext'
           }
-          // Mermaid is lazy-loaded via dynamic import() in CardMermaid.vue
-          // Do NOT assign it to a named chunk — let Vite naturally code-split it
-          // so it's only fetched when a mermaid card is actually rendered
-          if (normalizedId.includes('node_modules/mermaid') ||
-              normalizedId.includes('node_modules/d3') ||
-              normalizedId.includes('node_modules/dagre') ||
-              normalizedId.includes('node_modules/elkjs') ||
-              normalizedId.includes('node_modules/cytoscape') ||
-              normalizedId.includes('node_modules/dompurify') ||
-              normalizedId.includes('node_modules/khroma') ||
-              normalizedId.includes('node_modules/lodash') ||
-              normalizedId.includes('node_modules/stylis')) {
-            return undefined // let Vite handle splitting naturally
+          // Keep Mermaid and its runtime dependency island together.
+          // Letting this fall through to mixed natural/vendor chunking under
+          // onlyExplicitManualChunks created circular imports in production.
+          // The chunk still stays lazy because CardMermaid loads Mermaid via
+          // dynamic import() at runtime.
+          if (isMermaidRuntimeDependency(normalizedId)) {
+            return 'mermaid-runtime'
           }
           // Other vendor libraries
           if (normalizedId.includes('node_modules')) {
