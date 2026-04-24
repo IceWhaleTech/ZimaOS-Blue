@@ -32,9 +32,7 @@ func TestNewHandler(t *testing.T) {
 func TestHandler_Setup(t *testing.T) {
 	handler, e := setupTestHandler()
 
-	reqBody := `{"include_qr_code":true}`
-	req := httptest.NewRequest(http.MethodPost, "/auth/mfa/setup", strings.NewReader(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/auth/mfa/setup", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	c.Set("user_id", uuid.New())
@@ -59,9 +57,6 @@ func TestHandler_Setup(t *testing.T) {
 	}
 	if resp.URI == "" {
 		t.Error("Setup() URI is empty")
-	}
-	if resp.QRCode == "" {
-		t.Error("Setup() QR code is empty when requested")
 	}
 }
 

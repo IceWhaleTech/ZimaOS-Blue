@@ -19,6 +19,7 @@ import ChannelCard from '@/components/channels/ChannelCard.vue'
 import ChannelCardShell from '@/components/channels/ChannelCardShell.vue'
 import ChannelDetailPanel from '@/components/channels/ChannelDetailPanel.vue'
 import RemoteAccessDetailPanel from '@/components/remote-access/RemoteAccessDetailPanel.vue'
+import QRCodeDisplay from '@/components/common/QRCodeDisplay.vue'
 import {
   createWeChatILinkSetupSession,
   getWeChatILinkSetupSession,
@@ -1594,7 +1595,6 @@ async function refreshWeChatILinkSetupSession(sessionId: string) {
     wechatILinkSetupSession.value = {
       ...previousSession,
       ...response.data,
-      qrcode: response.data.qrcode || previousSession?.qrcode,
       scan_url: response.data.scan_url || previousSession?.scan_url,
       mobile_url: response.data.mobile_url || previousSession?.mobile_url,
     }
@@ -2522,14 +2522,16 @@ onErrorCaptured((error, _instance, info) => {
 
           <div class="channels-ilink-modal__body">
             <div
-              v-if="wechatILinkSetupSession?.qrcode"
+              v-if="wechatILinkSetupLink"
               class="channels-ilink-modal__qr"
             >
-              <img
-                :src="wechatILinkSetupSession.qrcode"
+              <QRCodeDisplay
+                :value="wechatILinkSetupLink"
                 :alt="t('channels.wechatILinkScanAction')"
-                class="channels-ilink-modal__qr-image"
-              >
+                :size="240"
+                image-class="channels-ilink-modal__qr-image"
+                :error-text="t('channels.wechatILinkSetupCreateFailed')"
+              />
             </div>
 
             <p class="channels-ilink-modal__description">

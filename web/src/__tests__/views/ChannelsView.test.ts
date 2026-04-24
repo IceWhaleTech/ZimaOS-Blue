@@ -495,7 +495,6 @@ describe('ChannelsView', () => {
       data: {
         session_id: 'session-1',
         status: 'pending',
-        qrcode: 'data:image/png;base64,abc',
         scan_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
         mobile_url: 'https://blue.example.com/channels/setup/wechat_ilink?session_id=session-1',
         expires_at: '2026-04-14T10:10:00Z',
@@ -555,9 +554,12 @@ describe('ChannelsView', () => {
 
     expect(createWeChatILinkSetupSessionMock).toHaveBeenCalledTimes(1)
     expect(wrapper.find('.channels-ilink-modal').exists()).toBe(true)
-    expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
-      'data:image/png;base64,abc'
-    )
+    expect(
+      wrapper
+        .find('.channels-ilink-modal')
+        .find('[data-qr-value="https://ilinkai.weixin.qq.com/connect/scan-session-1"]')
+        .exists()
+    ).toBe(true)
     const mobileLink = wrapper.find('.channels-ilink-modal__link')
     expect(mobileLink.exists()).toBe(true)
     expect(mobileLink.attributes('href')).toBe('https://ilinkai.weixin.qq.com/connect/scan-session-1')
@@ -571,7 +573,6 @@ describe('ChannelsView', () => {
       data: {
         session_id: 'session-1',
         status: 'pending',
-        qrcode: 'data:image/png;base64,abc',
         scan_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
         mobile_url: 'https://blue.example.com/channels/setup/wechat_ilink?session_id=session-1',
         expires_at: '2026-04-14T10:10:00Z',
@@ -645,9 +646,12 @@ describe('ChannelsView', () => {
     await flushPromises()
 
     expect(getWeChatILinkSetupSessionMock).toHaveBeenCalledWith('session-1')
-    expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
-      'data:image/png;base64,abc'
-    )
+    expect(
+      wrapper
+        .find('.channels-ilink-modal')
+        .find('[data-qr-value="https://ilinkai.weixin.qq.com/connect/scan-session-1"]')
+        .exists()
+    ).toBe(true)
     expect(wrapper.find('.channels-ilink-modal__status').text()).toContain('Authorizing')
     expect(wrapper.find('.channels-ilink-modal__primary').exists()).toBe(false)
     expect(wrapper.find('.channels-ilink-modal__link').attributes('href')).toBe(
@@ -677,7 +681,6 @@ describe('ChannelsView', () => {
       data: {
         session_id: 'session-1',
         status: 'pending',
-        qrcode: 'data:image/png;base64,abc',
         scan_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
         mobile_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
         expires_at: '2026-04-14T10:10:00Z',

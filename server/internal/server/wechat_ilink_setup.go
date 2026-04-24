@@ -16,7 +16,6 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 )
 
 const (
@@ -42,7 +41,6 @@ type wechatILinkSetupSession struct {
 	Consumed           bool
 	QRKey              string
 	ScanURL            string
-	QRCode             string
 	ResolvedAPIBaseURL string
 	ActivationStarted  bool
 }
@@ -100,15 +98,9 @@ func (h *WeChatILinkSetupHandler) CreateSession(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 	}
 
-	qrcode, err := ngrok.GenerateQRCode(qrResp.ScanURL, 200)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-
 	session := h.newSession(userClaims.UserID)
 	session.QRKey = qrResp.QRKey
 	session.ScanURL = qrResp.ScanURL
-	session.QRCode = qrcode
 	session.ResolvedAPIBaseURL = resolvedAPIBaseURL
 	h.storeSession(session)
 
@@ -224,9 +216,6 @@ func (h *WeChatILinkSetupHandler) sessionResponse(session *wechatILinkSetupSessi
 		"session_id": session.ID,
 		"status":     session.Status,
 		"expires_at": session.ExpiresAt.UTC().Format(time.RFC3339),
-	}
-	if session.QRCode != "" {
-		resp["qrcode"] = session.QRCode
 	}
 	if session.ScanURL != "" {
 		resp["scan_url"] = session.ScanURL

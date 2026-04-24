@@ -1,13 +1,11 @@
 package pdf
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/go-pdf/fpdf"
 )
 
 const (
@@ -113,6 +111,23 @@ type createStyledTableCell struct {
 	Align string
 }
 
+type createPreparedTableRow struct {
+	InnerWidths []float64
+	Wrapped     [][]string
+	Aligns      []string
+	MaxLines    int
+	RowHeight   float64
+}
+
+type createPreparedListItem struct {
+	Marker          string
+	MarkerWidth     float64
+	MarkerTextWidth float64
+	ContentWidth    float64
+	Segments        []string
+	Align           string
+}
+
 type createStyledListItem struct {
 	Marker string
 	Text   string
@@ -129,6 +144,23 @@ type createFontPlan struct {
 	family       string
 	unicodeBytes []byte
 	supportsRune func(rune) bool
+}
+
+type createRenderer interface {
+	render(lines []createStyledLine, fontPlan createFontPlan) ([]byte, int, int, error)
+}
+
+type createRenderFunc func(lines []createStyledLine, fontPlan createFontPlan) ([]byte, int, int, error)
+
+type createFPDFRenderer struct{}
+
+var createRendererFactory = defaultCreateRendererFactory
+
+var errCreateRendererUnavailable = errors.New("pdf create renderer unavailable")
+
+type createTextMeasurer interface {
+	CellMargin() float64
+	MeasureText(text string) float64
 }
 
 func (p createFontPlan) hasUnicodeFont() bool {
@@ -155,7 +187,7 @@ func CreateDocument(req CreateRequest) ([]byte, CreateResult, error) {
 		return nil, CreateResult{}, fmt.Errorf("pdf create requires title, summary, sections, paragraphs, notes, or content")
 	}
 
-	data, pageCount, lineCount, err := renderCreatePDF(lines, fontPlan)
+	data, pageCount, lineCount, err := createRendererFactory().render(lines, fontPlan)
 	if err != nil {
 		return nil, CreateResult{}, err
 	}
@@ -171,6 +203,32 @@ func CreateDocument(req CreateRequest) ([]byte, CreateResult, error) {
 		CharCount: charCount,
 		Warnings:  warnings,
 	}, nil
+}
+
+func renderCreateWithFallback(primary createRenderFunc, fallback createRenderer, lines []createStyledLine, fontPlan createFontPlan) ([]byte, int, int, error) {
+	if primary != nil {
+		data, pageCount, lineCount, err := primary(lines, fontPlan)
+		if err == nil {
+			return data, pageCount, lineCount, nil
+		}
+		if !errors.Is(err, errCreateRendererUnavailable) {
+			return nil, 0, 0, err
+		}
+	}
+	if fallback == nil {
+		return nil, 0, 0, errCreateRendererUnavailable
+	}
+	return fallback.render(lines, fontPlan)
+}
+
+func renderCreateWithOptionalFallback(primary createRenderFunc, fallback createRenderer, lines []createStyledLine, fontPlan createFontPlan) ([]byte, int, int, error) {
+	if fallback == nil {
+		if primary == nil {
+			return nil, 0, 0, errCreateRendererUnavailable
+		}
+		return primary(lines, fontPlan)
+	}
+	return renderCreateWithFallback(primary, fallback, lines, fontPlan)
 }
 
 func resolveCreateFontPlan(textValues []string) createFontPlan {
@@ -768,318 +826,6 @@ func createRuneIsSilentFormattingDrop(r rune) bool {
 	}
 }
 
-func renderCreatePDF(lines []createStyledLine, fontPlan createFontPlan) ([]byte, int, int, error) {
-	doc := fpdf.NewCustom(&fpdf.InitType{
-		OrientationStr: "P",
-		UnitStr:        "pt",
-		Size: fpdf.SizeType{
-			Wd: createPageWidth,
-			Ht: createPageHeight,
-		},
-	})
-	doc.SetCompression(false)
-	doc.SetMargins(createMarginLeft, createMarginTop, createMarginLeft)
-	doc.SetAutoPageBreak(true, createMarginBottom)
-	doc.SetCreator("ZimaOS Blue native_pdf_ir", true)
-	if fontPlan.hasUnicodeFont() {
-		doc.AddUTF8FontFromBytes(createUnicodeFontFamily, "", fontPlan.unicodeBytes)
-		doc.AddUTF8FontFromBytes(createUnicodeFontFamily, "B", fontPlan.unicodeBytes)
-	}
-	doc.AddPage()
-
-	lineCount := 0
-	textWidth := createPageWidth - (createMarginLeft * 2)
-
-	for _, line := range lines {
-		if line.Table != nil {
-			renderedLines, err := renderCreateTable(doc, line.Table, textWidth, fontPlan)
-			if err != nil {
-				return nil, 0, 0, err
-			}
-			lineCount += renderedLines
-			if line.GapAfter > 0 {
-				doc.Ln(line.GapAfter)
-			}
-			continue
-		}
-		if line.Divider != nil {
-			renderedLines, err := renderCreateDivider(doc, line.Divider, textWidth)
-			if err != nil {
-				return nil, 0, 0, err
-			}
-			lineCount += renderedLines
-			if line.GapAfter > 0 {
-				doc.Ln(line.GapAfter)
-			}
-			continue
-		}
-		if line.ListItem != nil {
-			renderedLines, err := renderCreateListItem(doc, line.ListItem, line.Font, line.FontSize, textWidth, fontPlan, line.ColorR, line.ColorG, line.ColorB)
-			if err != nil {
-				return nil, 0, 0, err
-			}
-			lineCount += renderedLines
-			if line.GapAfter > 0 {
-				doc.Ln(line.GapAfter)
-			}
-			continue
-		}
-
-		if strings.TrimSpace(line.Text) == "" {
-			doc.Ln(createBlankLineHeight + line.GapAfter)
-			continue
-		}
-
-		family, style := fontPlan.fontFor(line.Font)
-		doc.SetFont(family, style, line.FontSize)
-		doc.SetTextColor(line.ColorR, line.ColorG, line.ColorB)
-		align := line.Align
-		if align == "" {
-			align = "L"
-		}
-		wrapped := createSplitText(doc, line.Text, textWidth)
-		if len(wrapped) == 0 {
-			wrapped = []string{line.Text}
-		}
-		lineCount += len(wrapped)
-		for _, segment := range wrapped {
-			if align == "R" && createHasArabicLetters(segment) {
-				segment = createShapeArabicVisual(segment)
-			}
-			doc.CellFormat(textWidth, line.FontSize*createLineHeightScale, segment, "", 2, align, false, 0, "")
-		}
-		if line.GapAfter > 0 {
-			doc.Ln(line.GapAfter)
-		}
-	}
-
-	var out bytes.Buffer
-	if err := doc.Output(&out); err != nil {
-		return nil, 0, 0, err
-	}
-	return out.Bytes(), doc.PageNo(), lineCount, nil
-}
-
-func renderCreateDivider(doc *fpdf.Fpdf, divider *createStyledDivider, textWidth float64) (int, error) {
-	if doc == nil || divider == nil {
-		return 0, nil
-	}
-
-	lineY := doc.GetY() + 3
-	if lineY > createPageHeight-createMarginBottom {
-		doc.AddPage()
-		lineY = doc.GetY() + 3
-	}
-
-	left := createMarginLeft + createDividerInset
-	right := createMarginLeft + textWidth - createDividerInset
-	if right <= left {
-		left = createMarginLeft
-		right = createMarginLeft + textWidth
-	}
-
-	doc.SetDrawColor(divider.LineR, divider.LineG, divider.LineB)
-	doc.SetLineWidth(createDividerLineWidth)
-	doc.Line(left, lineY, right, lineY)
-	doc.SetXY(createMarginLeft, lineY)
-	return 1, nil
-}
-
-func renderCreateListItem(doc *fpdf.Fpdf, item *createStyledListItem, fontID string, fontSize float64, textWidth float64, fontPlan createFontPlan, textR, textG, textB int) (int, error) {
-	if doc == nil || item == nil {
-		return 0, nil
-	}
-
-	family, style := fontPlan.fontFor(fontID)
-	doc.SetFont(family, style, fontSize)
-	doc.SetTextColor(textR, textG, textB)
-
-	lineHeight := fontSize * createLineHeightScale
-	if doc.GetY()+lineHeight > createPageHeight-createMarginBottom {
-		doc.AddPage()
-	}
-
-	marker := strings.TrimSpace(item.Marker)
-	if marker == "" {
-		marker = "-"
-	}
-	markerWidth := doc.GetStringWidth(marker)
-	if markerWidth < createListMinMarkerWidth {
-		markerWidth = createListMinMarkerWidth
-	}
-	markerWidth += createListMarkerGap
-
-	contentWidth := textWidth - markerWidth
-	if contentWidth < 48 {
-		contentWidth = textWidth - (createListMinMarkerWidth + createListMarkerGap)
-		markerWidth = createListMinMarkerWidth + createListMarkerGap
-	}
-
-	segments := createSplitText(doc, item.Text, contentWidth)
-	if len(segments) == 0 {
-		segments = []string{item.Text}
-	}
-
-	align := item.Align
-	if align == "" {
-		align = "L"
-	}
-	startX := createMarginLeft
-
-	renderSegment := func(segment string) {
-		if align == "R" && createHasArabicLetters(segment) {
-			segment = createShapeArabicVisual(segment)
-		}
-		doc.CellFormat(contentWidth, lineHeight, segment, "", 2, align, false, 0, "")
-	}
-
-	doc.SetX(startX)
-	doc.CellFormat(markerWidth, lineHeight, marker, "", 0, "R", false, 0, "")
-	renderSegment(segments[0])
-
-	for _, segment := range segments[1:] {
-		doc.SetX(startX + markerWidth)
-		renderSegment(segment)
-	}
-
-	return len(segments), nil
-}
-
-func renderCreateTable(doc *fpdf.Fpdf, table *createStyledTable, textWidth float64, fontPlan createFontPlan) (int, error) {
-	if table == nil {
-		return 0, nil
-	}
-	columnCount := createTableColumnCount(table)
-	if columnCount == 0 {
-		return 0, nil
-	}
-
-	widths := createTableColumnWidths(columnCount, textWidth)
-	lineCount := 0
-
-	renderHeader := func() error {
-		if len(table.Headers) == 0 {
-			return nil
-		}
-		count, fits, err := renderCreateTableRow(doc, table.Headers, widths, createFontBold, table.FontSize, fontPlan, table.HeaderTextR, table.HeaderTextG, table.HeaderTextB, table.HeaderFillR, table.HeaderFillG, table.HeaderFillB, table.BorderR, table.BorderG, table.BorderB, true)
-		if err != nil {
-			return err
-		}
-		if !fits {
-			doc.AddPage()
-			count, fits, err = renderCreateTableRow(doc, table.Headers, widths, createFontBold, table.FontSize, fontPlan, table.HeaderTextR, table.HeaderTextG, table.HeaderTextB, table.HeaderFillR, table.HeaderFillG, table.HeaderFillB, table.BorderR, table.BorderG, table.BorderB, true)
-			if err != nil {
-				return err
-			}
-			if !fits {
-				return fmt.Errorf("pdf table header too tall to fit on a single page")
-			}
-		}
-		lineCount += count
-		return nil
-	}
-
-	if err := renderHeader(); err != nil {
-		return 0, err
-	}
-
-	for rowIndex, row := range table.Rows {
-		fill := rowIndex%2 == 0
-		count, fits, err := renderCreateTableRow(doc, row, widths, createFontRegular, table.FontSize, fontPlan, table.BodyTextR, table.BodyTextG, table.BodyTextB, table.RowFillR, table.RowFillG, table.RowFillB, table.BorderR, table.BorderG, table.BorderB, fill)
-		if err != nil {
-			return 0, err
-		}
-		if !fits {
-			doc.AddPage()
-			if err := renderHeader(); err != nil {
-				return 0, err
-			}
-			count, fits, err = renderCreateTableRow(doc, row, widths, createFontRegular, table.FontSize, fontPlan, table.BodyTextR, table.BodyTextG, table.BodyTextB, table.RowFillR, table.RowFillG, table.RowFillB, table.BorderR, table.BorderG, table.BorderB, fill)
-			if err != nil {
-				return 0, err
-			}
-			if !fits {
-				return 0, fmt.Errorf("pdf table row too tall to fit on a single page")
-			}
-		}
-		lineCount += count
-	}
-
-	return lineCount, nil
-}
-
-func renderCreateTableRow(doc *fpdf.Fpdf, cells []createStyledTableCell, widths []float64, fontID string, fontSize float64, fontPlan createFontPlan, textR, textG, textB int, fillR, fillG, fillB int, borderR, borderG, borderB int, fill bool) (int, bool, error) {
-	family, style := fontPlan.fontFor(fontID)
-	doc.SetFont(family, style, fontSize)
-
-	lineHeight := fontSize * createTableLineHeightScale
-	innerWidths := make([]float64, len(widths))
-	wrapped := make([][]string, len(widths))
-	maxLines := 1
-
-	for idx, width := range widths {
-		innerWidth := width - (createTableCellPaddingX * 2)
-		if innerWidth < 12 {
-			innerWidth = width
-		}
-		innerWidths[idx] = innerWidth
-
-		text := ""
-		if idx < len(cells) {
-			text = cells[idx].Text
-		}
-		segments := createSplitText(doc, text, innerWidth)
-		if len(segments) == 0 {
-			segments = []string{""}
-		}
-		wrapped[idx] = segments
-		if len(segments) > maxLines {
-			maxLines = len(segments)
-		}
-	}
-
-	rowHeight := createTableCellPaddingY*2 + float64(maxLines)*lineHeight
-	if doc.GetY()+rowHeight > createPageHeight-createMarginBottom {
-		return 0, false, nil
-	}
-
-	doc.SetLineWidth(createTableBorderWidth)
-	startX := createMarginLeft
-	startY := doc.GetY()
-	x := startX
-
-	for idx, width := range widths {
-		doc.SetDrawColor(borderR, borderG, borderB)
-		if fill {
-			doc.SetFillColor(fillR, fillG, fillB)
-			doc.Rect(x, startY, width, rowHeight, "DF")
-		} else {
-			doc.Rect(x, startY, width, rowHeight, "D")
-		}
-
-		align := "L"
-		if idx < len(cells) && strings.TrimSpace(cells[idx].Align) != "" {
-			align = cells[idx].Align
-		}
-
-		doc.SetXY(x+createTableCellPaddingX, startY+createTableCellPaddingY)
-		doc.SetTextColor(textR, textG, textB)
-
-		for _, segment := range wrapped[idx] {
-			if align == "R" && createHasArabicLetters(segment) {
-				segment = createShapeArabicVisual(segment)
-			}
-			doc.CellFormat(innerWidths[idx], lineHeight, segment, "", 2, align, false, 0, "")
-		}
-
-		x += width
-		doc.SetXY(x, startY)
-	}
-
-	doc.SetXY(createMarginLeft, startY+rowHeight)
-	return maxLines, true, nil
-}
-
 func createTableColumnCount(table *createStyledTable) int {
 	if table == nil {
 		return 0
@@ -1112,8 +858,86 @@ func createTableColumnWidths(columnCount int, totalWidth float64) []float64 {
 	return widths
 }
 
-func createSplitText(doc *fpdf.Fpdf, text string, width float64) []string {
-	if doc == nil {
+func prepareCreateTableRow(measurer createTextMeasurer, cells []createStyledTableCell, widths []float64, fontSize float64) createPreparedTableRow {
+	row := createPreparedTableRow{
+		InnerWidths: make([]float64, len(widths)),
+		Wrapped:     make([][]string, len(widths)),
+		Aligns:      make([]string, len(widths)),
+		MaxLines:    1,
+	}
+
+	for idx, width := range widths {
+		innerWidth := width - (createTableCellPaddingX * 2)
+		if innerWidth < 12 {
+			innerWidth = width
+		}
+		row.InnerWidths[idx] = innerWidth
+
+		text := ""
+		if idx < len(cells) {
+			text = cells[idx].Text
+			align := strings.TrimSpace(cells[idx].Align)
+			if align != "" {
+				row.Aligns[idx] = align
+			}
+		}
+		if row.Aligns[idx] == "" {
+			row.Aligns[idx] = "L"
+		}
+
+		segments := createSplitTextWithMeasurer(measurer, text, innerWidth)
+		if len(segments) == 0 {
+			segments = []string{""}
+		}
+		row.Wrapped[idx] = segments
+		if len(segments) > row.MaxLines {
+			row.MaxLines = len(segments)
+		}
+	}
+
+	lineHeight := fontSize * createTableLineHeightScale
+	row.RowHeight = createTableCellPaddingY*2 + float64(row.MaxLines)*lineHeight
+	return row
+}
+
+func prepareCreateListItem(measurer createTextMeasurer, item createStyledListItem, width float64) createPreparedListItem {
+	prepared := createPreparedListItem{
+		Marker: strings.TrimSpace(item.Marker),
+		Align:  strings.TrimSpace(item.Align),
+	}
+	if prepared.Marker == "" {
+		prepared.Marker = "-"
+	}
+	if prepared.Align == "" {
+		prepared.Align = "L"
+	}
+
+	prepared.MarkerWidth = measurer.MeasureText(prepared.Marker)
+	if prepared.MarkerWidth < createListMinMarkerWidth {
+		prepared.MarkerWidth = createListMinMarkerWidth
+	}
+	prepared.MarkerWidth += createListMarkerGap
+
+	prepared.ContentWidth = width - prepared.MarkerWidth
+	if prepared.ContentWidth < 48 {
+		prepared.MarkerWidth = createListMinMarkerWidth + createListMarkerGap
+		prepared.ContentWidth = width - prepared.MarkerWidth
+	}
+
+	prepared.MarkerTextWidth = prepared.MarkerWidth - createListMarkerGap
+	if prepared.MarkerTextWidth <= 0 {
+		prepared.MarkerTextWidth = prepared.MarkerWidth
+	}
+
+	prepared.Segments = createSplitTextWithMeasurer(measurer, item.Text, prepared.ContentWidth)
+	if len(prepared.Segments) == 0 {
+		prepared.Segments = []string{item.Text}
+	}
+	return prepared
+}
+
+func createSplitTextWithMeasurer(measurer createTextMeasurer, text string, width float64) []string {
+	if measurer == nil {
 		return nil
 	}
 	text = strings.ReplaceAll(text, "\r\n", "\n")
@@ -1125,7 +949,7 @@ func createSplitText(doc *fpdf.Fpdf, text string, width float64) []string {
 		return nil
 	}
 
-	maxWidth := width - 2*doc.GetCellMargin()
+	maxWidth := width - 2*measurer.CellMargin()
 	if maxWidth <= 0 {
 		maxWidth = width
 	}
@@ -1148,7 +972,7 @@ func createSplitText(doc *fpdf.Fpdf, text string, width float64) []string {
 			continue
 		}
 
-		lineWidth += doc.GetStringWidth(string(r))
+		lineWidth += measurer.MeasureText(string(r))
 		if unicode.IsSpace(r) {
 			lastSpaceBreak = idx
 		} else if createSplitTextTreatsRuneAsCJK(r) {

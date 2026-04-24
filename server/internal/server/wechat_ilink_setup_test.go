@@ -42,7 +42,7 @@ func newWeChatILinkRewriteHostTransport(t *testing.T, server *httptest.Server) h
 	return wechatILinkRewriteHostTransport{t: t, target: target}
 }
 
-func TestWeChatILinkSetupHandler_CreateSessionReturnsUpstreamScanURLAndQRCode(t *testing.T) {
+func TestWeChatILinkSetupHandler_CreateSessionReturnsUpstreamScanURLWithoutQRCodeImage(t *testing.T) {
 	var qrRequests int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -99,8 +99,8 @@ func TestWeChatILinkSetupHandler_CreateSessionReturnsUpstreamScanURLAndQRCode(t 
 	if strings.Contains(stringValue(response["mobile_url"]), "/channels/setup/wechat_ilink") {
 		t.Fatalf("mobile_url = %q, should not point at Blue setup page", stringValue(response["mobile_url"]))
 	}
-	if got := strings.TrimSpace(stringValue(response["qrcode"])); got == "" {
-		t.Fatal("expected qrcode data url")
+	if _, ok := response["qrcode"]; ok {
+		t.Fatal("response should not include qrcode image data")
 	}
 
 	session, ok := handler.getSession(stringValue(response["session_id"]))

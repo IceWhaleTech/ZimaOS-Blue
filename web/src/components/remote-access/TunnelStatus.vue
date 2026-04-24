@@ -10,6 +10,7 @@ import {
 } from '@/api/remote-access'
 import { getTunnelProviderIcon } from '@/utils/channelIcons'
 import { useTauri } from '@/composables/useTauri'
+import QRCodeDisplay from '@/components/common/QRCodeDisplay.vue'
 
 const { t } = useI18n()
 const { openInBrowser } = useTauri()
@@ -28,7 +29,7 @@ function handleDisconnect() {
 
 // QR Code state - auto-show when URL available
 const qrCodeLoading = ref(false)
-const qrCodeData = ref<string | null>(null)
+const qrCodeValue = ref<string | null>(null)
 
 // Diagnostics state
 const showDiagnostics = ref(false)
@@ -102,7 +103,7 @@ async function loadQRCode() {
   try {
     const response = await getRemoteAccessQRCode()
     if (response.data.success) {
-      qrCodeData.value = response.data.qrcode
+      qrCodeValue.value = response.data.qr_url || response.data.url
     }
   } catch (e) {
     console.error('Failed to load QR code:', e)
@@ -176,7 +177,7 @@ function getEventTypeColor(eventType: string) {
 
 onMounted(() => {
   // Auto-load QR code when URL available
-  if (props.status.url && !qrCodeData.value) {
+  if (props.status.url && !qrCodeValue.value) {
     loadQRCode()
   }
   // Auto-load diagnostics if tunnel is not active (for troubleshooting)
@@ -189,7 +190,7 @@ onMounted(() => {
 watch(
   () => props.status.url,
   (url) => {
-    if (url && !qrCodeData.value) {
+    if (url && !qrCodeValue.value) {
       loadQRCode()
     }
   }
@@ -331,12 +332,14 @@ watch(
             />
           </svg>
         </div>
-        <img
-          v-else-if="qrCodeData"
-          :src="qrCodeData"
+        <QRCodeDisplay
+          v-else-if="qrCodeValue"
+          :value="qrCodeValue"
           alt="QR Code"
-          class="tunnel-status__qr rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-950/70"
-        >
+          :size="240"
+          image-class="tunnel-status__qr rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-950/70"
+          :error-text="t('remoteAccess.qrCodeError')"
+        />
         <div
           v-else
           class="tunnel-status__empty text-sm text-gray-500 dark:text-slate-300 py-4"

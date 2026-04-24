@@ -3,15 +3,48 @@ package pdf
 import (
 	"bytes"
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
+	"errors"
 	"strings"
 	"testing"
 	"unicode"
-
-	"go.uber.org/zap"
 )
+
+type fakeCreateTextMeasurer struct {
+	cellMargin   float64
+	defaultWidth float64
+	runeWidths   map[rune]float64
+}
+
+type fakeCreateRenderer struct {
+	data      []byte
+	pageCount int
+	lineCount int
+	err       error
+	called    bool
+	gotLines  []createStyledLine
+}
+
+func (m fakeCreateTextMeasurer) CellMargin() float64 {
+	return m.cellMargin
+}
+
+func (m fakeCreateTextMeasurer) MeasureText(text string) float64 {
+	total := 0.0
+	for _, r := range text {
+		if width, ok := m.runeWidths[r]; ok {
+			total += width
+			continue
+		}
+		total += m.defaultWidth
+	}
+	return total
+}
+
+func (r *fakeCreateRenderer) render(lines []createStyledLine, _ createFontPlan) ([]byte, int, int, error) {
+	r.called = true
+	r.gotLines = append([]createStyledLine(nil), lines...)
+	return r.data, r.pageCount, r.lineCount, r.err
+}
 
 func TestCreateDocumentPreservesChineseWhenUnicodeFontAvailable(t *testing.T) {
 	if _, err := resolveCreateUnicodeFont(collectCreateRequiredRunes([]string{"中文标题", "中文摘要"})); err != nil {
@@ -46,6 +79,391 @@ func TestCreateRequestTextValuesIncludeShapedArabicFormsForFontResolution(t *tes
 	}
 
 	t.Fatalf("createRequestTextValues() = %#v, want Arabic presentation-form text included for font resolution", values)
+}
+
+func TestCreateSplitTextWithMeasurerWrapsOnSpaces(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	got := createSplitTextWithMeasurer(measurer, "alpha beta gamma", 6)
+	want := []string{"alpha", "beta", "gamma"}
+	if len(got) != len(want) {
+		t.Fatalf("len(createSplitTextWithMeasurer()) = %d, want %d (%#v)", len(got), len(want), got)
+	}
+	for idx := range want {
+		if got[idx] != want[idx] {
+			t.Fatalf("createSplitTextWithMeasurer()[%d] = %q, want %q (%#v)", idx, got[idx], want[idx], got)
+		}
+	}
+}
+
+func TestCreateSplitTextWithMeasurerWrapsOnCJKBoundaries(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	got := createSplitTextWithMeasurer(measurer, "你好世界", 2)
+	want := []string{"你好", "世界"}
+	if len(got) != len(want) {
+		t.Fatalf("len(createSplitTextWithMeasurer()) = %d, want %d (%#v)", len(got), len(want), got)
+	}
+	for idx := range want {
+		if got[idx] != want[idx] {
+			t.Fatalf("createSplitTextWithMeasurer()[%d] = %q, want %q (%#v)", idx, got[idx], want[idx], got)
+		}
+	}
+}
+
+func TestCreateSplitTextWithMeasurerRespectsCellMargin(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1, cellMargin: 1}
+
+	got := createSplitTextWithMeasurer(measurer, "abcd", 5)
+	want := []string{"abc", "d"}
+	if len(got) != len(want) {
+		t.Fatalf("len(createSplitTextWithMeasurer()) = %d, want %d (%#v)", len(got), len(want), got)
+	}
+	for idx := range want {
+		if got[idx] != want[idx] {
+			t.Fatalf("createSplitTextWithMeasurer()[%d] = %q, want %q (%#v)", idx, got[idx], want[idx], got)
+		}
+	}
+}
+
+func TestCreateDocumentUsesRendererFactory(t *testing.T) {
+	fake := &fakeCreateRenderer{
+		data:      []byte("%PDF-test"),
+		pageCount: 2,
+		lineCount: 4,
+	}
+
+	previousFactory := createRendererFactory
+	createRendererFactory = func() createRenderer {
+		return fake
+	}
+	defer func() {
+		createRendererFactory = previousFactory
+	}()
+
+	data, info, err := CreateDocument(CreateRequest{
+		Title:   "Native PDF",
+		Summary: "Renderer seam test",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument() error = %v", err)
+	}
+	if !fake.called {
+		t.Fatal("expected CreateDocument to invoke renderer factory output")
+	}
+	if len(fake.gotLines) == 0 {
+		t.Fatal("expected renderer to receive styled lines")
+	}
+	if got := string(data); got != "%PDF-test" {
+		t.Fatalf("CreateDocument() data = %q, want %q", got, "%PDF-test")
+	}
+	if info.PageCount != 2 || info.LineCount != 4 {
+		t.Fatalf("CreateDocument() info = %#v, want page_count=2 line_count=4", info)
+	}
+}
+
+func TestRenderCreateWithFallbackUsesPrimaryWhenAvailable(t *testing.T) {
+	fallback := &fakeCreateRenderer{
+		data:      []byte("%PDF-fallback"),
+		pageCount: 7,
+		lineCount: 9,
+	}
+	lines := []createStyledLine{{Text: "primary"}}
+
+	data, pageCount, lineCount, err := renderCreateWithFallback(func(gotLines []createStyledLine, _ createFontPlan) ([]byte, int, int, error) {
+		if len(gotLines) != 1 || gotLines[0].Text != "primary" {
+			t.Fatalf("primary got lines = %#v", gotLines)
+		}
+		return []byte("%PDF-primary"), 2, 3, nil
+	}, fallback, lines, createFontPlan{})
+	if err != nil {
+		t.Fatalf("renderCreateWithFallback() error = %v", err)
+	}
+	if got := string(data); got != "%PDF-primary" {
+		t.Fatalf("data = %q, want %q", got, "%PDF-primary")
+	}
+	if pageCount != 2 || lineCount != 3 {
+		t.Fatalf("pageCount/lineCount = %d/%d, want 2/3", pageCount, lineCount)
+	}
+	if fallback.called {
+		t.Fatal("expected fallback renderer to stay unused when primary succeeds")
+	}
+}
+
+func TestRenderCreateWithFallbackFallsBackOnUnavailable(t *testing.T) {
+	fallback := &fakeCreateRenderer{
+		data:      []byte("%PDF-fallback"),
+		pageCount: 7,
+		lineCount: 9,
+	}
+
+	data, pageCount, lineCount, err := renderCreateWithFallback(func(_ []createStyledLine, _ createFontPlan) ([]byte, int, int, error) {
+		return nil, 0, 0, errCreateRendererUnavailable
+	}, fallback, []createStyledLine{{Text: "fallback"}}, createFontPlan{})
+	if err != nil {
+		t.Fatalf("renderCreateWithFallback() error = %v", err)
+	}
+	if !fallback.called {
+		t.Fatal("expected fallback renderer to be called when primary is unavailable")
+	}
+	if got := string(data); got != "%PDF-fallback" {
+		t.Fatalf("data = %q, want %q", got, "%PDF-fallback")
+	}
+	if pageCount != 7 || lineCount != 9 {
+		t.Fatalf("pageCount/lineCount = %d/%d, want 7/9", pageCount, lineCount)
+	}
+}
+
+func TestRenderCreateWithFallbackPropagatesPrimaryError(t *testing.T) {
+	fallback := &fakeCreateRenderer{
+		data:      []byte("%PDF-fallback"),
+		pageCount: 7,
+		lineCount: 9,
+	}
+
+	_, _, _, err := renderCreateWithFallback(func(_ []createStyledLine, _ createFontPlan) ([]byte, int, int, error) {
+		return nil, 0, 0, context.DeadlineExceeded
+	}, fallback, []createStyledLine{{Text: "error"}}, createFontPlan{})
+	if err == nil {
+		t.Fatal("expected primary error to be returned")
+	}
+	if !strings.Contains(err.Error(), "deadline") {
+		t.Fatalf("error = %v, want deadline context error", err)
+	}
+	if fallback.called {
+		t.Fatal("expected fallback renderer to stay unused on non-availability errors")
+	}
+}
+
+func TestRenderCreateWithOptionalFallbackUsesPrimaryWhenFallbackNil(t *testing.T) {
+	data, pageCount, lineCount, err := renderCreateWithOptionalFallback(func(_ []createStyledLine, _ createFontPlan) ([]byte, int, int, error) {
+		return []byte("%PDF-native"), 3, 5, nil
+	}, nil, []createStyledLine{{Text: "native"}}, createFontPlan{})
+	if err != nil {
+		t.Fatalf("renderCreateWithOptionalFallback() error = %v", err)
+	}
+	if got := string(data); got != "%PDF-native" {
+		t.Fatalf("data = %q, want %q", got, "%PDF-native")
+	}
+	if pageCount != 3 || lineCount != 5 {
+		t.Fatalf("pageCount/lineCount = %d/%d, want 3/5", pageCount, lineCount)
+	}
+}
+
+func TestRenderCreateWithOptionalFallbackReturnsUnavailableWhenNoRendererExists(t *testing.T) {
+	_, _, _, err := renderCreateWithOptionalFallback(nil, nil, []createStyledLine{{Text: "missing"}}, createFontPlan{})
+	if !errors.Is(err, errCreateRendererUnavailable) {
+		t.Fatalf("renderCreateWithOptionalFallback() error = %v, want errCreateRendererUnavailable", err)
+	}
+}
+
+func TestDefaultDarwinCreateFallbackRendererReturnsNil(t *testing.T) {
+	if got := defaultDarwinCreateFallbackRenderer(); got != nil {
+		t.Fatalf("defaultDarwinCreateFallbackRenderer() = %#v, want nil", got)
+	}
+}
+
+func TestCreateAlignedTextX(t *testing.T) {
+	tests := []struct {
+		name         string
+		left         float64
+		available    float64
+		textWidth    float64
+		align        string
+		wantAlignedX float64
+	}{
+		{
+			name:         "LeftAlignedUsesLeftEdge",
+			left:         54,
+			available:    160,
+			textWidth:    48,
+			align:        "L",
+			wantAlignedX: 54,
+		},
+		{
+			name:         "RightAlignedUsesTrailingEdge",
+			left:         54,
+			available:    160,
+			textWidth:    48,
+			align:        "R",
+			wantAlignedX: 166,
+		},
+		{
+			name:         "RightAlignedClampsWhenTextOverflows",
+			left:         54,
+			available:    32,
+			textWidth:    48,
+			align:        "R",
+			wantAlignedX: 54,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := createAlignedTextX(tc.left, tc.available, tc.textWidth, tc.align); got != tc.wantAlignedX {
+				t.Fatalf("createAlignedTextX(%v, %v, %v, %q) = %v, want %v", tc.left, tc.available, tc.textWidth, tc.align, got, tc.wantAlignedX)
+			}
+		})
+	}
+}
+
+func TestCreateBottomOriginY(t *testing.T) {
+	if got := createBottomOriginY(60, 18); got != 714 {
+		t.Fatalf("createBottomOriginY(60, 18) = %v, want %v", got, 714.0)
+	}
+	if got := createBottomOriginY(createPageHeight-24, 40); got != 0 {
+		t.Fatalf("createBottomOriginY(pageHeight-24, 40) = %v, want 0", got)
+	}
+}
+
+func TestPrepareCreateTableRowWrapsCellsAndComputesHeight(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	row := prepareCreateTableRow(
+		measurer,
+		[]createStyledTableCell{
+			{Text: "alpha beta", Align: "R"},
+			{Text: "ok"},
+		},
+		[]float64{20, 30},
+		10,
+	)
+
+	if len(row.InnerWidths) != 2 || row.InnerWidths[0] != 20 || row.InnerWidths[1] != 14 {
+		t.Fatalf("InnerWidths = %#v, want [20 14]", row.InnerWidths)
+	}
+	if len(row.Wrapped) != 2 {
+		t.Fatalf("Wrapped len = %d, want 2", len(row.Wrapped))
+	}
+	wantFirst := []string{"alpha beta"}
+	if len(row.Wrapped[0]) != len(wantFirst) {
+		t.Fatalf("Wrapped[0] = %#v, want %#v", row.Wrapped[0], wantFirst)
+	}
+	for idx := range wantFirst {
+		if row.Wrapped[0][idx] != wantFirst[idx] {
+			t.Fatalf("Wrapped[0][%d] = %q, want %q (%#v)", idx, row.Wrapped[0][idx], wantFirst[idx], row.Wrapped[0])
+		}
+	}
+	if row.MaxLines != 1 {
+		t.Fatalf("MaxLines = %d, want 1", row.MaxLines)
+	}
+	if row.RowHeight != 22 {
+		t.Fatalf("RowHeight = %v, want 22", row.RowHeight)
+	}
+}
+
+func TestPrepareCreateTableRowDefaultsBlankAlignmentToLeft(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	row := prepareCreateTableRow(
+		measurer,
+		[]createStyledTableCell{{Text: "value"}},
+		[]float64{40},
+		10,
+	)
+
+	if len(row.Aligns) != 1 || row.Aligns[0] != "L" {
+		t.Fatalf("Aligns = %#v, want [\"L\"]", row.Aligns)
+	}
+	if len(row.Wrapped) != 1 || len(row.Wrapped[0]) != 1 || row.Wrapped[0][0] != "value" {
+		t.Fatalf("Wrapped = %#v, want [[\"value\"]]", row.Wrapped)
+	}
+}
+
+func TestPrepareCreateTableRowFallsBackToFullWidthWhenPaddingWouldCollapseCell(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	row := prepareCreateTableRow(
+		measurer,
+		[]createStyledTableCell{{Text: "1234567890"}},
+		[]float64{10},
+		10,
+	)
+
+	if len(row.InnerWidths) != 1 || row.InnerWidths[0] != 10 {
+		t.Fatalf("InnerWidths = %#v, want [10]", row.InnerWidths)
+	}
+	if len(row.Wrapped[0]) != 1 || row.Wrapped[0][0] != "1234567890" {
+		t.Fatalf("Wrapped = %#v, want unwrapped full-width cell", row.Wrapped)
+	}
+}
+
+func TestPrepareCreateListItemDefaultsMarkerAndAlignment(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	item := prepareCreateListItem(measurer, createStyledListItem{
+		Text: "value",
+	}, 80)
+
+	if item.Marker != "-" {
+		t.Fatalf("Marker = %q, want %q", item.Marker, "-")
+	}
+	if item.Align != "L" {
+		t.Fatalf("Align = %q, want %q", item.Align, "L")
+	}
+	if item.MarkerWidth != 20 {
+		t.Fatalf("MarkerWidth = %v, want %v", item.MarkerWidth, 20.0)
+	}
+	if item.MarkerTextWidth != 12 {
+		t.Fatalf("MarkerTextWidth = %v, want %v", item.MarkerTextWidth, 12.0)
+	}
+	if item.ContentWidth != 60 {
+		t.Fatalf("ContentWidth = %v, want %v", item.ContentWidth, 60.0)
+	}
+	if len(item.Segments) != 1 || item.Segments[0] != "value" {
+		t.Fatalf("Segments = %#v, want [\"value\"]", item.Segments)
+	}
+}
+
+func TestPrepareCreateListItemWrapsUsingContentWidth(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	item := prepareCreateListItem(measurer, createStyledListItem{
+		Marker: "1.",
+		Text:   "alpha beta gamma",
+	}, 30)
+
+	if item.Marker != "1." {
+		t.Fatalf("Marker = %q, want %q", item.Marker, "1.")
+	}
+	if item.MarkerWidth != 20 {
+		t.Fatalf("MarkerWidth = %v, want %v", item.MarkerWidth, 20.0)
+	}
+	if item.ContentWidth != 10 {
+		t.Fatalf("ContentWidth = %v, want %v", item.ContentWidth, 10.0)
+	}
+	want := []string{"alpha beta", "gamma"}
+	if len(item.Segments) != len(want) {
+		t.Fatalf("Segments = %#v, want %#v", item.Segments, want)
+	}
+	for idx := range want {
+		if item.Segments[idx] != want[idx] {
+			t.Fatalf("Segments[%d] = %q, want %q (%#v)", idx, item.Segments[idx], want[idx], item.Segments)
+		}
+	}
+}
+
+func TestPrepareCreateListItemPreservesWiderMarkerMeasurement(t *testing.T) {
+	measurer := fakeCreateTextMeasurer{defaultWidth: 1}
+
+	item := prepareCreateListItem(measurer, createStyledListItem{
+		Marker: "123456789012345",
+		Text:   "owner",
+		Align:  "R",
+	}, 100)
+
+	if item.Align != "R" {
+		t.Fatalf("Align = %q, want %q", item.Align, "R")
+	}
+	if item.MarkerWidth != 23 {
+		t.Fatalf("MarkerWidth = %v, want %v", item.MarkerWidth, 23.0)
+	}
+	if item.MarkerTextWidth != 15 {
+		t.Fatalf("MarkerTextWidth = %v, want %v", item.MarkerTextWidth, 15.0)
+	}
+	if item.ContentWidth != 77 {
+		t.Fatalf("ContentWidth = %v, want %v", item.ContentWidth, 77.0)
+	}
 }
 
 func TestCreateShapeArabicVisual(t *testing.T) {
@@ -522,44 +940,6 @@ func TestCleanCreateInlineMarkdownTreatsPlainNewlinesAsSeparators(t *testing.T) 
 	want := "示例值甲 · 第二字段： 示例值乙"
 	if got != want {
 		t.Fatalf("cleanCreateInlineMarkdown() = %q, want %q", got, want)
-	}
-}
-
-func TestCreateDocumentPreservesWrappedCJKSubtitleText(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("wrap-regression extraction currently verified with native darwin PDFKit")
-	}
-	if _, err := resolveCreateUnicodeFont(collectCreateRequiredRunes([]string{"字段戊", "示例值四"})); err != nil {
-		t.Skipf("no unicode font with Chinese glyph coverage available: %v", err)
-	}
-
-	data, _, err := CreateDocument(CreateRequest{
-		Title:    "示例中文长标题文档",
-		Subtitle: "字段甲： 示例值一 | 字段乙： 示例值二 | 字段丙： 示例值三 | 字段丁： 示例值四 | 字段戊： 2026年4月11日 | 字段己： 示例值五",
-	})
-	if err != nil {
-		t.Fatalf("CreateDocument() error = %v", err)
-	}
-
-	path := filepath.Join(t.TempDir(), "wrapped_subtitle.pdf")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	svc := NewService(zap.NewNop(), nil, ServiceConfig{
-		RuntimeDir:   "testdata",
-		AutoDownload: false,
-	})
-	t.Cleanup(func() {
-		_ = svc.Close()
-	})
-
-	result, err := svc.Extract(context.Background(), ExtractRequest{Path: path, IncludePages: true})
-	if err != nil {
-		t.Fatalf("Extract() error = %v", err)
-	}
-	if !strings.Contains(result.Text, "字段戊") {
-		t.Fatalf("extracted text = %q, want wrapped subtitle to preserve 字段戊", result.Text)
 	}
 }
 

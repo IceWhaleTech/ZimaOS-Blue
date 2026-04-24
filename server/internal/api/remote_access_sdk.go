@@ -123,7 +123,7 @@ func (h *SDKRemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
 	})
 }
 
-// GetQRCode generates a QR code for the tunnel URL with embedded auth token.
+// GetQRCode returns the raw QR payload for the tunnel URL with embedded auth token.
 func (h *SDKRemoteAccessHandler) GetQRCode(c echo.Context) error {
 	tunnelURL := h.tunnelManager.GetURL()
 	if tunnelURL == "" {
@@ -133,29 +133,12 @@ func (h *SDKRemoteAccessHandler) GetQRCode(c echo.Context) error {
 		})
 	}
 
-	// Build QR URL: tunnel + /chat + token (if JWT service available)
-	qrURL := tunnelURL + "/chat"
-	if h.jwtService != nil {
-		if userClaims := auth.GetUserFromContext(c); userClaims != nil {
-			token, err := h.jwtService.GenerateAccessToken(userClaims)
-			if err == nil {
-				qrURL += "?access_token=" + token
-			}
-		}
-	}
-
-	qrcode, err := ngrok.GenerateQRCode(qrURL, 200)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"success": false,
-			"error":   err.Error(),
-		})
-	}
+	qrURL := buildTunnelQRURL(tunnelURL, h.jwtService, auth.GetUserFromContext(c))
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"url":     tunnelURL,
-		"qrcode":  qrcode,
+		"qr_url":  qrURL,
 	})
 }
 

@@ -9,7 +9,6 @@ export interface MFAStatus {
 export interface MFASetupResponse {
   secret: string
   uri: string
-  qr_code?: string
 }
 
 export interface MFAVerifyResponse {
@@ -27,8 +26,7 @@ export const mfaApi = {
   getStatus: () => api.get<MFAStatus>('/auth/mfa/status'),
 
   // Start MFA setup
-  setup: (includeQRCode = true) =>
-    api.post<MFASetupResponse>('/auth/mfa/setup', { include_qr_code: includeQRCode }),
+  setup: () => api.post<MFASetupResponse>('/auth/mfa/setup'),
 
   // Verify MFA setup with code
   verify: (code: string, secret: string) =>

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mfaApi } from '@/api/mfa'
 import type { MFAStatus, MFASetupResponse } from '@/api/mfa'
+import QRCodeDisplay from '@/components/common/QRCodeDisplay.vue'
 
 const { t } = useI18n()
 
@@ -39,7 +40,7 @@ async function loadMFAStatus() {
 async function startSetup() {
   try {
     loading.value = true
-    const response = await mfaApi.setup(true)
+    const response = await mfaApi.setup()
     setupData.value = response.data
   } catch (_e) {
     emit('status-change', t('mfa.setupFailed'))
@@ -225,14 +226,16 @@ function closeDisableModal() {
 
           <!-- QR Code -->
           <div
-            v-if="setupData.qr_code"
+            v-if="setupData.uri"
             class="flex justify-center mb-4"
           >
-            <img
-              :src="setupData.qr_code"
+            <QRCodeDisplay
+              :value="setupData.uri"
               alt="MFA QR Code"
-              class="w-48 h-48 bg-white p-2 rounded-lg"
-            >
+              :size="256"
+              image-class="w-48 h-48 bg-white p-2 rounded-lg"
+              :error-text="t('mfa.setupFailed')"
+            />
           </div>
 
           <!-- Manual entry -->

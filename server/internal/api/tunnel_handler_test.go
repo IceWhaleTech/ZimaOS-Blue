@@ -368,6 +368,46 @@ func TestTunnelHandler_GetQRCode_NoActiveTunnel(t *testing.T) {
 	}
 }
 
+func TestTunnelHandler_GetQRCode_ReturnsRawQRURLWithoutImageData(t *testing.T) {
+	h := NewTunnelHandler(nil, 80)
+	manager := &stubTunnelManager{
+		provider: tunnel.ProviderAuto,
+		running:  true,
+		url:      "https://blue.example.com",
+	}
+	h.active = manager
+
+	e := echo.New()
+	h.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tunnel/qrcode", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status code = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if resp["success"] != true {
+		t.Fatal("Expected success to be true")
+	}
+	if got := resp["url"]; got != "https://blue.example.com" {
+		t.Fatalf("url = %v, want %q", got, "https://blue.example.com")
+	}
+	if got := resp["qr_url"]; got != "https://blue.example.com/chat" {
+		t.Fatalf("qr_url = %v, want %q", got, "https://blue.example.com/chat")
+	}
+	if _, ok := resp["qrcode"]; ok {
+		t.Fatal("response should not include backend QR image data")
+	}
+}
+
 func TestTunnelHandler_BackwardsCompatibility(t *testing.T) {
 	_, e := setupTunnelHandler(t)
 

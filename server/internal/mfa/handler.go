@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Handler handles HTTP requests for MFA operations.
@@ -88,16 +88,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	webauthn.DELETE("/credentials/:id", h.WebAuthnDeleteCredential)
 }
 
-// SetupRequest represents a request to start MFA setup.
-type SetupRequest struct {
-	IncludeQRCode bool `json:"include_qr_code"`
-}
-
 // SetupResponseDTO represents the response for MFA setup.
 type SetupResponseDTO struct {
 	Secret string `json:"secret"`
 	URI    string `json:"uri"`
-	QRCode string `json:"qr_code,omitempty"`
 }
 
 // Setup handles MFA setup initiation.
@@ -112,12 +106,7 @@ func (h *Handler) Setup(c echo.Context) error {
 		username = userID.String()
 	}
 
-	var req SetupRequest
-	if err := c.Bind(&req); err != nil {
-		req.IncludeQRCode = true // Default to including QR code
-	}
-
-	setup, err := h.totp.Setup(username, req.IncludeQRCode)
+	setup, err := h.totp.Setup(username)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate MFA setup")
 	}
@@ -130,7 +119,6 @@ func (h *Handler) Setup(c echo.Context) error {
 	return c.JSON(http.StatusOK, &SetupResponseDTO{
 		Secret: setup.Secret,
 		URI:    setup.URI,
-		QRCode: setup.QRCode,
 	})
 }
 
@@ -212,9 +200,9 @@ func (h *Handler) Disable(c echo.Context) error {
 
 // StatusResponse represents the MFA status response.
 type StatusResponse struct {
-	Enabled        bool `json:"enabled"`
-	RecoveryCount  int  `json:"recovery_codes_remaining"`
-	SetupRequired  bool `json:"setup_required,omitempty"`
+	Enabled       bool `json:"enabled"`
+	RecoveryCount int  `json:"recovery_codes_remaining"`
+	SetupRequired bool `json:"setup_required,omitempty"`
 }
 
 // Status handles getting MFA status.

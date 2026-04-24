@@ -1,3 +1,5 @@
+//go:build !darwin
+
 package pdf
 
 import (
@@ -5,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -347,8 +348,15 @@ func (s *Service) FillForm(ctx context.Context, req FillFormRequest) (FillFormRe
 			if err != nil {
 				return FillFormResult{}, fmt.Errorf("set radio selection for pdf form field %q: %w", fieldName, err)
 			}
+			fields := make([]FormField, 0, len(candidates))
+			for _, candidate := range candidates {
+				fields = append(fields, candidate.Field)
+			}
+			if err := ensurePDFRadioGroupWritable(fields); err != nil {
+				return FillFormResult{}, fmt.Errorf("set radio selection for pdf form field %q: %w", fieldName, err)
+			}
 		}
-		if target.Field.ReadOnly {
+		if target.Field.Type != "radio" && target.Field.ReadOnly {
 			return FillFormResult{}, fmt.Errorf("pdf form field %q is read-only", fieldName)
 		}
 		host.currentPage = target.PageIndex
@@ -449,72 +457,16 @@ func focusPDFFormWidget(instance pdfium.Pdfium, formHandle references.FPDF_FORMH
 	return nil
 }
 
-func resolvePDFChoiceOptionIndex(field FormField, requested string) (int, error) {
-	requested = strings.TrimSpace(requested)
-	if requested == "" {
-		return 0, fmt.Errorf("requested option cannot be empty")
-	}
-	for _, option := range field.Options {
-		if strings.TrimSpace(option.Label) == requested {
-			return option.Index, nil
-		}
-	}
-	if idx, err := strconv.Atoi(requested); err == nil {
-		for _, option := range field.Options {
-			if option.Index == idx {
-				return idx, nil
-			}
-		}
-	}
-	available := make([]string, 0, len(field.Options))
-	for _, option := range field.Options {
-		label := strings.TrimSpace(option.Label)
-		if label == "" {
-			label = fmt.Sprintf("%d", option.Index)
-		} else {
-			label = fmt.Sprintf("%d:%s", option.Index, label)
-		}
-		available = append(available, label)
-	}
-	return 0, fmt.Errorf("unsupported option %q (available: %s)", requested, strings.Join(available, ", "))
-}
-
-func resolvePDFCheckboxState(field FormField, requested string) (bool, error) {
-	requested = strings.TrimSpace(requested)
-	switch strings.ToLower(requested) {
-	case "1", "true", "yes", "on", "checked":
-		return true, nil
-	case "0", "false", "no", "off", "unchecked":
-		return false, nil
-	}
-	if exportValue := strings.TrimSpace(field.ExportValue); exportValue != "" && strings.EqualFold(exportValue, requested) {
-		return true, nil
-	}
-	return false, fmt.Errorf("unsupported checkbox value %q", requested)
-}
-
 func resolvePDFRadioWidget(candidates []pdfFormWidget, requested string) (pdfFormWidget, error) {
-	requested = strings.TrimSpace(requested)
-	if requested == "" {
-		return pdfFormWidget{}, fmt.Errorf("requested export value cannot be empty")
-	}
-
-	available := make([]string, 0, len(candidates))
-	seen := make(map[string]struct{}, len(candidates))
+	fields := make([]FormField, 0, len(candidates))
 	for _, candidate := range candidates {
-		exportValue := strings.TrimSpace(candidate.Field.ExportValue)
-		if exportValue != "" {
-			if _, ok := seen[exportValue]; !ok {
-				seen[exportValue] = struct{}{}
-				available = append(available, exportValue)
-			}
-			if strings.EqualFold(exportValue, requested) {
-				return candidate, nil
-			}
-		}
+		fields = append(fields, candidate.Field)
 	}
-
-	return pdfFormWidget{}, fmt.Errorf("unsupported export value %q (available: %s)", requested, strings.Join(available, ", "))
+	index, err := resolvePDFRadioFieldIndex(fields, requested)
+	if err != nil {
+		return pdfFormWidget{}, err
+	}
+	return candidates[index], nil
 }
 
 func clickPDFFormWidget(instance pdfium.Pdfium, formHandle references.FPDF_FORMHANDLE, target pdfFormWidget, widgetType string) error {
@@ -635,19 +587,6 @@ func groupPDFFormWidgets(widgets []pdfFormWidget) map[string][]pdfFormWidget {
 	return groups
 }
 
-func sortedPDFFieldNames(values map[string]string) []string {
-	names := make([]string, 0, len(values))
-	for name := range values {
-		trimmed := strings.TrimSpace(name)
-		if trimmed == "" {
-			continue
-		}
-		names = append(names, trimmed)
-	}
-	sort.Strings(names)
-	return names
-}
-
 func inspectPDFFormAnnotation(instance pdfium.Pdfium, formHandle references.FPDF_FORMHANDLE, annotation references.FPDF_ANNOTATION, pageNumber int) (FormField, bool, []string) {
 	subtype, err := instance.FPDFAnnot_GetSubtype(&requests.FPDFAnnot_GetSubtype{Annotation: annotation})
 	if err != nil {
@@ -765,27 +704,4 @@ func pdfFormFieldTypeName(fieldType enums.FPDF_FORMFIELD_TYPE) string {
 	default:
 		return "unknown"
 	}
-}
-
-func compactFormWarnings(warnings []string) []string {
-	if len(warnings) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(warnings))
-	seen := make(map[string]struct{}, len(warnings))
-	for _, warning := range warnings {
-		warning = strings.TrimSpace(warning)
-		if warning == "" {
-			continue
-		}
-		if _, ok := seen[warning]; ok {
-			continue
-		}
-		seen[warning] = struct{}{}
-		out = append(out, warning)
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }

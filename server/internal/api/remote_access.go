@@ -192,7 +192,7 @@ func (h *RemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
 	})
 }
 
-// GetQRCode returns a QR code for the current tunnel URL.
+// GetQRCode returns the raw QR payload for the current tunnel URL.
 func (h *RemoteAccessHandler) GetQRCode(c echo.Context) error {
 	// Check if tunnel is running
 	if !h.tunnelManager.IsRunning() {
@@ -211,19 +211,10 @@ func (h *RemoteAccessHandler) GetQRCode(c echo.Context) error {
 		})
 	}
 
-	// Generate QR code
-	qrData, err := ngrok.GenerateQRCode(url, 200)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"success": false,
-			"error":   err.Error(),
-		})
-	}
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"url":     url,
-		"qrcode":  qrData,
+		"qr_url":  url,
 	})
 }
 

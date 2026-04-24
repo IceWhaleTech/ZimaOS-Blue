@@ -36,12 +36,10 @@ require (
 	github.com/nlpodyssey/cybertron v0.2.1
 	github.com/orca-zhang/ecache v1.1.3
 	github.com/orca-zhang/ecache2 v0.0.1
-	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -69,7 +67,6 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coredns/caddy v1.1.1 // indirect
 	github.com/coredns/coredns v1.11.3 // indirect

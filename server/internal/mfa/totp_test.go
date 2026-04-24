@@ -1,12 +1,9 @@
 package mfa
 
 import (
+	"net/url"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/pquerna/otp"
-	"github.com/pquerna/otp/totp"
 )
 
 func TestDefaultTOTPConfig(t *testing.T) {
@@ -15,10 +12,10 @@ func TestDefaultTOTPConfig(t *testing.T) {
 	if config.Issuer != "ZimaOS-Blue" {
 		t.Errorf("Issuer = %v, want ZimaOS-Blue", config.Issuer)
 	}
-	if config.Algorithm != otp.AlgorithmSHA1 {
+	if config.Algorithm != AlgorithmSHA1 {
 		t.Errorf("Algorithm = %v, want SHA1", config.Algorithm)
 	}
-	if config.Digits != otp.DigitsSix {
+	if config.Digits != DigitsSix {
 		t.Errorf("Digits = %v, want 6", config.Digits)
 	}
 	if config.Period != 30 {
@@ -39,8 +36,8 @@ func TestNewTOTP(t *testing.T) {
 	// Test with custom config
 	customConfig := &TOTPConfig{
 		Issuer:     "CustomIssuer",
-		Algorithm:  otp.AlgorithmSHA256,
-		Digits:     otp.DigitsEight,
+		Algorithm:  AlgorithmSHA256,
+		Digits:     DigitsEight,
 		Period:     60,
 		SecretSize: 32,
 		Skew:       2,
@@ -108,7 +105,7 @@ func TestTOTP_Validate(t *testing.T) {
 	secret := key.Secret()
 
 	// Generate a valid code
-	code, err := totp.GenerateCode(secret, time.Now())
+	code, err := totpInstance.GenerateCode(secret)
 	if err != nil {
 		t.Fatalf("Failed to generate code: %v", err)
 	}
@@ -132,7 +129,7 @@ func TestTOTP_ValidateWithSkew(t *testing.T) {
 	secret := key.Secret()
 
 	// Generate a valid code
-	code, _ := totp.GenerateCode(secret, time.Now())
+	code, _ := totpInstance.GenerateCode(secret)
 
 	// Validate with skew
 	if !totpInstance.ValidateWithSkew(code, secret) {
@@ -188,36 +185,75 @@ func TestTOTP_GetProvisioningURI(t *testing.T) {
 	if !strings.Contains(uri, "testuser@example.com") {
 		t.Error("GetProvisioningURI() should contain account name")
 	}
+
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		t.Fatalf("GetProvisioningURI() returned invalid URI: %v", err)
+	}
+
+	query := parsed.Query()
+	if query.Get("issuer") != "ZimaOS-Blue" {
+		t.Errorf("issuer = %q, want %q", query.Get("issuer"), "ZimaOS-Blue")
+	}
+	if query.Get("algorithm") != "SHA1" {
+		t.Errorf("algorithm = %q, want %q", query.Get("algorithm"), "SHA1")
+	}
+	if query.Get("digits") != "6" {
+		t.Errorf("digits = %q, want %q", query.Get("digits"), "6")
+	}
+	if query.Get("period") != "30" {
+		t.Errorf("period = %q, want %q", query.Get("period"), "30")
+	}
 }
 
-func TestTOTP_GenerateQRCode(t *testing.T) {
-	totpInstance := NewTOTP(nil)
+func TestTOTP_CustomConfigGeneratesConfiguredDigitsAndURI(t *testing.T) {
+	totpInstance := NewTOTP(&TOTPConfig{
+		Issuer:     "CustomIssuer",
+		Algorithm:  AlgorithmSHA256,
+		Digits:     DigitsEight,
+		Period:     60,
+		SecretSize: 32,
+		Skew:       2,
+	})
 
-	// Generate a key
-	key, _ := totpInstance.GenerateKey("testuser@example.com")
-	secret := key.Secret()
-
-	// Generate QR code
-	qrData, err := totpInstance.GenerateQRCode("testuser@example.com", secret, 256)
+	key, err := totpInstance.GenerateKey("custom@example.com")
 	if err != nil {
-		t.Fatalf("GenerateQRCode() error = %v", err)
+		t.Fatalf("GenerateKey() error = %v", err)
 	}
 
-	if len(qrData) == 0 {
-		t.Error("GenerateQRCode() returned empty data")
+	code, err := totpInstance.GenerateCode(key.Secret())
+	if err != nil {
+		t.Fatalf("GenerateCode() error = %v", err)
+	}
+	if len(code) != 8 {
+		t.Errorf("GenerateCode() returned code with length %d, want 8", len(code))
 	}
 
-	// Check PNG header
-	if len(qrData) < 8 || string(qrData[1:4]) != "PNG" {
-		t.Error("GenerateQRCode() should return PNG data")
+	uri := totpInstance.GetProvisioningURI("custom@example.com", key.Secret())
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		t.Fatalf("GetProvisioningURI() returned invalid URI: %v", err)
+	}
+
+	query := parsed.Query()
+	if query.Get("issuer") != "CustomIssuer" {
+		t.Errorf("issuer = %q, want %q", query.Get("issuer"), "CustomIssuer")
+	}
+	if query.Get("algorithm") != "SHA256" {
+		t.Errorf("algorithm = %q, want %q", query.Get("algorithm"), "SHA256")
+	}
+	if query.Get("digits") != "8" {
+		t.Errorf("digits = %q, want %q", query.Get("digits"), "8")
+	}
+	if query.Get("period") != "60" {
+		t.Errorf("period = %q, want %q", query.Get("period"), "60")
 	}
 }
 
 func TestTOTP_Setup(t *testing.T) {
 	totpInstance := NewTOTP(nil)
 
-	// Setup without QR code
-	resp, err := totpInstance.Setup("testuser@example.com", false)
+	resp, err := totpInstance.Setup("testuser@example.com")
 	if err != nil {
 		t.Fatalf("Setup() error = %v", err)
 	}
@@ -227,22 +263,6 @@ func TestTOTP_Setup(t *testing.T) {
 	}
 	if resp.URI == "" {
 		t.Error("Setup() returned empty URI")
-	}
-	if resp.QRCode != "" {
-		t.Error("Setup() should not include QR code when not requested")
-	}
-
-	// Setup with QR code
-	resp, err = totpInstance.Setup("testuser@example.com", true)
-	if err != nil {
-		t.Fatalf("Setup() error = %v", err)
-	}
-
-	if resp.QRCode == "" {
-		t.Error("Setup() should include QR code when requested")
-	}
-	if !strings.HasPrefix(resp.QRCode, "data:image/png;base64,") {
-		t.Error("Setup() QR code should be base64 data URI")
 	}
 }
 
@@ -265,7 +285,7 @@ func TestTOTP_Validate_NormalizeSecret(t *testing.T) {
 	secret := key.Secret()
 
 	// Generate a valid code
-	code, _ := totp.GenerateCode(secret, time.Now())
+	code, _ := totpInstance.GenerateCode(secret)
 
 	// Test with lowercase secret
 	if !totpInstance.Validate(code, strings.ToLower(secret)) {
@@ -294,7 +314,7 @@ func BenchmarkTOTP_Validate(b *testing.B) {
 	totpInstance := NewTOTP(nil)
 	key, _ := totpInstance.GenerateKey("testuser@example.com")
 	secret := key.Secret()
-	code, _ := totp.GenerateCode(secret, time.Now())
+	code, _ := totpInstance.GenerateCode(secret)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

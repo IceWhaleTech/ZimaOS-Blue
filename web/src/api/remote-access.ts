@@ -112,7 +112,7 @@ export function updateRemoteAccessConfig(config: Partial<RemoteAccessConfig>) {
  * Get QR code for current tunnel URL
  */
 export function getRemoteAccessQRCode() {
-  return api.get<{ success: boolean; qrcode: string; url: string }>('/tunnel/qrcode')
+  return api.get<{ success: boolean; url: string; qr_url?: string }>('/tunnel/qrcode')
 }
 
 /**

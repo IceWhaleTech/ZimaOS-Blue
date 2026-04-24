@@ -59,37 +59,54 @@ var (
 	darwinPDFKitOnce sync.Once
 	darwinPDFKitErr  error
 
-	darwinPDFSelAlloc              objc.SEL
-	darwinPDFSelInit               objc.SEL
-	darwinPDFSelInitWithURL        objc.SEL
-	darwinPDFSelRelease            objc.SEL
-	darwinPDFSelStringWithUTF8     objc.SEL
-	darwinPDFSelUTF8String         objc.SEL
-	darwinPDFSelFileURLWithPath    objc.SEL
-	darwinPDFSelPageCount          objc.SEL
-	darwinPDFSelPageAtIndex        objc.SEL
-	darwinPDFSelString             objc.SEL
-	darwinPDFSelDocumentAttributes objc.SEL
-	darwinPDFSelOutlineRoot        objc.SEL
-	darwinPDFSelAllKeys            objc.SEL
-	darwinPDFSelObjectAtIndex      objc.SEL
-	darwinPDFSelObjectForKey       objc.SEL
-	darwinPDFSelCount              objc.SEL
-	darwinPDFSelDescription        objc.SEL
-	darwinPDFSelLabel              objc.SEL
-	darwinPDFSelNumberOfChildren   objc.SEL
-	darwinPDFSelChildAtIndex       objc.SEL
-	darwinPDFSelDestination        objc.SEL
-	darwinPDFSelAction             objc.SEL
-	darwinPDFSelPage               objc.SEL
-	darwinPDFSelIndexForPage       objc.SEL
-	darwinPDFSelBoundsForBox       objc.SEL
-	darwinPDFSelThumbnailOfSizeBox objc.SEL
-	darwinPDFSelTIFFRepresentation objc.SEL
-	darwinPDFSelImageRepWithData   objc.SEL
-	darwinPDFSelRepresentationType objc.SEL
-	darwinPDFSelBytes              objc.SEL
-	darwinPDFSelLength             objc.SEL
+	darwinPDFSelAlloc                    objc.SEL
+	darwinPDFSelInit                     objc.SEL
+	darwinPDFSelInitWithURL              objc.SEL
+	darwinPDFSelRelease                  objc.SEL
+	darwinPDFSelStringWithUTF8           objc.SEL
+	darwinPDFSelUTF8String               objc.SEL
+	darwinPDFSelFileURLWithPath          objc.SEL
+	darwinPDFSelPageCount                objc.SEL
+	darwinPDFSelPageAtIndex              objc.SEL
+	darwinPDFSelString                   objc.SEL
+	darwinPDFSelDocumentAttributes       objc.SEL
+	darwinPDFSelDataRepresentation       objc.SEL
+	darwinPDFSelOutlineRoot              objc.SEL
+	darwinPDFSelAllKeys                  objc.SEL
+	darwinPDFSelObjectAtIndex            objc.SEL
+	darwinPDFSelObjectForKey             objc.SEL
+	darwinPDFSelCount                    objc.SEL
+	darwinPDFSelAnnotations              objc.SEL
+	darwinPDFSelBounds                   objc.SEL
+	darwinPDFSelFieldName                objc.SEL
+	darwinPDFSelWidgetStringValue        objc.SEL
+	darwinPDFSelSetWidgetStringValue     objc.SEL
+	darwinPDFSelButtonWidgetState        objc.SEL
+	darwinPDFSelSetButtonWidgetState     objc.SEL
+	darwinPDFSelButtonWidgetStateString  objc.SEL
+	darwinPDFSelCaption                  objc.SEL
+	darwinPDFSelChoices                  objc.SEL
+	darwinPDFSelValues                   objc.SEL
+	darwinPDFSelIsListChoice             objc.SEL
+	darwinPDFSelIsReadOnly               objc.SEL
+	darwinPDFSelRespondsToSelector       objc.SEL
+	darwinPDFSelValueForAnnotationKey    objc.SEL
+	darwinPDFSelSetValueForAnnotationKey objc.SEL
+	darwinPDFSelDescription              objc.SEL
+	darwinPDFSelLabel                    objc.SEL
+	darwinPDFSelNumberOfChildren         objc.SEL
+	darwinPDFSelChildAtIndex             objc.SEL
+	darwinPDFSelDestination              objc.SEL
+	darwinPDFSelAction                   objc.SEL
+	darwinPDFSelPage                     objc.SEL
+	darwinPDFSelIndexForPage             objc.SEL
+	darwinPDFSelBoundsForBox             objc.SEL
+	darwinPDFSelThumbnailOfSizeBox       objc.SEL
+	darwinPDFSelTIFFRepresentation       objc.SEL
+	darwinPDFSelImageRepWithData         objc.SEL
+	darwinPDFSelRepresentationType       objc.SEL
+	darwinPDFSelBytes                    objc.SEL
+	darwinPDFSelLength                   objc.SEL
 
 	darwinPDFKitExtractFunc = extractDarwinPDFKit
 )
@@ -396,11 +413,28 @@ func initDarwinPDFKitSelectors() error {
 		darwinPDFSelPageAtIndex = objc.RegisterName("pageAtIndex:")
 		darwinPDFSelString = objc.RegisterName("string")
 		darwinPDFSelDocumentAttributes = objc.RegisterName("documentAttributes")
+		darwinPDFSelDataRepresentation = objc.RegisterName("dataRepresentation")
 		darwinPDFSelOutlineRoot = objc.RegisterName("outlineRoot")
 		darwinPDFSelAllKeys = objc.RegisterName("allKeys")
 		darwinPDFSelObjectAtIndex = objc.RegisterName("objectAtIndex:")
 		darwinPDFSelObjectForKey = objc.RegisterName("objectForKey:")
 		darwinPDFSelCount = objc.RegisterName("count")
+		darwinPDFSelAnnotations = objc.RegisterName("annotations")
+		darwinPDFSelBounds = objc.RegisterName("bounds")
+		darwinPDFSelFieldName = objc.RegisterName("fieldName")
+		darwinPDFSelWidgetStringValue = objc.RegisterName("widgetStringValue")
+		darwinPDFSelSetWidgetStringValue = objc.RegisterName("setWidgetStringValue:")
+		darwinPDFSelButtonWidgetState = objc.RegisterName("buttonWidgetState")
+		darwinPDFSelSetButtonWidgetState = objc.RegisterName("setButtonWidgetState:")
+		darwinPDFSelButtonWidgetStateString = objc.RegisterName("buttonWidgetStateString")
+		darwinPDFSelCaption = objc.RegisterName("caption")
+		darwinPDFSelChoices = objc.RegisterName("choices")
+		darwinPDFSelValues = objc.RegisterName("values")
+		darwinPDFSelIsListChoice = objc.RegisterName("isListChoice")
+		darwinPDFSelIsReadOnly = objc.RegisterName("isReadOnly")
+		darwinPDFSelRespondsToSelector = objc.RegisterName("respondsToSelector:")
+		darwinPDFSelValueForAnnotationKey = objc.RegisterName("valueForAnnotationKey:")
+		darwinPDFSelSetValueForAnnotationKey = objc.RegisterName("setValue:forAnnotationKey:")
 		darwinPDFSelDescription = objc.RegisterName("description")
 		darwinPDFSelLabel = objc.RegisterName("label")
 		darwinPDFSelNumberOfChildren = objc.RegisterName("numberOfChildren")
