@@ -3,9 +3,13 @@ package pdf
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
+
+	"go.uber.org/zap"
 )
 
 type fakeCreateTextMeasurer struct {

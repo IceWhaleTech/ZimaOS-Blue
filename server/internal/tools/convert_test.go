@@ -599,15 +599,11 @@ func TestConvertToolMaybeHandleNativeOfficeConvertPDF(t *testing.T) {
 	if !bytes.HasPrefix(data, []byte("%PDF")) {
 		t.Fatalf("expected PDF header, got %q", string(data[:minInt(len(data), 8)]))
 	}
-	for _, needle := range [][]byte{
-		[]byte("Weekly Update"),
-		[]byte("Executive recap"),
-		[]byte("Faster setup"),
-	} {
-		if !bytes.Contains(data, needle) {
-			t.Fatalf("expected generated PDF bytes to contain %q", string(needle))
-		}
-	}
+	assertPDFExtractedTextContainsAll(t, outputPath, []string{
+		"Weekly Update",
+		"Executive recap",
+		"Faster setup",
+	})
 }
 
 func TestConvertToolResolveLocalPathsSupportsRelativeWorkspacePaths(t *testing.T) {

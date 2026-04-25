@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -5210,12 +5211,30 @@ func assertPDFExtractedTextContainsAll(t *testing.T, path string, needles []stri
 		IncludePages: true,
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "missing PDF runtime") {
+			assertPDFRawBytesTextContainsAll(t, path, needles, err)
+			return
+		}
 		t.Fatalf("Extract(%q) error = %v", path, err)
 	}
 	text := result.Text
 	for _, needle := range needles {
 		if !containsSubstring(text, needle) {
 			t.Fatalf("extracted PDF text = %q, want fragment %q", text, needle)
+		}
+	}
+}
+
+func assertPDFRawBytesTextContainsAll(t *testing.T, path string, needles []string, extractErr error) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) after Extract error %v: %v", path, extractErr, err)
+	}
+	for _, needle := range needles {
+		if !bytes.Contains(data, []byte(needle)) {
+			t.Fatalf("Extract(%q) error = %v and raw PDF bytes missing fragment %q", path, extractErr, needle)
 		}
 	}
 }

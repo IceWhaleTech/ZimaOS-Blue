@@ -47,6 +47,8 @@ If the user only wants to edit a workspace artifact such as `.docx`, `.xlsx`, `.
 | Type into the likely composer/input without exposing refs | `blue computer_use action=type ...` |
 | Click a named control or toggle a named setting | `blue computer_use action=click ...` / `toggle ...` |
 | Scroll, press keys, or capture evidence | `blue computer_use action=scroll ...`, `key ...`, `screenshot ...` |
+| Run a multi-step CUA desktop task | `blue computer_use action=task goal="..."` |
+| Use CUA action aliases | `open_app`, `input_text`, `Click`, `RightSingle`, `move_mouse`, `scroll_up/down`, `Hotkey`, `multi_Hotkey`, `record_info`, `done` |
 | User goal is still ambiguous and you truly need low-level control | `blue computer_use action=act params...` |
 
 ---
@@ -62,6 +64,18 @@ blue computer_use action=select app_name="Feishu,Lark" conversation="Orca"
 blue computer_use action=click window_title="Settings" control="Open Network"
 blue computer_use action=toggle window_title="Settings" setting="Enable notifications"
 ```
+
+### CUA Task And Actions
+
+```bash
+blue computer_use action=task goal="Find the latest note in Feishu and summarize it"
+blue computer_use action=record_info file_name="note.txt" text="Important info to reuse later"
+blue computer_use action=Click window_id="win-1" position='[0.5,0.5]'
+blue computer_use action=Click window_id="win-1" position='[500,500]'
+blue computer_use action=multi_Hotkey window_id="win-1" key1="command" key2="shift" key3="2"
+```
+
+`task` uses the Go-native CUA planner/brain/actor/memory loop by default. It does not shell out to a Python runner. Coordinates are accepted as normalized `0-1000`; existing `0-1` normalized coordinates still work. Common CUA/LLM-fuzzy parameter aliases are accepted, including `name`/`type` for action, `coordinate`/`coords`/`point` for `position`, `body`/`message`/`content` for text, `shortcut`/`hotkey`/`key`/JSON-array strings for `keys`, `send_keys`/`send_key` for `submit_keys`, and `amount`/`scroll_direction` for scrolling.
 
 ### Window And Snapshot
 

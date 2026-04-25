@@ -151,6 +151,7 @@ declare module 'vue' {
     ProviderIcon: typeof import('./components/ProviderIcon.vue')['default']
     ProviderPoolSection: typeof import('./components/ProviderPoolSection.vue')['default']
     ProviderSelector: typeof import('./components/tts/ProviderSelector.vue')['default']
+    QRCodeDisplay: typeof import('./components/common/QRCodeDisplay.vue')['default']
     QuickActions: typeof import('./components/QuickActions.vue')['default']
     RemoteAccessDetailPanel: typeof import('./components/remote-access/RemoteAccessDetailPanel.vue')['default']
     ReplayControls: typeof import('./components/companion/ReplayControls.vue')['default']
