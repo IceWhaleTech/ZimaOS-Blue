@@ -114,6 +114,35 @@ func TestServiceEnsureReadyRequiresRuntimeWhenAutoDownloadDisabled(t *testing.T)
 	}
 }
 
+func TestServiceEnsureReadyResolvesRelativeRuntimeDirAtConstruction(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+
+	svc := NewService(zap.NewNop(), nil, ServiceConfig{
+		RuntimeDir:   "testdata",
+		AutoDownload: false,
+	})
+	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
+		if len(cfg.WASM) == 0 {
+			t.Fatal("expected runtime wasm bytes to be loaded")
+		}
+		return &fakePDFiumPool{}, nil
+	}
+
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+
+	if err := svc.ensureReady(context.Background()); err != nil {
+		t.Fatalf("ensureReady returned error after cwd change: %v", err)
+	}
+}
+
 func TestServiceEnsureReadyAutoDownloadsMissingRuntime(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewService(zap.NewNop(), nil, ServiceConfig{

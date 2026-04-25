@@ -258,6 +258,10 @@ func NewService(logger *zap.Logger, ocr OCRService, configs ...ServiceConfig) *S
 	}
 	if cfg.RuntimeDir == "" {
 		cfg.RuntimeDir = filepath.Join(os.TempDir(), defaultRuntimeDirBaseName, defaultRuntimeDirAssetName)
+	} else if !filepath.IsAbs(cfg.RuntimeDir) {
+		if absRuntimeDir, err := filepath.Abs(cfg.RuntimeDir); err == nil {
+			cfg.RuntimeDir = absRuntimeDir
+		}
 	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = network.NewPooledHTTPClient(defaultRequestTimeout)

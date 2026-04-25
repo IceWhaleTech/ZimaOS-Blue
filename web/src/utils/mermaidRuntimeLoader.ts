@@ -5,9 +5,21 @@ export type MermaidRuntime = {
   }
 }
 
+<<<<<<< Updated upstream
 const MERMAID_CDN_URLS = [
   'https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.esm.min.mjs',
   'https://unpkg.com/mermaid@11.14.0/dist/mermaid.esm.min.mjs',
+=======
+<<<<<<< HEAD
+export const MERMAID_CDN_URLS = [
+  'https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.esm.min.mjs',
+  'https://unpkg.com/mermaid@10.6.1/dist/mermaid.esm.min.mjs',
+=======
+const MERMAID_CDN_URLS = [
+  'https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.esm.min.mjs',
+  'https://unpkg.com/mermaid@11.14.0/dist/mermaid.esm.min.mjs',
+>>>>>>> 3569410a797c12f17859368961195dffc0e0b0cc
+>>>>>>> Stashed changes
 ] as const
 
 export const embeddedMermaidBundleDisabled =

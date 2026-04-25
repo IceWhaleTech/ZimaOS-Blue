@@ -1,4 +1,9 @@
 {
-  "allowedAdvisoryIds": [],
-  "notes": {}
+  "allowedAdvisoryIds": [1116970],
+  "notes": {
+    "1116970": {
+      "ghsa": "GHSA-w5hq-g745-h8pq",
+      "reason": "Transitive via mermaid. As of 2026-04-25, latest published mermaid@11.14.0 still depends on uuid ^11.1.0, so this advisory cannot be cleared without a riskier out-of-range override or upstream release."
+    }
+  }
 }
