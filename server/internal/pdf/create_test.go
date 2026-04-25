@@ -1,7 +1,6 @@
 package pdf
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -916,15 +915,43 @@ func TestCreateDocumentDoesNotFlattenTablesIntoPipeText(t *testing.T) {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
 
-	if !bytes.Contains(data, []byte("Name")) || !bytes.Contains(data, []byte("Analyst")) {
-		t.Fatalf("pdf bytes missing expected table text content")
+	path := filepath.Join(t.TempDir(), "table.pdf")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if bytes.Contains(data, []byte("Name | Role")) {
+
+	result := extractCreatedPDFForTest(t, path)
+	text := normalizeText(result.Text)
+	for _, needle := range []string{"Name", "Role", "Sample", "Analyst", "Example", "Owner"} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("extracted text = %q, want fragment %q", text, needle)
+		}
+	}
+	if strings.Contains(text, "Name | Role") {
 		t.Fatalf("pdf bytes contain flattened table header text, want structured table rendering")
 	}
-	if bytes.Contains(data, []byte("Sample | Analyst")) {
+	if strings.Contains(text, "Sample | Analyst") {
 		t.Fatalf("pdf bytes contain flattened table row text, want structured table rendering")
 	}
+}
+
+func extractCreatedPDFForTest(t *testing.T, path string) ExtractResult {
+	t.Helper()
+
+	svc := NewService(zap.NewNop(), nil, ServiceConfig{
+		RuntimeDir:   t.TempDir(),
+		AutoDownload: false,
+	})
+	t.Cleanup(func() { _ = svc.Close() })
+
+	result, err := svc.Extract(context.Background(), ExtractRequest{
+		Path:         path,
+		IncludePages: true,
+	})
+	if err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	return result
 }
 
 func TestCleanCreateInlineMarkdownPreservesHardBreakAsSeparator(t *testing.T) {

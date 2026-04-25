@@ -97,6 +97,11 @@ func cliDispatch(args []string) bool {
 		runLogs(nil, rest)
 	case "media":
 		return false // media subcommands need cobra arg validation
+	case "pdf":
+		if dispatchPDFNativeFastPath(rest) {
+			break
+		}
+		return false
 	case "complete-bootstrap":
 		runCompleteBootstrap()
 	case "gateway":

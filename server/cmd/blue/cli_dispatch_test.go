@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -176,6 +177,74 @@ func TestCLIDispatch_ComputerUseRoutesThroughIPC(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "computer_use ok") {
 		t.Fatalf("stdout = %q, want IPC output", stdout)
+	}
+}
+
+func TestCLIDispatch_PDFCreateUsesNativeTool(t *testing.T) {
+	oldCLIExit := cliDispatchExit
+	oldJSONOutput := jsonOutput
+	t.Cleanup(func() {
+		cliDispatchExit = oldCLIExit
+		jsonOutput = oldJSONOutput
+	})
+
+	jsonOutput = true
+	cliDispatchExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
+
+	tmpDir := t.TempDir()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd(): %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir(%q): %v", tmpDir, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+
+	outputPath := "native.pdf"
+	handled, exitCode, stdout := runCLIDispatchForTest([]string{
+		"pdf",
+		"action=create",
+		"output_path=" + outputPath,
+		"title=Native PDF Check",
+		"content=# Summary\n\nNative renderer active.",
+	})
+	if !handled {
+		t.Fatal("expected cliDispatch to handle pdf create")
+	}
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, want 0 (stdout=%q)", exitCode, stdout)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if got := payload["engine"]; got != "native_pdf_ir" {
+		t.Fatalf("engine = %v, want native_pdf_ir", got)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", outputPath, err)
+	}
+	if len(data) < 5 || string(data[:5]) != "%PDF-" {
+		t.Fatalf("unexpected pdf header: %q", string(data))
+	}
+}
+
+func TestCLIDispatch_PDFReformatFallsThroughToServiceBackedPath(t *testing.T) {
+	oldCLIExit := cliDispatchExit
+	t.Cleanup(func() { cliDispatchExit = oldCLIExit })
+	cliDispatchExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
+
+	handled, exitCode, stdout := runCLIDispatchForTest([]string{
+		"pdf",
+		"action=reformat",
+		"path=source.pdf",
+		"output_path=out.pdf",
+	})
+	if handled {
+		t.Fatalf("expected pdf reformat to fall through to service-backed path, handled=true exitCode=%d stdout=%q", exitCode, stdout)
 	}
 }
 

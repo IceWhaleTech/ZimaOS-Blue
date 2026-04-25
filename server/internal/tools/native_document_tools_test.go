@@ -4969,19 +4969,14 @@ func TestPDFToolCreate(t *testing.T) {
 	if len(data) == 0 || string(data[:5]) != "%PDF-" {
 		t.Fatalf("unexpected PDF header: %q", string(data))
 	}
-	text := string(data)
-	for _, needle := range []string{
+	assertPDFExtractedTextContainsAll(t, path, []string{
 		"Launch Brief",
 		"Q2 roll-out",
 		"Overview",
 		"Ship docx/xlsx/pptx now.",
 		"Form filling remains a follow-up slice.",
 		"Prepared by Blue.",
-	} {
-		if !containsSubstring(text, needle) {
-			t.Fatalf("expected generated PDF bytes to contain %q", needle)
-		}
-	}
+	})
 }
 
 func TestPDFToolCreate_UsesMarkdownAlias(t *testing.T) {
@@ -5028,18 +5023,13 @@ Prepared for the native PDF path.`,
 	if len(data) == 0 || string(data[:5]) != "%PDF-" {
 		t.Fatalf("unexpected PDF header: %q", string(data))
 	}
-	text := string(data)
-	for _, needle := range []string{
+	assertPDFExtractedTextContainsAll(t, path, []string{
 		"Product Update",
 		"Highlights",
 		"Direct markdown input should render without a temp markdown file.",
 		"Invalid outputs should fail loudly instead of reporting success.",
 		"Prepared for the native PDF path.",
-	} {
-		if !containsSubstring(text, needle) {
-			t.Fatalf("expected generated PDF bytes to contain %q", needle)
-		}
-	}
+	})
 }
 
 func TestPDFToolCreate_UsesOutputPathAliasWhenPathEmpty(t *testing.T) {
@@ -5198,15 +5188,34 @@ func TestPDFToolReformat(t *testing.T) {
 	if len(data) == 0 || string(data[:5]) != "%PDF-" {
 		t.Fatalf("unexpected PDF header: %q", string(data))
 	}
-	text := string(data)
-	for _, needle := range []string{
+	assertPDFExtractedTextContainsAll(t, outputPath, []string{
 		"Reformatted Brief",
 		"Executive Summary",
 		"Blue can now reformat PDFs.",
 		"Keep layout simple.",
-	} {
+	})
+}
+
+func assertPDFExtractedTextContainsAll(t *testing.T, path string, needles []string) {
+	t.Helper()
+
+	svc := pdfextract.NewService(nil, nil, pdfextract.ServiceConfig{
+		RuntimeDir:   t.TempDir(),
+		AutoDownload: false,
+	})
+	t.Cleanup(func() { _ = svc.Close() })
+
+	result, err := svc.Extract(context.Background(), pdfextract.ExtractRequest{
+		Path:         path,
+		IncludePages: true,
+	})
+	if err != nil {
+		t.Fatalf("Extract(%q) error = %v", path, err)
+	}
+	text := result.Text
+	for _, needle := range needles {
 		if !containsSubstring(text, needle) {
-			t.Fatalf("expected reformatted PDF bytes to contain %q", needle)
+			t.Fatalf("extracted PDF text = %q, want fragment %q", text, needle)
 		}
 	}
 }
