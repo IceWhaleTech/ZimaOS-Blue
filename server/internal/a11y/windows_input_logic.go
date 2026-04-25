@@ -82,6 +82,34 @@ func windowsKeyResultWithInput(
 	}, nil
 }
 
+func windowsFocusedTextResultWithInput(
+	hostOS string,
+	windowID string,
+	value string,
+	sendText func(string) (string, error),
+) (ActionResult, error) {
+	inputMethod := "input_type"
+	if sendText != nil {
+		method, err := sendText(value)
+		if err != nil {
+			return ActionResult{HostOS: hostOS}, err
+		}
+		if method != "" {
+			inputMethod = method
+		}
+	}
+	return ActionResult{
+		HostOS:             hostOS,
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		VerificationPassed: true,
+		VerificationMethod: "focused_text",
+		InputMethod:        inputMethod,
+		Message:            "Host action completed",
+	}, nil
+}
+
 func normalizeDirection(direction string) string {
 	switch normalizeCompactToken(direction) {
 	case "up":

@@ -2,7 +2,12 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -177,7 +182,7 @@ func (a *ProxyBridgeVLMAdapter) ChatWithVision(ctx context.Context, prompt strin
 	return resp.Message.Content, nil
 }
 
-// LLMBridge defines the interface for making text-only LLM calls.
+// LLMBridge defines the interface for making LLM calls from tools.
 type LLMBridge interface {
 	Chat(ctx context.Context, prompt string, maxTokens int) (string, error)
 }
@@ -187,7 +192,7 @@ type ProxyBridgeLLMAdapter struct {
 	bridge *proxybridge.Bridge
 }
 
-// NewProxyBridgeLLMAdapter creates a new text-only LLM adapter.
+// NewProxyBridgeLLMAdapter creates a new LLM adapter.
 func NewProxyBridgeLLMAdapter(bridge *proxybridge.Bridge) *ProxyBridgeLLMAdapter {
 	return &ProxyBridgeLLMAdapter{bridge: bridge}
 }
@@ -196,12 +201,14 @@ func (a *ProxyBridgeLLMAdapter) Chat(ctx context.Context, prompt string, maxToke
 	if maxTokens <= 0 {
 		maxTokens = 4000
 	}
+	message := llm.Message{Role: llm.RoleUser, Content: prompt}
+	if parts := proxyBridgePromptContentParts(prompt); len(parts) > 0 {
+		message.Content = ""
+		message.ContentParts = parts
+	}
 	req := llm.ChatRequest{
-		Model: "auto",
-		Messages: []llm.Message{{
-			Role:    llm.RoleUser,
-			Content: prompt,
-		}},
+		Model:     "auto",
+		Messages:  []llm.Message{message},
 		MaxTokens: maxTokens,
 	}
 
@@ -211,4 +218,64 @@ func (a *ProxyBridgeLLMAdapter) Chat(ctx context.Context, prompt string, maxToke
 	}
 
 	return resp.Message.Content, nil
+}
+
+var proxyBridgePromptImagePathPattern = regexp.MustCompile(`/[^\s"'<>]+\.(?:png|jpg|jpeg|webp)`)
+
+func proxyBridgePromptContentParts(prompt string) []llm.ContentPart {
+	paths := proxyBridgePromptImagePaths(prompt)
+	if len(paths) == 0 {
+		return nil
+	}
+	parts := []llm.ContentPart{{Type: "text", Text: prompt}}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		parts = append(parts, llm.ContentPart{
+			Type:      "image",
+			MediaType: proxyBridgeImageMediaType(path),
+			Data:      base64.StdEncoding.EncodeToString(data),
+		})
+	}
+	if len(parts) == 1 {
+		return nil
+	}
+	return parts
+}
+
+func proxyBridgePromptImagePaths(prompt string) []string {
+	matches := proxyBridgePromptImagePathPattern.FindAllString(prompt, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(matches))
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		path := strings.TrimSpace(strings.Trim(match, `.,);]}`))
+		if path == "" {
+			continue
+		}
+		if _, exists := seen[path]; exists {
+			continue
+		}
+		if stat, err := os.Stat(path); err != nil || stat.IsDir() {
+			continue
+		}
+		seen[path] = struct{}{}
+		out = append(out, path)
+	}
+	return out
+}
+
+func proxyBridgeImageMediaType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "image/png"
+	}
 }

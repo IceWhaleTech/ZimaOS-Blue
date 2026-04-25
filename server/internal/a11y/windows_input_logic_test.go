@@ -134,3 +134,26 @@ func TestWindowsKeyResult_NormalizesHoldMSAndDelegates(t *testing.T) {
 		t.Fatalf("result = %+v, want keys result for window 77", result)
 	}
 }
+
+func TestWindowsFocusedTextResultWithInput_UsesClipboardFallback(t *testing.T) {
+	calls := 0
+	result, err := windowsFocusedTextResultWithInput("windows", "42", "hello", func(value string) (string, error) {
+		calls++
+		if value != "hello" {
+			t.Fatalf("value = %q, want hello", value)
+		}
+		return "clipboard", nil
+	})
+	if err != nil {
+		t.Fatalf("windowsFocusedTextResultWithInput() error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	if result.HostOS != "windows" || result.WindowID != "42" {
+		t.Fatalf("result target = %s/%s, want windows/42", result.HostOS, result.WindowID)
+	}
+	if result.InputMethod != "clipboard" || result.VerificationMethod != "focused_text" || !result.TargetHit || !result.VerificationPassed {
+		t.Fatalf("result = %#v, want verified clipboard focused_text", result)
+	}
+}

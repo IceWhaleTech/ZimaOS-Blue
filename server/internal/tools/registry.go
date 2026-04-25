@@ -1928,6 +1928,46 @@ func asString(v interface{}) string {
 	return ""
 }
 
+func parseCompatStringListLiteral(raw string) ([]interface{}, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, false
+	}
+	var jsonStrings []string
+	if err := json.Unmarshal([]byte(trimmed), &jsonStrings); err == nil && len(jsonStrings) > 0 {
+		out := make([]interface{}, 0, len(jsonStrings))
+		for _, item := range jsonStrings {
+			if value := strings.TrimSpace(item); value != "" {
+				out = append(out, value)
+			}
+		}
+		return out, len(out) > 0
+	}
+	if value, ok := parseJSONString(trimmed); ok {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return []interface{}{value}, true
+		}
+	}
+	if !strings.HasPrefix(trimmed, "[") || !strings.HasSuffix(trimmed, "]") {
+		return nil, false
+	}
+	body := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]"))
+	if body == "" {
+		return nil, false
+	}
+	parts := strings.Split(body, ",")
+	out := make([]interface{}, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		value = strings.Trim(value, "\"'")
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out, len(out) > 0
+}
+
 func coerceCompatStringList(v interface{}) ([]interface{}, bool) {
 	switch typed := v.(type) {
 	case []interface{}:
@@ -1956,6 +1996,9 @@ func coerceCompatStringList(v interface{}) ([]interface{}, bool) {
 		raw := strings.TrimSpace(typed)
 		if raw == "" {
 			return nil, false
+		}
+		if out, ok := parseCompatStringListLiteral(raw); ok {
+			return out, true
 		}
 		parts := strings.Split(raw, ",")
 		out := make([]interface{}, 0, len(parts))

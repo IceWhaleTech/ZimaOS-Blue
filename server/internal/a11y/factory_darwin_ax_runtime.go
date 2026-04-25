@@ -17,10 +17,11 @@ const (
 	darwinAXValueCGPointType = 1
 	darwinAXValueCGSizeType  = 2
 
-	darwinCGEventLeftMouseDown  = 1
-	darwinCGEventLeftMouseUp    = 2
-	darwinCGEventRightMouseDown = 3
-	darwinCGEventRightMouseUp   = 4
+	darwinCGEventLeftMouseDown    = 1
+	darwinCGEventLeftMouseUp      = 2
+	darwinCGEventRightMouseDown   = 3
+	darwinCGEventRightMouseUp     = 4
+	darwinCGEventLeftMouseDragged = 6
 
 	darwinCGMouseButtonLeft  = 0
 	darwinCGMouseButtonRight = 1
@@ -69,6 +70,7 @@ var darwinHighlightInputBoundsFunc = func(bounds darwinRect, duration time.Durat
 	return darwinCLIFallback.showHighlightOverlay(nil, bounds, duration)
 }
 var darwinClickPointForHostAction = darwinClickPoint
+var darwinDragPointForHostAction = darwinDragPoint
 var darwinCaptureRegionPNGFunc = darwinCaptureRegionPNG
 var darwinExtractTextFromPNGFunc = darwinExtractTextFromPNG
 
@@ -422,6 +424,53 @@ func (b *darwinBackend) clickWindowPoint(ctx context.Context, windowID string, p
 	}, nil
 }
 
+func (b *darwinBackend) dragWindowPoint(ctx context.Context, windowID string, start NormalizedPoint, end NormalizedPoint, holdMS int) (ActionResult, error) {
+	if err := b.ensureAccessibilityPermission(); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if start.X < 0 || start.X > 1 || start.Y < 0 || start.Y > 1 || end.X < 0 || end.X > 1 || end.Y < 0 || end.Y > 1 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "normalized drag points must be between 0 and 1", map[string]interface{}{
+			"start_x": start.X,
+			"start_y": start.Y,
+			"end_x":   end.X,
+			"end_y":   end.Y,
+		})
+	}
+	record, err := darwinResolveWindowRecordForPointClick(b, strings.TrimSpace(windowID))
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if refreshed, refreshErr := darwinRefreshWindowRecordForPointClick(b, record); refreshErr == nil {
+		record = refreshed
+	}
+	if !darwinRectDefined(record.Bounds) || record.Bounds.Size.Width <= 0 || record.Bounds.Size.Height <= 0 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "target window has no visible bounds", map[string]interface{}{
+			"window_id": record.ID,
+		})
+	}
+	startPoint := darwinPoint{
+		X: record.Bounds.Origin.X + start.X*record.Bounds.Size.Width,
+		Y: record.Bounds.Origin.Y + start.Y*record.Bounds.Size.Height,
+	}
+	endPoint := darwinPoint{
+		X: record.Bounds.Origin.X + end.X*record.Bounds.Size.Width,
+		Y: record.Bounds.Origin.Y + end.Y*record.Bounds.Size.Height,
+	}
+	if err := darwinDragPointForHostAction(startPoint, endPoint, NormalizeHoldMS(holdMS)); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           record.ID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_drag",
+		VerificationPassed: true,
+		VerificationMethod: "point_drag",
+		Message:            "Host drag completed",
+	}, nil
+}
+
 func (b *darwinBackend) clickWindowPixel(ctx context.Context, windowID string, x int, y int, holdMS int) (ActionResult, error) {
 	if err := b.ensureAccessibilityPermission(); err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
@@ -488,9 +537,12 @@ func (b *darwinBackend) typeFocusedText(ctx context.Context, windowID string, va
 	if err := b.ensureAccessibilityPermission(); err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
 	}
-	resolvedWindowID, err := b.resolveWindowForAction(ctx, windowID)
+	resolvedWindowID, record, err := b.resolveWindowForFocusedText(ctx, windowID)
 	if err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if result, ok := b.tryTypeFocusedTextWithAXFocusedElement(record, resolvedWindowID, value); ok {
+		return result, nil
 	}
 	inputMethod, err := darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinUnicodeTextInputFunc)
 	if err != nil {
@@ -506,6 +558,85 @@ func (b *darwinBackend) typeFocusedText(ctx context.Context, windowID string, va
 		InputMethod:        inputMethod,
 		Message:            "Host action completed",
 	}, nil
+}
+
+func (b *darwinBackend) resolveWindowForFocusedText(ctx context.Context, windowID string) (string, darwinWindowRecord, error) {
+	windowID = strings.TrimSpace(windowID)
+	if windowID == "" {
+		return "", darwinWindowRecord{}, nil
+	}
+	if record, err := darwinResolveWindowRecordForAction(b, windowID); err == nil {
+		if record.Focused {
+			return record.ID, record, nil
+		}
+		if err := darwinActivateAppFunc(record.AppName); err == nil {
+			return record.ID, record, nil
+		}
+	}
+	resolvedWindowID, err := b.resolveWindowForAction(ctx, windowID)
+	if err != nil {
+		return "", darwinWindowRecord{}, err
+	}
+	if record, err := darwinResolveWindowRecordForAction(b, resolvedWindowID); err == nil {
+		return resolvedWindowID, record, nil
+	}
+	return resolvedWindowID, darwinWindowRecord{ID: resolvedWindowID}, nil
+}
+
+func (b *darwinBackend) tryTypeFocusedTextWithAXFocusedElement(record darwinWindowRecord, windowID string, value string) (ActionResult, bool) {
+	if darwinAXUIElementCreateApplication == nil || strings.TrimSpace(value) == "" || record.PID <= 0 {
+		return ActionResult{}, false
+	}
+	app := darwinAXUIElementCreateApplication(int32(record.PID))
+	if app == 0 {
+		return ActionResult{}, false
+	}
+	defer darwinRelease(app)
+	for _, candidate := range darwinFocusedTextCandidates(app) {
+		if candidate == 0 {
+			continue
+		}
+		darwinReleaseCandidate := candidate
+		defer darwinRelease(darwinReleaseCandidate)
+		if !darwinAttributeSettable(candidate, "AXValue") {
+			continue
+		}
+		if err := darwinSetStringAttribute(candidate, "AXValue", value); err == nil {
+			return ActionResult{
+				HostOS:             b.HostOS(),
+				WindowID:           strings.TrimSpace(windowID),
+				ExecutionMode:      "semantic",
+				TargetHit:          true,
+				VerificationPassed: true,
+				VerificationMethod: "ax_focused_value",
+				InputMethod:        "ax_focused_value",
+				Message:            "Host action completed",
+			}, true
+		}
+	}
+	return ActionResult{}, false
+}
+
+func darwinFocusedTextCandidates(app uintptr) []uintptr {
+	candidates := make([]uintptr, 0, 4)
+	add := func(element uintptr) {
+		if element != 0 {
+			candidates = append(candidates, element)
+		}
+	}
+	if focused, err := darwinCopyAttributeValue(app, "AXFocusedUIElement"); err == nil && focused != 0 {
+		add(focused)
+	}
+	if darwinAXUIElementCreateSystemWide != nil {
+		system := darwinAXUIElementCreateSystemWide()
+		if system != 0 {
+			defer darwinRelease(system)
+			if focused, err := darwinCopyAttributeValue(system, "AXFocusedUIElement"); err == nil && focused != 0 {
+				add(focused)
+			}
+		}
+	}
+	return candidates
 }
 
 func (b *darwinBackend) resolveWindowForAction(ctx context.Context, windowID string) (string, error) {
@@ -1092,6 +1223,33 @@ func darwinClickPoint(center darwinPoint, button uint32, doubleClick bool, hold 
 		time.Sleep(darwinSyntheticClickDelay)
 		darwinCGEventPost(darwinCGHIDEventTap, secondUp)
 	}
+	return nil
+}
+
+func darwinDragPoint(start darwinPoint, end darwinPoint, holdMS int) error {
+	if darwinCGEventCreateMouseEvent == nil || darwinCGEventPost == nil {
+		return NewError("backend_unavailable", "pointer event injection is unavailable", nil)
+	}
+	if darwinCGWarpMouseCursorPosition != nil {
+		darwinCGWarpMouseCursorPosition(start)
+	}
+	down := darwinCGEventCreateMouseEvent(0, uint32(darwinCGEventLeftMouseDown), start, darwinCGMouseButtonLeft)
+	dragged := darwinCGEventCreateMouseEvent(0, uint32(darwinCGEventLeftMouseDragged), end, darwinCGMouseButtonLeft)
+	up := darwinCGEventCreateMouseEvent(0, uint32(darwinCGEventLeftMouseUp), end, darwinCGMouseButtonLeft)
+	if down == 0 || dragged == 0 || up == 0 {
+		darwinRelease(down)
+		darwinRelease(dragged)
+		darwinRelease(up)
+		return NewError("backend_unavailable", "CGEvent drag creation failed", nil)
+	}
+	defer darwinRelease(down)
+	defer darwinRelease(dragged)
+	defer darwinRelease(up)
+	darwinCGEventPost(darwinCGHIDEventTap, down)
+	time.Sleep(time.Duration(NormalizeHoldMS(holdMS)) * time.Millisecond)
+	darwinCGEventPost(darwinCGHIDEventTap, dragged)
+	time.Sleep(darwinSyntheticClickDelay)
+	darwinCGEventPost(darwinCGHIDEventTap, up)
 	return nil
 }
 

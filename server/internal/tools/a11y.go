@@ -33,12 +33,17 @@ type A11yTool struct {
 	chatGrounder     a11yChatGrounder
 	chatMemory       *a11yChatStageMemory
 	approvedSessions map[string]struct{}
+	taskMemory       map[string]string
+	cuaBrain         cuaBrain
+	cuaActor         cuaActor
+	cuaLLM           LLMBridge
 }
 
 func NewA11yTool() *A11yTool {
 	return &A11yTool{
 		chatMemory:       newA11yChatStageMemory(),
 		approvedSessions: make(map[string]struct{}),
+		taskMemory:       make(map[string]string),
 	}
 }
 
@@ -52,6 +57,12 @@ func (t *A11yTool) SetChatGrounder(grounder a11yChatGrounder) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.chatGrounder = grounder
+}
+
+func (t *A11yTool) SetLLMBridge(bridge LLMBridge) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cuaLLM = bridge
 }
 
 func (t *A11yTool) Backend() a11yruntime.Backend {
@@ -83,6 +94,19 @@ func (t *A11yTool) Definition() ToolDefinition {
 		"select",
 		"click",
 		"toggle",
+		"task",
+		"wait",
+		"record_info",
+		"done",
+		"open_app",
+		"input_text",
+		"Click",
+		"RightSingle",
+		"move_mouse",
+		"scroll_up",
+		"scroll_down",
+		"Hotkey",
+		"multi_Hotkey",
 		a11yruntime.ActionScroll,
 		a11yruntime.ActionPointerMove,
 		a11yruntime.ActionKey,
@@ -99,6 +123,19 @@ func (t *A11yTool) Definition() ToolDefinition {
 		"select",
 		"click",
 		"toggle",
+		"task",
+		"wait",
+		"record_info",
+		"done",
+		"open_app",
+		"input_text",
+		"Click",
+		"RightSingle",
+		"move_mouse",
+		"scroll_up",
+		"scroll_down",
+		"Hotkey",
+		"multi_Hotkey",
 		a11yruntime.ActionScroll,
 		a11yruntime.ActionPointerMove,
 		a11yruntime.ActionScreenshot,
@@ -151,7 +188,7 @@ func (t *A11yTool) Definition() ToolDefinition {
 	}
 	return ToolDefinition{
 		Name:        "computer_use",
-		Description: "Desktop/browser computer-use actions. Prefer `message|type|select|click|toggle`; use `key` with `keys`/`submit_keys` for shortcuts. For `act`, put fields under `params`.",
+		Description: "Desktop/browser computer-use actions. Prefer `task` for multi-step CUA loops; direct actions include `message|type|select|click|toggle`; CUA aliases include `open_app|input_text|Click|RightSingle|move_mouse|scroll_up|scroll_down|Hotkey|multi_Hotkey|record_info|done`.",
 		Icon:        "sparkles",
 		SearchHints: []string{
 			"computer use automation",
@@ -306,8 +343,19 @@ func (t *A11yTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	if action == "" {
 		return nil, errors.New("action is required")
 	}
+	args = normalizeCUAA11yArgs(action, args)
 	if resolveA11ySurface(args, browser != nil) == "browser" {
 		return t.doBrowser(ctx, browser, action, args)
+	}
+	switch action {
+	case "record_info":
+		return t.doRecordInfo(args), nil
+	case "task":
+		return t.doTask(ctx, backend, args)
+	case "wait":
+		return t.doWait(ctx, args)
+	case "done":
+		return a11yJSON(map[string]interface{}{"status": "completed", "message": valueOrDefault(firstCompatString(args, "text", "message"), "Task completed")}), nil
 	}
 	if backend == nil {
 		return a11yJSON(map[string]interface{}{
@@ -331,6 +379,11 @@ func (t *A11yTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	case a11yruntime.ActionAct:
 		return t.doAct(ctx, backend, args, windowID)
 	case "message", "type", "select", "click", "toggle":
+		if action == "click" {
+			if _, ok := firstCompatValueDeep(args, "position"); ok {
+				return t.doAct(ctx, backend, args, windowID)
+			}
+		}
 		return t.doScenarioAct(ctx, backend, args, windowID, action)
 	case a11yruntime.ActionScroll:
 		return t.doScroll(ctx, backend, args, windowID)
@@ -368,11 +421,27 @@ func normalizeA11yAction(action string) string {
 		a11yruntime.ActionScroll,
 		a11yruntime.ActionPointerMove,
 		a11yruntime.ActionKey,
-		a11yruntime.ActionScreenshot:
+		a11yruntime.ActionScreenshot,
+		"task",
+		"wait",
+		"record_info",
+		"done":
 		return trimmed
 	}
 	normalized := strings.NewReplacer(" ", "", "_", "", "-", "").Replace(trimmed)
 	switch normalized {
+	case "task", "runagenttask", "computerusetask":
+		return "task"
+	case "done", "finish", "complete":
+		return "done"
+	case "wait", "pause":
+		return "wait"
+	case "recordinfo", "remember", "memorize":
+		return "record_info"
+	case "openapp", "launchapp":
+		return a11yruntime.ActionFocus
+	case "inputtext", "input_text":
+		return "type"
 	case "list", "listwindow", "listwindows", "windowlist", "windowslist", "tabs", "listtab", "listtabs":
 		return a11yruntime.ActionWindows
 	case "focuswindow", "activate", "activatewindow", "activateapp":
@@ -381,20 +450,26 @@ func normalizeA11yAction(action string) string {
 		return a11yruntime.ActionSnapshotInteractive
 	case "inspectwindowuitree", "accessibilitytree", "uitree":
 		return a11yruntime.ActionSnapshotInteractive
-	case "keysequence", "keyboardinput":
+	case "keysequence", "keyboardinput", "sendkeys", "sendkey", "submitkeys", "submitkey", "presskey", "presskeys":
 		return a11yruntime.ActionKey
-	case "message", "chat", "reply", "sendmessage":
+	case "message", "chat", "reply", "sendmessage", "sendmsg", "sendchat", "chatmessage":
 		return "message"
-	case "type", "input", "write":
+	case "type", "input", "write", "filltext", "settext", "inputvalue":
 		return "type"
 	case "select", "choose", "pick", "switchto":
 		return "select"
-	case "click", "tap", "press", "mouseclick", "leftclick":
+	case "click", "tap", "press", "mouseclick", "leftclick", "leftsingle", "singleclick", "leftmouseclick", "rightsingle", "rightclickpixel":
 		return "click"
+	case "drag", "dragmouse", "mousedrag":
+		return "drag"
 	case "toggle", "switch":
 		return "toggle"
-	case "pointermove", "movepointer", "mousemove", "moveto":
+	case "pointermove", "movepointer", "mousemove", "moveto", "movemouse":
 		return a11yruntime.ActionPointerMove
+	case "scrollup", "scrolldown":
+		return a11yruntime.ActionScroll
+	case "hotkey", "multihotkey", "shortcut", "keyboardshortcut":
+		return a11yruntime.ActionKey
 	}
 	if fuzzy := fuzzyNormalizeA11yAction(trimmed); fuzzy != "" {
 		return fuzzy
@@ -523,8 +598,23 @@ func a11yActionHasAnyWord(words map[string]struct{}, candidates ...string) bool 
 }
 
 func resolveA11yAction(args map[string]interface{}) string {
-	rawAction := firstCompatString(args, "action", "op", "operation", "command")
+	rawAction := firstCompatString(args, "action", "op", "operation", "command", "name", "type")
 	action := normalizeA11yAction(rawAction)
+	normalizedRaw := strings.NewReplacer(" ", "", "_", "", "-", "").Replace(strings.ToLower(strings.TrimSpace(rawAction)))
+	if normalizedRaw == "send" || normalizedRaw == "submit" {
+		if _, ok := resolveA11yKeySequenceArgs(args); ok {
+			return a11yruntime.ActionKey
+		}
+		if strings.TrimSpace(firstCompatString(args, "value", "text", "content", "message", "body", "input", "string", "conversation", "thread", "chat", "contact")) != "" {
+			return "message"
+		}
+	}
+	if action == a11yruntime.ActionKey {
+		return action
+	}
+	if normalizedRaw == "pressenter" || normalizedRaw == "pressreturn" {
+		return a11yruntime.ActionKey
+	}
 	if !strings.EqualFold(strings.TrimSpace(rawAction), "press") {
 		return action
 	}
@@ -584,6 +674,10 @@ type hostFocusedTextTyper interface {
 
 type hostWindowPixelClicker interface {
 	ClickWindowPixel(ctx context.Context, windowID string, x int, y int, holdMS int) (a11yruntime.ActionResult, error)
+}
+
+type hostWindowPointDragger interface {
+	DragWindowPoint(ctx context.Context, windowID string, start a11yruntime.NormalizedPoint, end a11yruntime.NormalizedPoint, holdMS int) (a11yruntime.ActionResult, error)
 }
 
 type a11yActOptions struct {
@@ -1001,16 +1095,307 @@ func (t *A11yTool) doCapabilities(ctx context.Context, backend a11yruntime.Backe
 	}), nil
 }
 
+func normalizeCUAA11yArgs(action string, args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+	out := make(map[string]interface{}, len(args)+8)
+	for key, value := range args {
+		out[key] = value
+	}
+	copyAlias := func(canonical string, aliases ...string) {
+		if _, ok := firstCompatValueDeep(out, canonical); ok {
+			return
+		}
+		if value, ok := firstCompatValueDeep(args, aliases...); ok {
+			out[canonical] = value
+		}
+	}
+	copyStringAlias := func(canonical string, aliases ...string) {
+		if strings.TrimSpace(firstCompatString(out, canonical)) != "" {
+			return
+		}
+		if value := firstCompatString(args, aliases...); value != "" {
+			out[canonical] = value
+		}
+	}
+
+	copyStringAlias("window_id", "windowId", "window", "windowID", "target_window", "targetWindow", "win")
+	copyStringAlias("app_name", "app", "application", "application_name", "applicationName", "appName", "program", "process", "bundle", "bundle_name", "bundleName")
+	copyStringAlias("conversation", "chat", "thread", "contact", "recipient", "receiver", "to", "target_chat", "targetChat", "channel", "group", "room", "group_name", "groupName")
+	copyStringAlias("target_name", "targetName", "target", "label", "title")
+	copyStringAlias("target_role", "targetRole", "role", "control_role", "controlRole")
+	copyStringAlias("goal", "task", "instruction", "objective", "request", "query")
+	copyAlias("position", "point", "coordinate", "coordinates", "coord", "coords", "xy", "location", "click_position", "clickPosition", "mouse_position", "mousePosition")
+	copyAlias("start", "from", "start_position", "startPosition", "start_point", "startPoint", "source")
+	copyAlias("end", "to", "end_position", "endPosition", "end_point", "endPoint", "destination")
+	copyAlias("keys", "key", "shortcut", "shortcuts", "hotkey", "hotkeys", "chord", "key_sequence", "keySequence", "keySeq", "keystroke", "keystrokes", "button", "buttons")
+	copyAlias("submit_keys", "submitKeys", "send_keys", "sendKeys", "send_key", "sendKey", "submit_key", "submitKey", "send_shortcut", "sendShortcut", "submit_shortcut", "submitShortcut")
+	copyStringAlias("direction", "scroll_direction", "scrollDirection", "dir", "scroll", "wheel_direction", "wheelDirection")
+	copyAlias("lines", "amount", "distance", "delta", "scroll_lines", "scrollLines", "notches")
+	copyAlias("hold_ms", "holdMs", "hold", "duration_ms", "durationMs")
+	copyAlias("ms", "delay_ms", "delayMs", "timeout_ms", "timeoutMs", "duration_ms", "durationMs")
+	copyAlias("seconds", "secs", "sec", "delay_seconds", "delaySeconds", "duration_seconds", "durationSeconds")
+	copyStringAlias("file_name", "fileName", "filename", "file", "memory_file", "memoryFile", "key")
+
+	out["action"] = action
+	switch action {
+	case "type", "message":
+		copyStringAlias("value", "text", "content", "message", "body", "input", "string")
+	case "record_info", "done":
+		copyStringAlias("text", "value", "content", "message", "body", "input", "string")
+	case "click":
+		if _, ok := firstCompatValueDeep(out, "position"); ok {
+			out["act_type"] = "click"
+		}
+	case "drag":
+		copyAlias("position", "path", "points")
+	case a11yruntime.ActionPointerMove:
+		if point, ok := coerceA11yNormalizedPoint(firstCompatRawValue(out, "position")); ok {
+			out["x"] = int(point.X * 1000)
+			out["y"] = int(point.Y * 1000)
+		}
+	case a11yruntime.ActionScroll:
+		rawAction := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "name", "type")))
+		normalized := strings.NewReplacer("_", "", "-", "", " ", "").Replace(rawAction)
+		if firstCompatString(out, "direction") == "" {
+			if normalized == "scrollup" {
+				out["direction"] = "up"
+			} else if normalized == "scrolldown" {
+				out["direction"] = "down"
+			}
+		}
+		if _, ok := firstCompatValueDeep(out, "lines"); !ok {
+			if dy, ok := firstCompatIntDeep(out, "dy"); ok && dy > 0 {
+				out["lines"] = dy
+			}
+		}
+	case a11yruntime.ActionKey:
+		if _, ok := resolveA11yKeySequenceArgs(out); !ok {
+			if keys := cuaHotkeyArgs(out); len(keys) > 0 {
+				out["keys"] = keys
+			}
+		}
+	}
+	return out
+}
+
+func cuaHotkeyArgs(args map[string]interface{}) []string {
+	keys := make([]string, 0, 3)
+	for _, key := range []string{"key1", "key2", "key3"} {
+		value := firstCompatString(args, key)
+		if value == "" {
+			continue
+		}
+		if normalized, _, ok := normalizeA11yShortcutToken(value); ok {
+			keys = append(keys, normalized)
+		} else {
+			keys = append(keys, strings.TrimSpace(value))
+		}
+	}
+	return keys
+}
+
+func coerceA11yNormalizedPoint(raw interface{}) (a11yruntime.NormalizedPoint, bool) {
+	values, ok := coerceA11yFloatSlice(raw)
+	if !ok || len(values) < 2 {
+		return a11yruntime.NormalizedPoint{}, false
+	}
+	x, y := values[0], values[1]
+	if x > 1 || y > 1 {
+		x = x / 1000
+		y = y / 1000
+	}
+	return a11yruntime.NormalizedPoint{X: x, Y: y}, true
+}
+
+func coerceA11yFloatSlice(raw interface{}) ([]float64, bool) {
+	switch typed := raw.(type) {
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return nil, false
+		}
+		var decoded []float64
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil && len(decoded) > 0 {
+			return decoded, true
+		}
+		parts := strings.FieldsFunc(strings.Trim(trimmed, "[]()"), func(r rune) bool {
+			return r == ',' || unicode.IsSpace(r)
+		})
+		out := make([]float64, 0, len(parts))
+		for _, part := range parts {
+			if strings.TrimSpace(part) == "" {
+				continue
+			}
+			value, ok := coerceA11yFloat(part)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, value)
+		}
+		return out, len(out) > 0
+	case []interface{}:
+		out := make([]float64, 0, len(typed))
+		for _, item := range typed {
+			value, ok := coerceA11yFloat(item)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, value)
+		}
+		return out, len(out) > 0
+	case []float64:
+		return append([]float64(nil), typed...), len(typed) > 0
+	case []int:
+		out := make([]float64, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, float64(item))
+		}
+		return out, len(out) > 0
+	case map[string]interface{}:
+		x, xOK := coerceA11yFloat(firstCompatMapValue(typed, "x", "left"))
+		y, yOK := coerceA11yFloat(firstCompatMapValue(typed, "y", "top"))
+		if xOK && yOK {
+			return []float64{x, y}, true
+		}
+	case map[string]float64:
+		x, xOK := typed["x"]
+		y, yOK := typed["y"]
+		if xOK && yOK {
+			return []float64{x, y}, true
+		}
+	case map[string]int:
+		x, xOK := typed["x"]
+		y, yOK := typed["y"]
+		if xOK && yOK {
+			return []float64{float64(x), float64(y)}, true
+		}
+	}
+	return nil, false
+}
+
+func firstCompatMapValue(values map[string]interface{}, keys ...string) interface{} {
+	for _, key := range keys {
+		if value, ok := values[key]; ok {
+			return value
+		}
+	}
+	return nil
+}
+
+func coerceA11yFloat(raw interface{}) (float64, bool) {
+	switch typed := raw.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case json.Number:
+		value, err := typed.Float64()
+		return value, err == nil
+	case string:
+		value, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return value, err == nil
+	}
+	return 0, false
+}
+
+func (t *A11yTool) doRecordInfo(args map[string]interface{}) string {
+	fileName := strings.TrimSpace(firstCompatString(args, "file_name", "fileName", "name"))
+	text := firstCompatString(args, "text", "value", "content")
+	if fileName == "" {
+		fileName = "memory.txt"
+	}
+	t.mu.Lock()
+	if t.taskMemory == nil {
+		t.taskMemory = make(map[string]string)
+	}
+	t.taskMemory[fileName] = text
+	t.mu.Unlock()
+	return a11yJSON(map[string]interface{}{
+		"status":    "recorded",
+		"file_name": fileName,
+		"message":   "Computer-use memory recorded",
+	})
+}
+
+func (t *A11yTool) doTask(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}) (interface{}, error) {
+	readFiles := compatStringListFromAny(firstCompatRawValue(args, "read_files", "readFiles"))
+	memories := make(map[string]string, len(readFiles))
+	t.mu.RLock()
+	for _, fileName := range readFiles {
+		if text, ok := t.taskMemory[fileName]; ok {
+			memories[fileName] = text
+		}
+	}
+	t.mu.RUnlock()
+	if len(readFiles) > 0 {
+		return a11yJSON(map[string]interface{}{
+			"status":   "completed",
+			"goal":     firstCompatString(args, "goal", "task"),
+			"memories": memories,
+			"message":  "Computer-use task memory read",
+		}), nil
+	}
+	if backend == nil {
+		return a11yJSON(map[string]interface{}{
+			"status":     "blocked",
+			"error":      "host computer-use backend not available",
+			"error_code": "backend_unavailable",
+		}), nil
+	}
+	return t.doCUATask(ctx, backend, args, memories), nil
+}
+
+func (t *A11yTool) doCUATask(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, memories map[string]string) string {
+	return t.runNativeCUATask(ctx, backend, args, memories)
+}
+
+func compatStringListFromAny(raw interface{}) []string {
+	items, ok := coerceCompatStringList(raw)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if text := strings.TrimSpace(asString(item)); text != "" {
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
+func (t *A11yTool) doWait(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	ms, ok := firstCompatIntDeep(args, "ms", "milliseconds")
+	if !ok {
+		if seconds, secondsOK := firstCompatIntDeep(args, "seconds", "sec"); secondsOK {
+			ms = seconds * 1000
+		}
+	}
+	if ms > 0 {
+		select {
+		case <-ctx.Done():
+			return a11yErrorPayload(ctx.Err()), nil
+		case <-time.After(time.Duration(ms) * time.Millisecond):
+		}
+	}
+	return a11yJSON(map[string]interface{}{"status": "waited", "message": "Wait completed"}), nil
+}
+
 func appendA11yScenarioActions(actions []string) []string {
 	if len(actions) == 0 {
-		return []string{"message", "type", "select", "click", "toggle"}
+		return []string{"message", "type", "select", "click", "toggle", "task", "wait", "record_info", "done"}
 	}
 	out := append([]string(nil), actions...)
 	seen := make(map[string]struct{}, len(out))
 	for _, action := range out {
 		seen[strings.TrimSpace(strings.ToLower(action))] = struct{}{}
 	}
-	for _, action := range []string{"message", "type", "select", "click", "toggle"} {
+	for _, action := range []string{"message", "type", "select", "click", "toggle", "task", "wait", "record_info", "done"} {
 		if _, ok := seen[action]; ok {
 			continue
 		}
@@ -1616,6 +2001,19 @@ func (t *A11yTool) tryWindowPixelClickCompat(
 	}
 	if firstCompatString(args, "target_name", "targetName", "target_role", "targetRole") != "" {
 		return a11yruntime.ActionResult{}, false, nil
+	}
+	if point, ok := coerceA11yNormalizedPoint(firstCompatRawValue(args, "position")); ok {
+		result, err := backend.ClickWindowPoint(ctx, windowID, point, holdMS)
+		if err != nil {
+			return a11yruntime.ActionResult{}, true, err
+		}
+		if strings.TrimSpace(result.HostOS) == "" {
+			result.HostOS = backend.HostOS()
+		}
+		if strings.TrimSpace(result.WindowID) == "" {
+			result.WindowID = strings.TrimSpace(windowID)
+		}
+		return result, true, nil
 	}
 	x, ok := firstCompatIntDeep(args, "x")
 	if !ok {

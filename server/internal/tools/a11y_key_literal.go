@@ -9,10 +9,20 @@ func normalizeA11yShortcutLiteralKeys(keys []string) []string {
 	if len(keys) != 1 {
 		return keys
 	}
-	if normalized, ok := parseA11yShortcutLiteral(keys[0]); ok {
+	if normalized, ok := parseA11yKeyLiteral(keys[0]); ok {
 		return normalized
 	}
 	return keys
+}
+
+func parseA11yKeyLiteral(raw string) ([]string, bool) {
+	if keys, ok := parseA11yShortcutLiteral(raw); ok {
+		return keys, true
+	}
+	if token, _, ok := normalizeA11yShortcutToken(raw); ok {
+		return []string{token}, true
+	}
+	return nil, false
 }
 
 func parseA11yShortcutLiteral(raw string) ([]string, bool) {
@@ -120,7 +130,7 @@ func resolveA11yKeySequenceArgs(args map[string]interface{}) ([]string, bool) {
 	if submitKeys, ok := compatStringSlice(args, "submit_keys", "submitKeys"); ok && len(submitKeys) > 0 {
 		return normalizeA11yShortcutLiteralKeys(submitKeys), true
 	}
-	if shortcutKeys, ok := parseA11yShortcutLiteral(firstCompatString(args, "value", "text")); ok {
+	if shortcutKeys, ok := parseA11yKeyLiteral(firstCompatString(args, "value", "text")); ok {
 		return shortcutKeys, true
 	}
 	return nil, false

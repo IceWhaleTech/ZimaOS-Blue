@@ -91,6 +91,10 @@ func (b *darwinBackend) ClickWindowPoint(ctx context.Context, windowID string, p
 	return b.clickWindowPoint(ctx, windowID, point, holdMS)
 }
 
+func (b *darwinBackend) DragWindowPoint(ctx context.Context, windowID string, start NormalizedPoint, end NormalizedPoint, holdMS int) (ActionResult, error) {
+	return b.dragWindowPoint(ctx, windowID, start, end, holdMS)
+}
+
 func (b *darwinBackend) ClickWindowPixel(ctx context.Context, windowID string, x int, y int, holdMS int) (ActionResult, error) {
 	return b.clickWindowPixel(ctx, windowID, x, y, holdMS)
 }

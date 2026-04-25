@@ -19,6 +19,7 @@ type runtimeProxyBridgeSurface struct {
 	image        runtimeProxyBridgeImageTarget
 	uiSkill      runtimeProxyBridgeSkillTarget
 	analyze      runtimeProxyBridgeAnalyzeTarget
+	a11y         runtimeProxyBridgeA11yTarget
 	advisor      runtimeProxyBridgeAdvisorTarget
 }
 
@@ -48,6 +49,9 @@ func newRuntimeProxyBridgeSurface(services *Services, deps *RoutesDeps) runtimeP
 			surface.pdf = services.PDFService
 		}
 		if services.ToolRegistry != nil {
+			if tool := services.ToolRegistry.Get("computer_use"); tool != nil {
+				surface.a11y, _ = tool.(*tools.A11yTool)
+			}
 			if tool := services.ToolRegistry.Get("image"); tool != nil {
 				surface.image, _ = tool.(*tools.ImageTool)
 			}
@@ -83,6 +87,7 @@ func (surface runtimeProxyBridgeSurface) bind(
 		surface.image,
 		surface.uiSkill,
 		surface.analyze,
+		surface.a11y,
 	)
 	if bridge != nil && surface.advisor != nil {
 		surface.advisor.SetBridge(tools.NewProxyBridgeAdvisorAdapter(bridge, surface.providerPool))

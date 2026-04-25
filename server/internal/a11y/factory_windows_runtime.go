@@ -325,6 +325,96 @@ func (b *windowsBackend) ClickWindowPoint(_ context.Context, windowID string, po
 	}, nil
 }
 
+func (b *windowsBackend) ClickWindowPixel(_ context.Context, windowID string, x int, y int, holdMS int) (ActionResult, error) {
+	hwnd, _, err := windowsResolveWindowFunc(windowID)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	rect, err := windowsGetRectFunc(hwnd)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	width, height, ok := windowsVisibleRectSize(rect)
+	if !ok {
+		return ActionResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "target window has no visible bounds", nil)
+	}
+	if x < 0 || x > width || y < 0 || y > height {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "pixel click point is outside target window bounds", map[string]interface{}{"x": x, "y": y})
+	}
+	screenX := int(rect.Left) + x
+	screenY := int(rect.Top) + y
+	windowsBringWindowToFront(hwnd)
+	if err := windowsClickAt(screenX, screenY, false, false, NormalizeHoldMS(holdMS)); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_click",
+		VerificationPassed: true,
+		VerificationMethod: "pixel_click",
+		Message:            "Host action completed",
+	}, nil
+}
+
+func (b *windowsBackend) DragWindowPoint(_ context.Context, windowID string, start NormalizedPoint, end NormalizedPoint, holdMS int) (ActionResult, error) {
+	hwnd, _, err := windowsResolveWindowFunc(windowID)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	rect, err := windowsGetRectFunc(hwnd)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	width, height, ok := windowsVisibleRectSize(rect)
+	if !ok {
+		return ActionResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "target window has no visible bounds", nil)
+	}
+	if !windowsNormalizedPointInBounds(start) || !windowsNormalizedPointInBounds(end) {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "normalized drag points must be between 0 and 1", nil)
+	}
+	startX := int(rect.Left) + int(start.X*float64(width))
+	startY := int(rect.Top) + int(start.Y*float64(height))
+	endX := int(rect.Left) + int(end.X*float64(width))
+	endY := int(rect.Top) + int(end.Y*float64(height))
+	windowsBringWindowToFront(hwnd)
+	if err := windowsDragAt(startX, startY, endX, endY, NormalizeHoldMS(holdMS)); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_drag",
+		VerificationPassed: true,
+		VerificationMethod: "drag",
+		Message:            "Host action completed",
+	}, nil
+}
+
+func (b *windowsBackend) TypeFocusedText(_ context.Context, windowID string, value string, _ int) (ActionResult, error) {
+	hwnd, _, err := windowsResolveWindowFunc(windowID)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	windowsBringWindowToFront(hwnd)
+	return windowsFocusedTextResultWithInput(
+		b.HostOS(),
+		strconv.FormatUint(uint64(hwnd), 10),
+		value,
+		func(value string) (string, error) {
+			return windowsSendTextWithClipboardFallback(value, windowsPasteTextFunc, windowsUnicodeTextInputFunc)
+		},
+	)
+}
+
+func windowsNormalizedPointInBounds(point NormalizedPoint) bool {
+	return point.X >= 0 && point.X <= 1 && point.Y >= 0 && point.Y <= 1
+}
+
 func (b *windowsBackend) Key(_ context.Context, windowID string, keys []string, holdMS int) (ActionResult, error) {
 	hwnd, _, err := windowsResolveWindowFunc(windowID)
 	if err != nil {
@@ -871,6 +961,22 @@ func windowsClickAt(x int, y int, right bool, hold bool, holdMS int) error {
 
 func windowsRightClickAt(x int, y int, holdMS int) error {
 	return windowsClickAt(x, y, true, false, holdMS)
+}
+
+func windowsDragAt(startX int, startY int, endX int, endY int, holdMS int) error {
+	if _, _, callErr := procSetCursorPos.Call(uintptr(startX), uintptr(startY)); callErr != syscall.Errno(0) {
+		return fmt.Errorf("SetCursorPos failed: %w", callErr)
+	}
+	if err := windowsSendMouseInput(uint32(windowsMouseEventLeftDown), 0); err != nil {
+		return err
+	}
+	time.Sleep(time.Duration(NormalizeHoldMS(holdMS)) * time.Millisecond)
+	if _, _, callErr := procSetCursorPos.Call(uintptr(endX), uintptr(endY)); callErr != syscall.Errno(0) {
+		_ = windowsSendMouseInput(uint32(windowsMouseEventLeftUp), 0)
+		return fmt.Errorf("SetCursorPos failed: %w", callErr)
+	}
+	time.Sleep(40 * time.Millisecond)
+	return windowsSendMouseInput(uint32(windowsMouseEventLeftUp), 0)
 }
 
 func windowsLongPressAt(x int, y int, holdMS int) error {

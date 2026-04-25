@@ -486,6 +486,206 @@ func TestDarwinTypeFocusedText_FallsBackToUnicodeInput(t *testing.T) {
 	}
 }
 
+func TestDarwinTypeFocusedText_PrefersAXFocusedElementSetValue(t *testing.T) {
+	initDarwinRuntime()
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevResolve := darwinResolveWindowRecordForAction
+	prevCreateApp := darwinAXUIElementCreateApplication
+	prevCopyAttr := darwinAXUIElementCopyAttributeValue
+	prevSetAttr := darwinAXUIElementSetAttributeValue
+	prevSettable := darwinAXUIElementIsAttributeSettable
+	prevStringCreate := darwinCFStringCreate
+	prevRelease := darwinCFRelease
+	prevPaste := darwinPasteTextFunc
+	prevUnicode := darwinUnicodeTextInputFunc
+
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinResolveWindowRecordForAction = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		return darwinWindowRecord{ID: windowID, PID: 1341, AppName: "飞书", Focused: true}, nil
+	}
+	darwinAXUIElementCreateApplication = func(pid int32) uintptr {
+		if pid != 1341 {
+			t.Fatalf("pid = %d, want 1341", pid)
+		}
+		return 10
+	}
+	attrNames := map[uintptr]string{}
+	nextAttrRef := uintptr(1000)
+	darwinCFStringCreate = func(_ uintptr, cstr *byte, _ uint32) uintptr {
+		if cstr == nil {
+			return 0
+		}
+		buf := make([]byte, 0, 32)
+		for ptr := uintptr(unsafe.Pointer(cstr)); ; ptr++ {
+			ch := *(*byte)(unsafe.Pointer(ptr))
+			if ch == 0 {
+				break
+			}
+			buf = append(buf, ch)
+		}
+		ref := nextAttrRef
+		nextAttrRef++
+		attrNames[ref] = string(buf)
+		return ref
+	}
+	darwinAXUIElementCopyAttributeValue = func(element uintptr, attrRef uintptr, out *uintptr) int32 {
+		if element == 10 && attrNames[attrRef] == "AXFocusedUIElement" {
+			*out = 20
+			return darwinAXErrorSuccess
+		}
+		return 1
+	}
+	setCalls := 0
+	darwinAXUIElementIsAttributeSettable = func(element uintptr, attrRef uintptr, settable *bool) int32 {
+		if element == 20 && attrNames[attrRef] == "AXValue" {
+			*settable = true
+			return darwinAXErrorSuccess
+		}
+		*settable = false
+		return darwinAXErrorSuccess
+	}
+	darwinAXUIElementSetAttributeValue = func(element uintptr, attrRef uintptr, value uintptr) int32 {
+		setCalls++
+		if element != 20 || attrNames[attrRef] != "AXValue" {
+			t.Fatalf("set element=%d attr=%q", element, attrNames[attrRef])
+		}
+		return darwinAXErrorSuccess
+	}
+	pasteCalls := 0
+	darwinPasteTextFunc = func(string) error {
+		pasteCalls++
+		return nil
+	}
+	darwinUnicodeTextInputFunc = func(string) error { return nil }
+	darwinCFRelease = func(uintptr) {}
+
+	t.Cleanup(func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinResolveWindowRecordForAction = prevResolve
+		darwinAXUIElementCreateApplication = prevCreateApp
+		darwinAXUIElementCopyAttributeValue = prevCopyAttr
+		darwinAXUIElementSetAttributeValue = prevSetAttr
+		darwinAXUIElementIsAttributeSettable = prevSettable
+		darwinCFStringCreate = prevStringCreate
+		darwinCFRelease = prevRelease
+		darwinPasteTextFunc = prevPaste
+		darwinUnicodeTextInputFunc = prevUnicode
+	})
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	result, err := backend.TypeFocusedText(context.Background(), "54", "hello", 600)
+	if err != nil {
+		t.Fatalf("TypeFocusedText() error = %v", err)
+	}
+	if result.InputMethod != "ax_focused_value" {
+		t.Fatalf("input_method = %q, want ax_focused_value", result.InputMethod)
+	}
+	if setCalls != 1 {
+		t.Fatalf("setCalls = %d, want 1", setCalls)
+	}
+	if pasteCalls != 0 {
+		t.Fatalf("pasteCalls = %d, want no clipboard usage", pasteCalls)
+	}
+}
+
+func TestDarwinTypeFocusedText_DoesNotTraverseWindowWhenFocusedElementNotSettable(t *testing.T) {
+	initDarwinRuntime()
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevResolve := darwinResolveWindowRecordForAction
+	prevCreateApp := darwinAXUIElementCreateApplication
+	prevCopyAttr := darwinAXUIElementCopyAttributeValue
+	prevSetAttr := darwinAXUIElementSetAttributeValue
+	prevSettable := darwinAXUIElementIsAttributeSettable
+	prevStringCreate := darwinCFStringCreate
+	prevRelease := darwinCFRelease
+	prevPaste := darwinPasteTextFunc
+	prevUnicode := darwinUnicodeTextInputFunc
+
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinResolveWindowRecordForAction = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		return darwinWindowRecord{ID: windowID, PID: 1341, AppName: "飞书", Focused: true}, nil
+	}
+	darwinAXUIElementCreateApplication = func(pid int32) uintptr { return 10 }
+	attrNames := map[uintptr]string{}
+	nextAttrRef := uintptr(2000)
+	darwinCFStringCreate = func(_ uintptr, cstr *byte, _ uint32) uintptr {
+		if cstr == nil {
+			return 0
+		}
+		buf := make([]byte, 0, 32)
+		for ptr := uintptr(unsafe.Pointer(cstr)); ; ptr++ {
+			ch := *(*byte)(unsafe.Pointer(ptr))
+			if ch == 0 {
+				break
+			}
+			buf = append(buf, ch)
+		}
+		ref := nextAttrRef
+		nextAttrRef++
+		attrNames[ref] = string(buf)
+		return ref
+	}
+	darwinAXUIElementCopyAttributeValue = func(element uintptr, attrRef uintptr, out *uintptr) int32 {
+		attr := attrNames[attrRef]
+		if element == 10 && attr == "AXFocusedUIElement" {
+			*out = 20
+			return darwinAXErrorSuccess
+		}
+		if attr == "AXFocusedWindow" || attr == "AXChildren" {
+			t.Fatalf("unexpected traversal attr %q on element %d", attr, element)
+		}
+		return 1
+	}
+	darwinAXUIElementIsAttributeSettable = func(element uintptr, attrRef uintptr, settable *bool) int32 {
+		if element == 20 && attrNames[attrRef] == "AXValue" {
+			*settable = false
+			return darwinAXErrorSuccess
+		}
+		*settable = false
+		return darwinAXErrorSuccess
+	}
+	darwinAXUIElementSetAttributeValue = func(element uintptr, attrRef uintptr, value uintptr) int32 {
+		t.Fatalf("unexpected AXSetValue element=%d attr=%q", element, attrNames[attrRef])
+		return 1
+	}
+	pasteCalls := 0
+	darwinPasteTextFunc = func(string) error {
+		pasteCalls++
+		return nil
+	}
+	unicodeCalls := 0
+	darwinUnicodeTextInputFunc = func(string) error {
+		unicodeCalls++
+		return nil
+	}
+	darwinCFRelease = func(uintptr) {}
+
+	t.Cleanup(func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinResolveWindowRecordForAction = prevResolve
+		darwinAXUIElementCreateApplication = prevCreateApp
+		darwinAXUIElementCopyAttributeValue = prevCopyAttr
+		darwinAXUIElementSetAttributeValue = prevSetAttr
+		darwinAXUIElementIsAttributeSettable = prevSettable
+		darwinCFStringCreate = prevStringCreate
+		darwinCFRelease = prevRelease
+		darwinPasteTextFunc = prevPaste
+		darwinUnicodeTextInputFunc = prevUnicode
+	})
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	result, err := backend.TypeFocusedText(context.Background(), "54", "hello", 600)
+	if err != nil {
+		t.Fatalf("TypeFocusedText() error = %v", err)
+	}
+	if result.InputMethod != "clipboard" {
+		t.Fatalf("input_method = %q, want clipboard fallback", result.InputMethod)
+	}
+	if pasteCalls != 1 || unicodeCalls != 0 {
+		t.Fatalf("pasteCalls=%d unicodeCalls=%d, want 1/0", pasteCalls, unicodeCalls)
+	}
+}
+
 func TestDarwinClickWindowPixel_RefreshesWindowRecordAndClicksRelativePoint(t *testing.T) {
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevResolve := darwinResolveWindowRecordForPointClick
@@ -556,6 +756,55 @@ func TestDarwinClickWindowPixel_RefreshesWindowRecordAndClicksRelativePoint(t *t
 	}
 	if clickHoldMS != 750 {
 		t.Fatalf("clickHoldMS = %d, want 750", clickHoldMS)
+	}
+}
+
+func TestDarwinDragWindowPoint_RefreshesWindowRecordAndDragsRelativePoints(t *testing.T) {
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevResolve := darwinResolveWindowRecordForPointClick
+	prevRefresh := darwinRefreshWindowRecordForPointClick
+	prevDrag := darwinDragPointForHostAction
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinResolveWindowRecordForPointClick = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		if windowID != "win-1" {
+			t.Fatalf("resolve windowID = %q, want win-1", windowID)
+		}
+		return darwinWindowRecord{ID: "win-1", Bounds: darwinRect{Origin: darwinPoint{X: 10, Y: 20}, Size: darwinSize{Width: 320, Height: 240}}}, nil
+	}
+	darwinRefreshWindowRecordForPointClick = func(_ *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+		current.ID = "win-9"
+		current.Bounds = darwinRect{Origin: darwinPoint{X: 40, Y: 60}, Size: darwinSize{Width: 400, Height: 300}}
+		return current, nil
+	}
+	var draggedStart darwinPoint
+	var draggedEnd darwinPoint
+	dragHoldMS := 0
+	darwinDragPointForHostAction = func(start darwinPoint, end darwinPoint, holdMS int) error {
+		draggedStart = start
+		draggedEnd = end
+		dragHoldMS = holdMS
+		return nil
+	}
+	defer func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinResolveWindowRecordForPointClick = prevResolve
+		darwinRefreshWindowRecordForPointClick = prevRefresh
+		darwinDragPointForHostAction = prevDrag
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	result, err := backend.DragWindowPoint(context.Background(), "win-1", NormalizedPoint{X: 0.25, Y: 0.4}, NormalizedPoint{X: 0.75, Y: 0.8}, 900)
+	if err != nil {
+		t.Fatalf("DragWindowPoint() error = %v", err)
+	}
+	if result.WindowID != "win-9" {
+		t.Fatalf("window_id = %q, want win-9", result.WindowID)
+	}
+	if draggedStart.X != 140 || draggedStart.Y != 180 || draggedEnd.X != 340 || draggedEnd.Y != 300 {
+		t.Fatalf("drag = %#v -> %#v, want {140,180}->{340,300}", draggedStart, draggedEnd)
+	}
+	if dragHoldMS != 900 {
+		t.Fatalf("dragHoldMS = %d, want 900", dragHoldMS)
 	}
 }
 

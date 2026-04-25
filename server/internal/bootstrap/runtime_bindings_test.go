@@ -1718,6 +1718,7 @@ func TestBindRuntimeProxyBridge_WiresUnifiedRuntimeTargets(t *testing.T) {
 	image := &stubRuntimeProxyBridgeImageTarget{}
 	uiSkill := &stubRuntimeProxyBridgeSkillTarget{}
 	analyze := &stubRuntimeProxyBridgeAnalyzeTarget{}
+	a11y := &stubRuntimeProxyBridgeA11yTarget{}
 
 	bindRuntimeProxyBridge(
 		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
@@ -1733,6 +1734,7 @@ func TestBindRuntimeProxyBridge_WiresUnifiedRuntimeTargets(t *testing.T) {
 		image,
 		uiSkill,
 		analyze,
+		a11y,
 	)
 
 	if runtimeProvider.currentProvider() == nil {
@@ -1765,6 +1767,9 @@ func TestBindRuntimeProxyBridge_WiresUnifiedRuntimeTargets(t *testing.T) {
 	if analyze.bridge == nil || analyze.calls != 1 {
 		t.Fatalf("expected analyze llm bridge wiring, got %#v", analyze)
 	}
+	if a11y.bridge == nil || a11y.calls != 1 {
+		t.Fatalf("expected computer_use llm bridge wiring, got %#v", a11y)
+	}
 	if chat.proxyBridge != uiSkill.bridge {
 		t.Fatalf("expected chat/ui skill to share proxy bridge instance, chat=%p skill=%p", chat.proxyBridge, uiSkill.bridge)
 	}
@@ -1775,7 +1780,7 @@ func TestBindRuntimeProxyBridge_SkipsWithoutProxyHandler(t *testing.T) {
 	auxiliary := newAuxiliaryLLMCaller()
 	chat := &stubRuntimeProxyBridgeChatTarget{}
 
-	bindRuntimeProxyBridge(nil, nil, nil, runtimeProvider, auxiliary, chat, nil, nil, nil, nil, nil, nil, nil)
+	bindRuntimeProxyBridge(nil, nil, nil, runtimeProvider, auxiliary, chat, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	if runtimeProvider.currentProvider() != nil {
 		t.Fatalf("expected runtime provider to remain unset without proxy handler, got %#v", runtimeProvider.currentProvider())
@@ -4194,6 +4199,16 @@ type stubRuntimeProxyBridgeAnalyzeTarget struct {
 }
 
 func (s *stubRuntimeProxyBridgeAnalyzeTarget) SetLLMBridge(bridge tools.LLMBridge) {
+	s.bridge = bridge
+	s.calls++
+}
+
+type stubRuntimeProxyBridgeA11yTarget struct {
+	bridge tools.LLMBridge
+	calls  int
+}
+
+func (s *stubRuntimeProxyBridgeA11yTarget) SetLLMBridge(bridge tools.LLMBridge) {
 	s.bridge = bridge
 	s.calls++
 }

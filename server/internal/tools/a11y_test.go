@@ -51,6 +51,9 @@ type a11yCompatBackend struct {
 	lastPointClick                a11yruntime.NormalizedPoint
 	pointClickHistory             []a11yruntime.NormalizedPoint
 	pointClickWindowIDs           []string
+	lastDragWindow                string
+	lastDragStart                 a11yruntime.NormalizedPoint
+	lastDragEnd                   a11yruntime.NormalizedPoint
 	lastPixelClickWindow          string
 	lastPixelClickX               int
 	lastPixelClickY               int
@@ -301,7 +304,9 @@ func (b *a11yCompatBackend) Scroll(_ context.Context, windowID string, direction
 	return a11yruntime.ActionResult{WindowID: b.scrollResultWindowID, ExecutionMode: mode, Message: "scrolled"}, nil
 }
 
-func (b *a11yCompatBackend) PointerMove(context.Context, int, int) (a11yruntime.ActionResult, error) {
+func (b *a11yCompatBackend) PointerMove(_ context.Context, x int, y int) (a11yruntime.ActionResult, error) {
+	b.lastPointerMoveX = x
+	b.lastPointerMoveY = y
 	return a11yruntime.ActionResult{ExecutionMode: "input", Message: "moved"}, nil
 }
 
@@ -351,6 +356,22 @@ func (b *a11yCompatBackend) ClickWindowPixel(_ context.Context, windowID string,
 		VerificationPassed: true,
 		VerificationMethod: "point_click",
 		Message:            "Host action completed",
+	}, nil
+}
+
+func (b *a11yCompatBackend) DragWindowPoint(_ context.Context, windowID string, start a11yruntime.NormalizedPoint, end a11yruntime.NormalizedPoint, holdMS int) (a11yruntime.ActionResult, error) {
+	b.lastDragWindow = windowID
+	b.lastDragStart = start
+	b.lastDragEnd = end
+	return a11yruntime.ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_drag",
+		VerificationPassed: true,
+		VerificationMethod: "point_drag",
+		Message:            "Host drag completed",
 	}, nil
 }
 
@@ -2090,6 +2111,117 @@ func TestA11yToolExecute_KeyUsesSubmitKeysWhenKeysMissing(t *testing.T) {
 	}
 	if _, ok := out["message"].(string); !ok {
 		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_KeyParsesJSONStringArrayKeys(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key",
+		"keys":   `["enter"]`,
+	})
+	if err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 1 || got[0] != "enter" {
+		t.Fatalf("keyHistory[0] = %#v, want [enter]", got)
+	}
+}
+
+func TestA11yToolExecute_KeyParsesSingleQuotedArrayKeys(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key",
+		"keys":   `['enter']`,
+	})
+	if err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 1 || got[0] != "enter" {
+		t.Fatalf("keyHistory[0] = %#v, want [enter]", got)
+	}
+}
+
+func TestA11yToolExecute_KeyValueSingleEnterUsesKeyAction(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key",
+		"value":  "enter",
+	})
+	if err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 1 || got[0] != "enter" {
+		t.Fatalf("keyHistory[0] = %#v, want [enter]", got)
+	}
+}
+
+func TestA11yToolExecute_TypeAliasAcceptsSendKeysJSONStringAlias(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap:   map[int]string{1: "token-send"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "type",
+		"app_name":  "Feishu",
+		"value":     "hello fuzzy",
+		"send_keys": `["enter"]`,
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
+	}
+	if backend.lastFocusedTypeValue != "hello fuzzy" {
+		t.Fatalf("lastFocusedTypeValue = %q, want hello fuzzy", backend.lastFocusedTypeValue)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one submit key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 1 || got[0] != "enter" {
+		t.Fatalf("keyHistory[0] = %#v, want [enter]", got)
+	}
+}
+
+func TestResolveA11yActionFuzzySendAndKeyAliases(t *testing.T) {
+	if got := resolveA11yAction(map[string]interface{}{"action": "send", "value": "hello"}); got != "message" {
+		t.Fatalf("resolveA11yAction(send with value) = %q, want message", got)
+	}
+	if got := resolveA11yAction(map[string]interface{}{"action": "send_keys", "keys": `["enter"]`}); got != a11yruntime.ActionKey {
+		t.Fatalf("resolveA11yAction(send_keys) = %q, want %s", got, a11yruntime.ActionKey)
+	}
+	if got := resolveA11yAction(map[string]interface{}{"action": "press enter", "value": "enter"}); got != a11yruntime.ActionKey {
+		t.Fatalf("resolveA11yAction(press enter) = %q, want %s", got, a11yruntime.ActionKey)
 	}
 }
 
