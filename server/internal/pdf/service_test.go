@@ -94,39 +94,56 @@ func TestPDFiumRuntimeURLCandidates(t *testing.T) {
 	}
 }
 
-func TestServiceEnsureReadyRequiresRuntimeWhenAutoDownloadDisabled(t *testing.T) {
+func TestEmbeddedPDFiumRuntimeMatchesPinnedFixture(t *testing.T) {
+	want, err := os.ReadFile(filepath.Join("testdata", pdfiumRuntimeFileName))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !bytes.Equal(embeddedPDFiumRuntimeWASM, want) {
+		t.Fatalf("embedded runtime does not match pinned fixture")
+	}
+}
+
+func TestServiceEnsureReadyUsesEmbeddedRuntimeWhenRuntimeDirIsEmpty(t *testing.T) {
 	svc := NewService(zap.NewNop(), nil, ServiceConfig{
 		RuntimeDir:   t.TempDir(),
 		AutoDownload: false,
 	})
+	svc.download = func(ctx context.Context, url, path string) error {
+		_ = ctx
+		_ = url
+		_ = path
+		t.Fatal("expected embedded runtime to avoid download")
+		return nil
+	}
+	pool := &fakePDFiumPool{}
 	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
-		_ = cfg
-		t.Fatal("expected missing runtime to fail before pdfium init")
-		return nil, nil
+		if !bytes.Equal(cfg.WASM, embeddedPDFiumRuntimeWASM) {
+			t.Fatalf("cfg.WASM does not match embedded runtime")
+		}
+		return pool, nil
 	}
 
-	err := svc.ensureReady(context.Background())
-	if err == nil {
-		t.Fatal("expected ensureReady to fail when runtime wasm is missing")
+	if err := svc.ensureReady(context.Background()); err != nil {
+		t.Fatalf("ensureReady() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "missing PDF runtime") {
-		t.Fatalf("error = %v, want missing PDF runtime", err)
+	if svc.pool != pool {
+		t.Fatalf("pool = %#v, want %#v", svc.pool, pool)
 	}
 }
 
-func TestServiceEnsureReadyResolvesRelativeRuntimeDirAtConstruction(t *testing.T) {
+func TestServiceEnsureReadyUsesEmbeddedRuntimeAfterCWDChange(t *testing.T) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd() error = %v", err)
 	}
 
 	svc := NewService(zap.NewNop(), nil, ServiceConfig{
-		RuntimeDir:   "testdata",
-		AutoDownload: false,
+		RuntimeDir: t.TempDir(),
 	})
 	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
-		if len(cfg.WASM) == 0 {
-			t.Fatal("expected runtime wasm bytes to be loaded")
+		if !bytes.Equal(cfg.WASM, embeddedPDFiumRuntimeWASM) {
+			t.Fatalf("cfg.WASM does not match embedded runtime")
 		}
 		return &fakePDFiumPool{}, nil
 	}
@@ -139,44 +156,7 @@ func TestServiceEnsureReadyResolvesRelativeRuntimeDirAtConstruction(t *testing.T
 	})
 
 	if err := svc.ensureReady(context.Background()); err != nil {
-		t.Fatalf("ensureReady returned error after cwd change: %v", err)
-	}
-}
-
-func TestServiceEnsureReadyAutoDownloadsMissingRuntime(t *testing.T) {
-	dir := t.TempDir()
-	svc := NewService(zap.NewNop(), nil, ServiceConfig{
-		RuntimeDir:   dir,
-		AutoDownload: true,
-	})
-	downloaded := false
-	svc.download = func(ctx context.Context, url, path string) error {
-		_ = ctx
-		downloaded = true
-		if !strings.HasSuffix(path, pdfiumRuntimeFileName) {
-			t.Fatalf("download path = %q, want runtime wasm path", path)
-		}
-		if !strings.Contains(url, "/webassembly/pdfium.wasm") {
-			t.Fatalf("download url = %q, want pdfium runtime source", url)
-		}
-		return os.WriteFile(path, []byte("pdfium-runtime"), 0o644)
-	}
-	pool := &fakePDFiumPool{}
-	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
-		if !bytes.Equal(cfg.WASM, []byte("pdfium-runtime")) {
-			t.Fatalf("cfg.WASM = %q, want %q", string(cfg.WASM), "pdfium-runtime")
-		}
-		return pool, nil
-	}
-
-	if err := svc.ensureReady(context.Background()); err != nil {
-		t.Fatalf("ensureReady returned error: %v", err)
-	}
-	if !downloaded {
-		t.Fatal("expected runtime download to run")
-	}
-	if svc.pool != pool {
-		t.Fatalf("pool = %#v, want %#v", svc.pool, pool)
+		t.Fatalf("ensureReady() error after cwd change = %v", err)
 	}
 }
 
