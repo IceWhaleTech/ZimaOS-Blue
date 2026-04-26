@@ -7588,50 +7588,25 @@ func buildChatToolSurfaceLogSnapshotWithSelected(selection chatToolSurfaceSelect
 }
 
 func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage, model, sessionID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
+	_ = explicitProviderID
+	_ = state
 	selection := h.selectChatToolSurfacesForRequest(ctx, userMessage, tools.ToolPolicyRequest{
 		Model:               model,
 		SessionID:           sessionID,
 		RouteKind:           tools.ToolRouteKindChat,
 		DeepResearchEnabled: deepResearchEnabled,
 	}, webSearchEnabled, deepResearchEnabled)
-	selectedTools := selection.NativeDefs
-	if selection.NativeMode == chatNativeToolSurfaceModeSkillExec && hasToolDefName(selectedTools, "exec") {
-		h.recordToolSurfaceExecCutover("skill_exec_surface")
-	}
-	if selection.NativeMode != chatNativeToolSurfaceModeLegacy || selection.PromptCacheUnsafe {
-		h.clearPromptCacheToolSurface(sessionID)
-		selectedTools = sortToolDefsByName(selectedTools)
-		if narrowed := narrowDesktopChatSendToolSurface(selectedTools, userMessage); len(narrowed) > 0 {
-			selectedTools = narrowed
-		}
-		snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
-		logger.Info().
-			Int("routed", snapshot.Routed).
-			Int("selected", snapshot.Selected).
-			Str("native_mode", snapshot.NativeMode).
-			Str("surface_mode", snapshot.SurfaceMode).
-			Str("canonical_target", snapshot.CanonicalTarget).
-			Bool("need_clarify", snapshot.NeedClarify).
-			Str("selected_skill", snapshot.SelectedSkill).
-			Str("decision_reason", snapshot.DecisionReason).
-			Bool("activation_requested", snapshot.ActivationRequested).
-			Bool("activation_applied", snapshot.ActivationApplied).
-			Str("activation_failure_reason", snapshot.ActivationFailureReason).
-			Str("recovery_path", snapshot.RecoveryPath).
-			Str("abort_reason", snapshot.AbortReason).
-			Str("sticky_surface_source", snapshot.StickySurfaceSource).
-			Strs("conflict_flags", snapshot.ConflictFlags).
-			Strs("routed_tools", snapshot.RoutedNames).
-			Strs("selected_tools", snapshot.SelectedNames).
-			Str("model", model).
-			Str("query", userMessage).
-			Msg("[chat] selectChatToolSurface")
-		return selectedTools
-	}
-	selectedTools = h.stabilizePromptCacheToolSurface(sessionID, explicitProviderID, state, webSearchEnabled, deepResearchEnabled, selectedTools)
-	if narrowed := narrowDesktopChatSendToolSurface(selectedTools, userMessage); len(narrowed) > 0 {
-		selectedTools = narrowed
-	}
+	// Dynamic tool processing and intent recognition are disabled.
+	// Always return the complete tool set for every session so upstream
+	// receives identical tools, not a collapsed surface like just tool_search.
+	selectedTools := sortToolDefsByName(h.toolRegistry.Definitions())
+	h.clearPromptCacheToolSurface(sessionID)
+	logger.Info().
+		Int("tool_count", len(selectedTools)).
+		Strs("tool_names", toolDefinitionNames(selectedTools)).
+		Str("session_id", sessionID).
+		Str("model", model).
+		Msg("[chat] selectChatToolsForRequest returning FULL tool set")
 	snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
 	logger.Info().
 		Int("routed", snapshot.Routed).
@@ -7698,13 +7673,19 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 
+	// Dynamic tool processing and intent recognition (discover-first) are disabled.
+	// Skip skill decision, discovery decision, and exec-only/clarify-none collapse.
+	skillDynamicExposure := h.settingsHandler != nil && h.settingsHandler.GetSkillDynamicExposure()
+	if !skillDynamicExposure {
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
+	}
+
 	decision, ok := h.resolveSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
 	if !ok {
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 	selection.SkillDecision = &decision
 
-	skillDynamicExposure := h.settingsHandler != nil && h.settingsHandler.GetSkillDynamicExposure()
 	discoveryDecision := agentcore.BuildDiscoveryDecision(decision, skillDynamicExposure)
 	selection.DiscoveryDecision = &discoveryDecision
 
@@ -16500,6 +16481,21 @@ func llmToolNamesWithAdded(tools []llm.Tool, names ...string) []string {
 	return out
 }
 
+func llmToolNames(tools []llm.Tool) []string {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		name := strings.TrimSpace(tool.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
 func isToolSearchFamilyRound(toolCalls []llm.ToolCall) bool {
 	if len(toolCalls) == 0 {
 		return false
@@ -23012,6 +23008,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			Msg("[chat] disabling tool exposure for structured evaluator conversation")
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
+	initialChatTools := chatReq.Tools
+	logger.Info().
+		Str("conversation_id", convID).
+		Str("model", chatReq.Model).
+		Str("phase", "initial_request").
+		Strs("final_upstream_tools", llmToolNames(chatReq.Tools)).
+		Msg("[chat] final upstream tools")
 	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {
 		if attempt == nil {
 			return
@@ -23031,6 +23034,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		turnHookCtx.Model = chatReq.Model
 		turnHookCtx.UsesContinuation = strings.TrimSpace(chatReq.PreviousResponseID) != ""
 		h.applyPromptCacheKeyForRequest(convID, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt), convState, &chatReq)
+		logger.Info().
+			Str("conversation_id", convID).
+			Str("model", chatReq.Model).
+			Str("phase", "budget_applied").
+			Strs("final_upstream_tools", llmToolNames(chatReq.Tools)).
+			Msg("[chat] final upstream tools")
 	}
 	applyBudgetAttemptToChatReq(currentBudgetAttempt)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
@@ -23209,6 +23218,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
 
 		for round := 0; round < maxToolRoundsForRequest; round++ {
+			chatReq.Tools = initialChatTools
 			resp, err = h.chatOnce(llmCtx, chatReq)
 			if round == 0 && err != nil && llmCtx.Err() == nil {
 				for {
@@ -25512,6 +25522,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		FallbackReason:    executionPlanFallbackReason,
 	})
 	chatReq.Tools = defsToLLMTools(selectedTools)
+	initialStreamChatTools := chatReq.Tools
 	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {
 		if attempt == nil {
 			return
@@ -26425,6 +26436,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	primaryStreamProviderAvailable := h.runtimeProvider != nil || h.proxyBridge != nil
 STREAM_LOOP:
 	for toolRound := 0; toolRound < maxToolRoundsForRequest; toolRound++ {
+		chatReq.Tools = initialStreamChatTools
 		streamToolCalls = streamToolCalls[:0]
 		streamErrorHandled = false
 		deepSearchForcePending = false
@@ -29102,6 +29114,12 @@ STREAM_LOOP:
 				chatReq.MaxTokens = req.MaxTokens
 				chatReq.Stream = true
 				chatReq.Tools = defsToLLMTools(injectedTools)
+				logger.Info().
+					Str("conversation_id", convID).
+					Str("model", chatReq.Model).
+					Str("phase", "injected_request").
+					Strs("final_upstream_tools", llmToolNames(chatReq.Tools)).
+					Msg("[chat] final upstream tools")
 				deepSearchState = newDeepSearchLoopState(injectedMsg, injectedTools)
 
 				// Reset stream state for the new round

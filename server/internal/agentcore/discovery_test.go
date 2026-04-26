@@ -120,7 +120,7 @@ func TestNativeSurfaceModeForSkill(t *testing.T) {
 	}
 }
 
-func TestBuildDiscoveryDecision_PreservesLegacyExecCollapseWhenDynamicExposureDisabled(t *testing.T) {
+func TestBuildDiscoveryDecision_ReturnsLegacyModeWhenDynamicExposureDisabled(t *testing.T) {
 	decision := BuildDiscoveryDecision(Decision{
 		SelectedSkill: "web_search",
 		Reason:        "ir_ranked",
@@ -129,8 +129,8 @@ func TestBuildDiscoveryDecision_PreservesLegacyExecCollapseWhenDynamicExposureDi
 	if decision.CanonicalTarget != CanonicalWebQuery {
 		t.Fatalf("CanonicalTarget = %q, want %q", decision.CanonicalTarget, CanonicalWebQuery)
 	}
-	if decision.NativeSurfaceMode != NativeSurfaceModeSkillExec {
-		t.Fatalf("NativeSurfaceMode = %q, want %q", decision.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	if decision.NativeSurfaceMode != NativeSurfaceModeLegacy {
+		t.Fatalf("NativeSurfaceMode = %q, want %q", decision.NativeSurfaceMode, NativeSurfaceModeLegacy)
 	}
 	if decision.ExecutionProfile != ExecutionProfilePreferFork {
 		t.Fatalf("ExecutionProfile = %q, want %q", decision.ExecutionProfile, ExecutionProfilePreferFork)

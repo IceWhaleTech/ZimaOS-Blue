@@ -40,7 +40,7 @@ type ToolRouter struct {
 // DefaultToolRouter returns a tool router with conservative defaults.
 func DefaultToolRouter() *ToolRouter {
 	return &ToolRouter{
-		DynamicExposure:   true,
+		DynamicExposure:   false,
 		SchemaCompression: true,
 		AlwaysInclude:     []string{"bash"},
 		processKeywords: []string{

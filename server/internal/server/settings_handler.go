@@ -1154,9 +1154,10 @@ func (h *SettingsHandler) GetSmartSkillSelection() bool {
 }
 
 // GetSkillDynamicExposure returns the effective discover-first activation state.
-// After cutover this remains enabled even if older settings still carry false.
+// Dynamic tool processing and intent recognition are disabled — every session
+// sends the same complete tool set to upstream.
 func (h *SettingsHandler) GetSkillDynamicExposure() bool {
-	return true
+	return false
 }
 
 // GetSkillSelectorMode returns selector mode (default "hybrid").

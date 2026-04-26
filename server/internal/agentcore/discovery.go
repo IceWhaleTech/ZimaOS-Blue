@@ -308,9 +308,8 @@ func BuildDiscoveryDecision(d Decision, skillDynamicExposure bool) CapabilityDis
 		case skillDynamicExposure && IsCutoverEligibleCanonical(canonical):
 			nativeMode = NativeSurfaceModeForSkill(canonical)
 		case !skillDynamicExposure:
-			// Even when dynamic exposure is disabled, keep the exec-only compatibility
-			// collapse rather than widening back out to the old multi-tool surface.
-			nativeMode = NativeSurfaceModeSkillExec
+			// Dynamic exposure disabled: return legacy surface mode to keep the full routed tool set.
+			nativeMode = NativeSurfaceModeLegacy
 		}
 	}
 

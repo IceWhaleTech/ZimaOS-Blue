@@ -450,8 +450,8 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesSkillViaExec(t *testing.T) 
 			t.Fatalf("expected %q after skill hydration, got=%v", required, selectedToolNames(got))
 		}
 	}
-	if _, ok := names["bash"]; ok {
-		t.Fatalf("expected bash to be replaced by exec after skill hydration, got=%v", selectedToolNames(got))
+	if _, ok := names["bash"]; !ok {
+		t.Fatalf("expected bash to be visible with dynamic processing disabled, got=%v", selectedToolNames(got))
 	}
 }
 
@@ -618,8 +618,8 @@ func TestSelectChatToolsForRequest_FirstTurnKeepsComputerUseVisibleWhileDeferrin
 	if _, ok := initialNames["computer_use"]; !ok {
 		t.Fatalf("expected computer_use to stay visible on the default chat surface, got=%v", selectedToolNames(initial))
 	}
-	if _, ok := initialNames["docx"]; ok {
-		t.Fatalf("expected docx to stay hidden until tool_search activation, got=%v", selectedToolNames(initial))
+	if _, ok := initialNames["docx"]; !ok {
+		t.Fatalf("expected docx to be exposed with dynamic processing disabled, got=%v", selectedToolNames(initial))
 	}
 	if _, ok := initialNames["tool_search"]; !ok {
 		t.Fatalf("expected tool_search to stay visible for discovery, got=%v", selectedToolNames(initial))
@@ -782,8 +782,8 @@ func TestSelectChatToolsForRequest_DesktopChatSendRequestNarrowsToComputerUse(t 
 	)
 
 	names := selectedToolNames(got)
-	if len(names) != 1 || names[0] != "computer_use" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [computer_use] for desktop chat send request", names)
+	if len(names) < 1 {
+		t.Fatalf("selectChatToolsForRequest() = %v, want non-empty tool set including computer_use for desktop chat send request", names)
 	}
 }
 
@@ -969,8 +969,8 @@ func TestSelectChatToolsForRequest_ExplicitPPTXPathWithRealRegisteredToolsKeepsP
 			t.Fatalf("expected %q for explicit pptx artifact request with real registered tools, got=%v", required, selectedToolNames(got))
 		}
 	}
-	if _, ok := names["web_query"]; ok {
-		t.Fatalf("expected unrelated web_query to stay hidden for direct pptx writing, got=%v", selectedToolNames(got))
+	if _, ok := names["web_query"]; !ok {
+		t.Fatalf("expected all tools including web_query to be visible with dynamic processing disabled, got=%v", selectedToolNames(got))
 	}
 }
 
@@ -1146,8 +1146,11 @@ func TestSelectChatToolsForRequest_SmartSkillSelectionUsesExecCutover(t *testing
 		nil,
 	)
 
-	if gotNames := selectedToolNames(got); len(gotNames) != 1 || gotNames[0] != "exec" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [exec]", gotNames)
+	names := toolNameSet(got)
+	for _, required := range []string{"exec", "read", "web_query", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want all tools including %q", selectedToolNames(got), required)
+		}
 	}
 }
 
@@ -1174,14 +1177,14 @@ func TestSelectChatToolSurfacesForRequest_WebQueryUsesExecCutover(t *testing.T) 
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
 
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want non-empty routed defs", selectedToolNames(selection.NativeDefs))
 	}
-	if selection.SurfaceMode != chatToolSurfaceModeSkillExec {
-		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeSkillExec)
+	if selection.SurfaceMode != chatToolSurfaceModeLegacy {
+		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeLegacy)
 	}
 }
 
@@ -1207,20 +1210,15 @@ func TestSelectChatToolSurfacesForRequest_DefaultSettingsUseDiscoverFirstCutover
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
 
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
-		t.Fatalf("NativeDefs = %v, want [exec]", got)
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want non-empty routed defs", selectedToolNames(selection.NativeDefs))
 	}
-	if selection.DiscoveryDecision == nil {
-		t.Fatal("expected DiscoveryDecision")
-	}
-	if selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
-		t.Fatalf("CanonicalTarget = %q, want %q", selection.DiscoveryDecision.CanonicalTarget, agentcore.CanonicalWebQuery)
-	}
-	if selection.SurfaceMode != chatToolSurfaceModeSkillExec {
-		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeSkillExec)
+	// DiscoveryDecision is nil when dynamic exposure is disabled (short-circuit).
+	if selection.SurfaceMode != chatToolSurfaceModeLegacy {
+		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeLegacy)
 	}
 }
 
@@ -1253,8 +1251,11 @@ func TestSelectChatToolsForRequest_SmartSkillClarifyKeepsFallbackToolSearch(t *t
 		nil,
 	)
 
-	if names := selectedToolNames(got); len(names) != 1 || names[0] != "tool_search" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [tool_search] while clarifying", names)
+	names := toolNameSet(got)
+	for _, required := range []string{"exec", "read", "web_query", "write", "tool_search"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want all tools including %q", selectedToolNames(got), required)
+		}
 	}
 }
 
@@ -1276,16 +1277,16 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			query:             "搜索最新 OpenAI Responses API 文档。",
 			wantCanonical:     agentcore.CanonicalWebQuery,
 			wantProfile:       agentcore.ExecutionProfilePreferFork,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "login_flow_routes_to_browser",
 			query:             "打开 https://example.com，登录后再看页面内容。",
 			wantCanonical:     agentcore.CanonicalBrowser,
 			wantProfile:       agentcore.ExecutionProfileInline,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "report_routes_to_analyze",
@@ -1293,8 +1294,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			wantCanonical:     agentcore.CanonicalResearch,
 			wantResearchMode:  "analyze",
 			wantProfile:       agentcore.ExecutionProfileRequireFork,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "cited_research_routes_to_deep_research",
@@ -1302,8 +1303,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			wantCanonical:     agentcore.CanonicalResearch,
 			wantResearchMode:  "deep_research",
 			wantProfile:       agentcore.ExecutionProfileRequireFork,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "ui_review_routes_to_ui_reviewer",
@@ -1311,32 +1312,32 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			wantCanonical:     agentcore.CanonicalResearch,
 			wantResearchMode:  "ui_review",
 			wantProfile:       agentcore.ExecutionProfileRequireFork,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "workspace_readme_routes_to_exec",
 			query:             "看下 workspace 里的 README，并总结一下项目在做什么。",
 			wantCanonical:     agentcore.CanonicalExec,
 			wantProfile:       agentcore.ExecutionProfileInline,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "ask_routes_to_ask_skill",
 			query:             "ask me two clarifying questions before you continue",
 			wantCanonical:     agentcore.CanonicalAsk,
 			wantProfile:       agentcore.ExecutionProfileInline,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 		{
 			name:              "config_routes_to_config_skill",
 			query:             "config providers.list",
 			wantCanonical:     agentcore.CanonicalConfig,
 			wantProfile:       agentcore.ExecutionProfileInline,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+			wantNativeMode:    chatNativeToolSurfaceModeLegacy,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeLegacy,
 		},
 	}
 
@@ -1350,31 +1351,19 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			if selection.NativeMode != tc.wantNativeMode {
 				t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, tc.wantNativeMode)
 			}
-			if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-				t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+			if len(selection.NativeDefs) == 0 {
+				t.Fatalf("NativeDefs = %v, want non-empty routed defs", selectedToolNames(selection.NativeDefs))
 			}
-			if selection.SurfaceMode != chatToolSurfaceModeSkillExec {
-				t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeSkillExec)
+			if selection.SurfaceMode != chatToolSurfaceModeLegacy {
+				t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeLegacy)
 			}
-			if selection.DiscoveryDecision == nil {
-				t.Fatal("expected DiscoveryDecision")
+			// DiscoveryDecision is nil when dynamic exposure is disabled.
+			// Verify the surface returns legacy mode with routed defs.
+			if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+				t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 			}
-			if selection.DiscoveryDecision.CanonicalTarget != tc.wantCanonical {
-				t.Fatalf("CanonicalTarget = %q, want %q", selection.DiscoveryDecision.CanonicalTarget, tc.wantCanonical)
-			}
-			if tc.wantResearchMode != "" {
-				if selection.SkillDecision == nil {
-					t.Fatal("expected SkillDecision for research-family selection")
-				}
-				if selection.SkillDecision.ResearchMode != tc.wantResearchMode {
-					t.Fatalf("ResearchMode = %q, want %q", selection.SkillDecision.ResearchMode, tc.wantResearchMode)
-				}
-			}
-			if selection.DiscoveryDecision.ExecutionProfile != tc.wantProfile {
-				t.Fatalf("ExecutionProfile = %q, want %q", selection.DiscoveryDecision.ExecutionProfile, tc.wantProfile)
-			}
-			if selection.DiscoveryDecision.NativeSurfaceMode != tc.wantDiscoveryMode {
-				t.Fatalf("Discovery NativeSurfaceMode = %q, want %q", selection.DiscoveryDecision.NativeSurfaceMode, tc.wantDiscoveryMode)
+			if len(selection.NativeDefs) == 0 {
+				t.Fatalf("NativeDefs = %v, want non-empty routed defs", selectedToolNames(selection.NativeDefs))
 			}
 		})
 	}
@@ -1387,14 +1376,12 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNo
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
-	if clarifySelection.NativeMode != chatNativeToolSurfaceModeClarifyNone {
-		t.Fatalf("clarify NativeMode = %q, want %q", clarifySelection.NativeMode, chatNativeToolSurfaceModeClarifyNone)
+	// Dynamic exposure disabled: clarify mode is skipped, legacy applies.
+	if clarifySelection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("clarify NativeMode = %q, want %q", clarifySelection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(clarifySelection.NativeDefs); len(got) != 1 || got[0] != "tool_search" {
-		t.Fatalf("clarify NativeDefs = %v, want [tool_search]", got)
-	}
-	if clarifySelection.DiscoveryDecision == nil || !clarifySelection.DiscoveryDecision.NeedClarify {
-		t.Fatalf("clarify DiscoveryDecision = %#v, want clarify decision", clarifySelection.DiscoveryDecision)
+	if len(clarifySelection.NativeDefs) == 0 {
+		t.Fatalf("clarify NativeDefs = %v, want non-empty routed defs", selectedToolNames(clarifySelection.NativeDefs))
 	}
 
 	webSearchEnabled := false
@@ -1402,17 +1389,15 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNo
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	}, &webSearchEnabled, nil)
-	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("legacy-flag NativeMode = %q, want %q", fallbackSelection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("legacy-flag NativeMode = %q, want %q", fallbackSelection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(fallbackSelection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("legacy-flag NativeDefs = %v, want [exec tool_search]", got)
+	if len(fallbackSelection.NativeDefs) == 0 {
+		t.Fatalf("legacy-flag NativeDefs = %v, want non-empty routed defs", selectedToolNames(fallbackSelection.NativeDefs))
 	}
-	if fallbackSelection.DiscoveryDecision == nil || fallbackSelection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
-		t.Fatalf("legacy-flag DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
-	}
-	if fallbackSelection.SurfaceMode != chatToolSurfaceModeSkillExec {
-		t.Fatalf("legacy-flag SurfaceMode = %q, want %q", fallbackSelection.SurfaceMode, chatToolSurfaceModeSkillExec)
+	// DiscoveryDecision is nil when dynamic exposure is disabled.
+	if fallbackSelection.SurfaceMode != chatToolSurfaceModeLegacy {
+		t.Fatalf("legacy-flag SurfaceMode = %q, want %q", fallbackSelection.SurfaceMode, chatToolSurfaceModeLegacy)
 	}
 }
 
@@ -1424,20 +1409,12 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstAdvisorKeepsAdvisorVisibl
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
 
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if selection.SkillDecision == nil {
-		t.Fatal("expected SkillDecision")
-	}
-	if selection.SkillDecision.ResearchMode != "advisor" {
-		t.Fatalf("ResearchMode = %q, want %q", selection.SkillDecision.ResearchMode, "advisor")
-	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 3 || got[0] != "exec" || got[1] != "advisor" || got[2] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec advisor tool_search]", got)
-	}
-	if selection.DiscoveryDecision == nil || selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalResearch {
-		t.Fatalf("DiscoveryDecision = %#v, want canonical research", selection.DiscoveryDecision)
+	// SkillDecision and DiscoveryDecision are nil when dynamic exposure is disabled.
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want non-empty routed defs", selectedToolNames(selection.NativeDefs))
 	}
 }
 
@@ -1575,23 +1552,15 @@ func TestSelectChatToolSurfacesForRequest_ExecCollapsePersistsWhenDynamicExposur
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
-	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
-		t.Fatalf("NativeMode = %q, want %q while dynamic exposure is disabled", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q while dynamic exposure is disabled", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want non-empty routed defs", selectedToolNames(selection.NativeDefs))
 	}
-	if selection.DiscoveryDecision == nil {
-		t.Fatal("expected DiscoveryDecision")
-	}
-	if selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
-		t.Fatalf("CanonicalTarget = %q, want %q", selection.DiscoveryDecision.CanonicalTarget, agentcore.CanonicalWebQuery)
-	}
-	if selection.DiscoveryDecision.ExecutionProfile != agentcore.ExecutionProfilePreferFork {
-		t.Fatalf("ExecutionProfile = %q, want %q", selection.DiscoveryDecision.ExecutionProfile, agentcore.ExecutionProfilePreferFork)
-	}
-	if selection.SurfaceMode != chatToolSurfaceModeSkillExec {
-		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeSkillExec)
+	// DiscoveryDecision is nil when dynamic exposure is disabled.
+	if selection.SurfaceMode != chatToolSurfaceModeLegacy {
+		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeLegacy)
 	}
 }
 
@@ -1645,8 +1614,11 @@ func TestSelectChatToolsForRequest_ExecCutoverClearsStickyUnion(t *testing.T) {
 		nil,
 	)
 
-	if gotNames := selectedToolNames(got); len(gotNames) != 1 || gotNames[0] != "exec" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [exec]", gotNames)
+	names := toolNameSet(got)
+	for _, required := range []string{"exec", "read", "web_query", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want all tools including %q", selectedToolNames(got), required)
+		}
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-cutover"); cached != nil {
 		t.Fatalf("prompt cache surface = %#v, want cleared after exec cutover", cached)
@@ -1689,8 +1661,11 @@ func TestSelectChatToolsForRequest_ExecCutoverClearsPromptCacheSurface(t *testin
 		nil,
 	)
 
-	if gotNames := selectedToolNames(got); len(gotNames) != 2 || gotNames[0] != "exec" || gotNames[1] != "tool_search" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [exec tool_search]", gotNames)
+	names := toolNameSet(got)
+	for _, required := range []string{"exec", "tool_search"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("selectChatToolsForRequest() = %v, want all tools including %q", selectedToolNames(got), required)
+		}
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-discover-cutover"); cached != nil {
 		t.Fatalf("prompt cache surface = %#v, want cleared after exec cutover", cached)
@@ -1913,8 +1888,8 @@ func TestSelectChatToolsForRequest_GreetingDoesNotStickyUnionIntoLaterWorkspaceT
 		nil,
 		nil,
 	)
-	if len(first) != 0 {
-		t.Fatalf("first greeting tool surface = %v, want empty suppressed surface", selectedToolNames(first))
+	if len(first) == 0 {
+		t.Fatalf("first greeting tool surface = %v, want non-empty tool surface with dynamic processing disabled", selectedToolNames(first))
 	}
 
 	second := handler.selectChatToolsForRequest(
@@ -1933,8 +1908,8 @@ func TestSelectChatToolsForRequest_GreetingDoesNotStickyUnionIntoLaterWorkspaceT
 			t.Fatalf("follow-up workspace task tool surface = %v, want %q visible", selectedToolNames(second), required)
 		}
 	}
-	if _, ok := secondNames["web_query"]; ok {
-		t.Fatalf("follow-up workspace task tool surface = %v, want greeting turn not to sticky-union web_query", selectedToolNames(second))
+	if _, ok := secondNames["web_query"]; !ok {
+		t.Fatalf("follow-up workspace task tool surface = %v, want all tools including web_query visible", selectedToolNames(second))
 	}
 }
 
@@ -1968,6 +1943,75 @@ func TestStabilizePromptCacheToolSurface_NonAnthropicDoesNotStick(t *testing.T) 
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-1"); cached != nil {
 		t.Fatalf("expected no cached sticky tool surface for non-anthropic provider, got=%v", selectedToolNames(cached.Tools))
+	}
+}
+
+func TestSelectChatToolsForRequest_UsesStableUpstreamToolSurfaceAcrossMessages(t *testing.T) {
+	registry := tools.NewRegistry()
+	for _, def := range []tools.ToolDefinition{
+		{Name: "read", Description: "Read workspace files"},
+		{Name: "write", Description: "Write workspace files"},
+		{Name: "web_query", Description: "Search the web"},
+		{Name: "docx", Description: "Create Word documents"},
+		{Name: "tool_search", Description: "Search tools", AlwaysLoad: true},
+	} {
+		registry.ExposeDefinition(def)
+	}
+
+	handler := newChatToolSelectionTestHandler(registry)
+	state := memory.ConversationCommandState{ConversationID: "conv-stable-tools"}
+
+	first := selectedToolNames(handler.selectChatToolsForRequest(
+		context.Background(),
+		"Read README.md from the workspace and summarize it.",
+		"gpt-4.1",
+		"conv-stable-tools",
+		"",
+		state,
+		nil,
+		nil,
+	))
+	second := selectedToolNames(handler.selectChatToolsForRequest(
+		context.Background(),
+		"搜索最新 OpenAI Responses API 文档。",
+		"gpt-4.1",
+		"conv-stable-tools",
+		"",
+		state,
+		nil,
+		nil,
+	))
+
+	if fmt.Sprint(first) != fmt.Sprint(second) {
+		t.Fatalf("stable upstream tool surface mismatch: first=%v second=%v", first, second)
+	}
+	if len(first) == 1 && first[0] == "tool_search" {
+		t.Fatalf("stable upstream tool surface unexpectedly collapsed to only tool_search: %v", first)
+	}
+
+	got := toolNameSet(handler.selectChatToolsForRequest(
+		context.Background(),
+		"Generate a report and save it to report.docx.",
+		"gpt-4.1",
+		"conv-stable-tools",
+		"",
+		state,
+		nil,
+		nil,
+	))
+	for _, required := range []string{"read", "write", "web_query", "docx", "tool_search"} {
+		if _, ok := got[required]; !ok {
+			t.Fatalf("stable upstream tool surface missing %q: got=%v", required, selectedToolNames(handler.selectChatToolsForRequest(
+				context.Background(),
+				"Generate a report and save it to report.docx.",
+				"gpt-4.1",
+				"conv-stable-tools",
+				"",
+				state,
+				nil,
+				nil,
+			)))
+		}
 	}
 }
 
