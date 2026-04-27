@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
@@ -741,6 +742,41 @@ func (h *ChatHandler) persistBestEffortMessageContent(messageID, conversationID,
 		Stats:          stats,
 	}
 	return h.persistAsyncMessage(msg, forceFlush)
+}
+
+// persistToolRoundMessages saves the assistant tool-call message and tool-result
+// messages so conversation history has a complete record of every tool round.
+func (h *ChatHandler) persistToolRoundMessages(convID, model string, assistantMsg llm.Message, toolResults []llm.Message) {
+	if h == nil || h.store == nil || strings.TrimSpace(convID) == "" {
+		return
+	}
+	messages := make([]memory.Message, 0, 1+len(toolResults))
+
+	// Content is intentionally left empty — the streaming code persists the text separately.
+	// We only save this message to carry the tool_calls so the LLM can see which tools were called.
+	m := memory.Message{
+		Role:    "assistant",
+		Content: "",
+		Model:   model,
+	}
+	for _, tc := range assistantMsg.ToolCalls {
+		m.ToolCalls = append(m.ToolCalls, memory.ToolCall{
+			ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments,
+		})
+	}
+	messages = append(messages, m)
+
+	for _, tr := range toolResults {
+		messages = append(messages, memory.Message{
+			Role:       "tool",
+			Content:    tr.Content,
+			ToolCallID: tr.ToolCallID,
+			ToolName:   tr.ToolName,
+			Model:      model,
+		})
+	}
+	logger.Info().Int("tc_count", len(m.ToolCalls)).Int("msg_count", len(messages)).Str("conv_id", convID).Msg("[persist] saving tool round messages")
+	h.persistConversationMessages(convID, true, messages...)
 }
 
 func (h *ChatHandler) updateMessageBestEffort(messageID, conversationID, role, content, provider, model string, stats *memory.MessageStats) {

@@ -23828,6 +23828,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			// Append assistant message (with compacted tool_calls) + tool results to conversation
 			chatReq.Messages = append(chatReq.Messages, compactAssistantToolContextForLLM(resp.Message))
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
+			h.persistToolRoundMessages(convID, chatReq.Model, resp.Message, toolResultsForLLM)
 			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(chatReq.PreviousResponseID, routingMessage, resp.Message.ToolCalls) {
 				promptPolicy := h.resolvePromptPolicy()
 				chatReq.Messages = append(chatReq.Messages,
@@ -24245,7 +24246,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 				cardBlocks := cards.FormatTypeless(msg.ToolCalls, toolResults)
 				if cardBlocks != "" {
-					resp.Message.Content += cardBlocks
+	// Cards via SSE only, not persisted (role:tool saved by persistToolRoundMessages)
 				}
 				break
 			}
@@ -25930,7 +25931,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
 		if cardType, _ := card["type"].(string); strings.EqualFold(strings.TrimSpace(cardType), "search") {
-			fullContent += block
 			typelessCardsPersisted = true
 		}
 		emitSSE(map[string]interface{}{
@@ -25952,7 +25952,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return
 		}
 		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
-		fullContent += block
+		// Cards via SSE only
 		typelessCardsPersisted = true
 		emitSSE(map[string]interface{}{
 			"delta":         block,
@@ -26172,6 +26172,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	pendingInjectionRestartOnChunk := h.hasPendingInjection(convID)
 
 	persistStreamingDraft := func() bool {
+		if strings.TrimSpace(fullContent) == "" {
+			return false
+		}
 		now := timeutil.NowTime()
 		streamingMsgID = h.persistBestEffortMessageContent(streamingMsgID, convID, "assistant", fullContent, "", "", nil, false)
 		if streamingMsgID == "" {
@@ -27739,7 +27742,6 @@ STREAM_LOOP:
 			// so re-opening the conversation shows the exact execution trail.
 			if cardBlocks := cards.FormatTypeless(streamToolCalls, toolResults); cardBlocks != "" {
 				typelessCardsPersisted = true
-				fullContent += cardBlocks
 				emitSSE(map[string]interface{}{
 					"delta":     cardBlocks,
 					"done":      false,
@@ -27806,6 +27808,7 @@ STREAM_LOOP:
 			toolResultsForLLM := compactToolResultsForLLM(streamToolCalls, toolResults)
 			chatReq.Messages = append(chatReq.Messages, assistantMsg)
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
+			h.persistToolRoundMessages(convID, chatReq.Model, assistantMsg, toolResultsForLLM)
 			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(chatReq.PreviousResponseID, routingMessage, streamToolCalls) {
 				promptPolicy := h.resolvePromptPolicy()
 				chatReq.Messages = append(chatReq.Messages,
@@ -28805,8 +28808,7 @@ STREAM_LOOP:
 				}
 				cardBlocks := cards.FormatTypeless(msg.ToolCalls, toolResults)
 				if cardBlocks != "" {
-					fullContent += cardBlocks
-					// Stream the typeless card to client
+					// Stream the typeless card to client via SSE only (not persisted)
 					emitSSE(map[string]interface{}{
 						"delta":     cardBlocks,
 						"done":      false,
@@ -28866,7 +28868,7 @@ STREAM_LOOP:
 						}
 						cardBlocks := cards.FormatTypeless(msg.ToolCalls, toolResults)
 						if cardBlocks != "" {
-							fallbackContent += cardBlocks
+							// cards via SSE only
 						}
 						break
 					}

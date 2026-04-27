@@ -801,7 +801,11 @@ func (s *Store) UpsertMessageContentFullTrusted(ctx context.Context, msg Message
 			return fmt.Errorf("update message content: %w", err)
 		}
 		if rowsAffected == 0 {
-			if _, err := messagesTable.Insert(messageValues(msg, nil, statsJSON, nil, false)); err != nil {
+			var toolCallsJSON []byte
+			if len(msg.ToolCalls) > 0 {
+				toolCallsJSON, _ = json.Marshal(msg.ToolCalls)
+			}
+			if _, err := messagesTable.Insert(messageValues(msg, toolCallsJSON, statsJSON, nil, false)); err != nil {
 				return fmt.Errorf("insert message content: %w", err)
 			}
 		}
