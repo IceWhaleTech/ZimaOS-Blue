@@ -507,6 +507,10 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 		return false
 	}
 
+	// Minimal tool set: always use concise tool guidance.
+	sb.WriteString("<tool_guidance>Use the listed tools. Keep calls sequential.</tool_guidance>")
+	return true
+
 	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use. Do not fake file/tool calls by routing them through shell commands.")
 	sb.WriteString("<routing_guide>Prefer dedicated tools over exec. Prefer native tools over convert or ad hoc Python scripts when they directly cover the action so the runtime can validate, route, and audit the work more precisely.</routing_guide>")
 	sb.WriteString("<parallel_guide>When multiple read-only checks do not depend on each other, batch or parallelize them when the runtime supports it. Keep dependent or state-changing actions sequential.</parallel_guide>")
@@ -705,17 +709,19 @@ func appendPromptSections(sb *strings.Builder, sections []promptSection) {
 }
 
 func (b *SystemPromptBuilder) staticCoreSections() []promptSection {
-	return []promptSection{
+	sections := []promptSection{
 		{Name: "role", Stability: promptSectionStable, Reason: "assistant identity is shared across turns", Content: roleGuidance},
 		{Name: "instruction_priority", Stability: promptSectionStable, Reason: "instruction hierarchy must remain byte-stable", Content: instructionPriorityGuidance},
 		{Name: "grounding", Stability: promptSectionStable, Reason: "grounding policy is global runtime guidance", Content: groundingGuidance},
 		{Name: "expressiveness", Stability: promptSectionStable, Reason: "writing style defaults are shared across turns", Content: expressivenessGuidance},
 		{Name: "safety", Stability: promptSectionStable, Reason: "safety policy must stay in the stable prefix", Content: safetyGuidance},
-		{Name: "tool_style", Stability: promptSectionStable, Reason: "tool narration policy is global guidance", Content: toolCallStyleGuidance},
-		{Name: "web_tools", Stability: promptSectionStable, Reason: "web routing defaults should remain cache-stable", Content: webToolRoutingGuidance},
-		{Name: "blue_core_rules", Stability: promptSectionStable, Reason: "core runtime rules are shared across turns", Content: blueCoreRulesGuidance},
-		{Name: "silent_reply", Stability: promptSectionStable, Reason: "special silent marker contract must stay stable", Content: silentReplyGuidance},
 	}
+	// Minimal tool set: skip verbose tool routing and web guidance.
+	sections = append(sections,
+		promptSection{Name: "blue_core_rules", Stability: promptSectionStable, Reason: "core runtime rules are shared across turns", Content: blueCoreRulesGuidance},
+		promptSection{Name: "silent_reply", Stability: promptSectionStable, Reason: "special silent marker contract must stay stable", Content: silentReplyGuidance},
+	)
+	return sections
 }
 
 func (b *SystemPromptBuilder) staticRuntimeSections() []promptSection {
@@ -851,6 +857,8 @@ func (b *SystemPromptBuilder) buildDefaultLanguageSection() string {
 // Only pinned/important skills are listed explicitly. The LLM is told
 // where to discover additional skills on disk.
 func (b *SystemPromptBuilder) buildSkillsSection() string {
+	// Minimal tool set: skip skills section entirely.
+	return ""
 	b.skillsCacheMu.Lock()
 	defer b.skillsCacheMu.Unlock()
 
