@@ -7596,17 +7596,25 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 		RouteKind:           tools.ToolRouteKindChat,
 		DeepResearchEnabled: deepResearchEnabled,
 	}, webSearchEnabled, deepResearchEnabled)
-	// Dynamic tool processing and intent recognition are disabled.
-	// Always return the complete tool set for every session so upstream
-	// receives identical tools, not a collapsed surface like just tool_search.
-	selectedTools := sortToolDefsByName(h.toolRegistry.Definitions())
+	// Minimal tool set: only 5 essential tools.
+	allowed := map[string]struct{}{
+		"read": {}, "write": {}, "edit": {}, "bash": {}, "web_query": {},
+	}
+	allDefs := h.toolRegistry.Definitions()
+	filtered := make([]tools.ToolDefinition, 0, len(allowed))
+	for _, def := range allDefs {
+		if _, ok := allowed[def.Name]; ok {
+			filtered = append(filtered, def)
+		}
+	}
+	selectedTools := sortToolDefsByName(filtered)
 	h.clearPromptCacheToolSurface(sessionID)
 	logger.Info().
 		Int("tool_count", len(selectedTools)).
 		Strs("tool_names", toolDefinitionNames(selectedTools)).
 		Str("session_id", sessionID).
 		Str("model", model).
-		Msg("[chat] selectChatToolsForRequest returning FULL tool set")
+		Msg("[chat] selectChatToolsForRequest returning MINIMAL tool set")
 	snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
 	logger.Info().
 		Int("routed", snapshot.Routed).
