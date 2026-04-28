@@ -786,6 +786,9 @@ func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL st
 func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provider, apiKey *APIKey) ([]*Model, error) {
 	// Build list of URLs to try.
 	// Different providers use different paths: /models, /v1/models.
+	// Base URL MUST be an API prefix (e.g. https://api.example.com/v1), NOT a
+	// concrete chat endpoint like .../v1/chat/completions. That suffix would end up
+	// producing broken discovery URLs like .../chat/completions/v1/models.
 	// Responses-style relays may store BaseURL as a concrete responses endpoint
 	// (for example /v1/responses); strip that suffix before discovering /models.
 	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
