@@ -11648,9 +11648,6 @@ func buildAutonomousResearchFallbackContent(toolCall llm.ToolCall, toolResult ll
 	if summary == "" {
 		summary = "Tool fallback completed. Please review the structured results below."
 	}
-	if cardBlocks := cards.FormatTypeless([]llm.ToolCall{toolCall}, []llm.Message{toolResult}); cardBlocks != "" && !strings.Contains(summary, "```typeless") {
-		summary += cardBlocks
-	}
 	return strings.TrimSpace(summary)
 }
 
