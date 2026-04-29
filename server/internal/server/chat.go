@@ -17987,8 +17987,8 @@ func sanitizeToolOutput(s string) string {
 }
 
 const (
-	maxLLMToolOutputBytes       = 8 * 1024
-	maxLLMToolOutputsTotalBytes = 12 * 1024
+	maxLLMToolOutputBytes       = 64 * 1024 * 1024 // effectively unlimited for minimal tools
+	maxLLMToolOutputsTotalBytes = 64 * 1024 * 1024
 	minLLMToolOutputBytes       = 320
 	maxLLMToolStdoutBytes       = 1800
 	maxLLMExecReadStdoutBytes   = 6 * 1024

@@ -990,7 +990,7 @@ func truncateToolString(raw string, maxLen int) string {
 	if maxLen <= 0 || len(raw) <= maxLen {
 		return raw
 	}
-	return raw[:maxLen] + "\n[truncated]"
+	return raw[:maxLen] + "\n...[output truncated]"
 }
 
 func normalizeToolRiskLevel(raw string) string {
