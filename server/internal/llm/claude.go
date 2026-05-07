@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const (
@@ -762,115 +761,24 @@ func (p *ClaudeProvider) processSSELine(ctx context.Context, ch chan<- StreamChu
 	return false
 }
 
-// sendTextChunks splits text into small chunks and sends them for typewriter effect.
+// sendTextChunks sends text as a single StreamChunk. The frontend handles typewriter/streaming reveal.
 func (p *ClaudeProvider) sendTextChunks(ctx context.Context, ch chan<- StreamChunk, text string) {
-	// For very short text (1-2 chars), send directly with a small delay
-	runes := []rune(text)
-	if len(runes) <= 2 {
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- StreamChunk{
-			Delta: text,
-			Done:  false,
-		}:
-		}
-		// Small delay for single character chunks (15-25ms)
-		delay := time.Duration(15+timeutil.NowNano()%10) * time.Millisecond
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(delay):
-		}
+	select {
+	case <-ctx.Done():
 		return
-	}
-
-	// Split into small chunks (3-6 characters for better typewriter effect)
-	pos := 0
-
-	for pos < len(runes) {
-		// Random chunk size between 3-6 characters
-		chunkSize := 3 + int(timeutil.NowNano()%4)
-		if pos+chunkSize > len(runes) {
-			chunkSize = len(runes) - pos
-		}
-
-		chunk := string(runes[pos : pos+chunkSize])
-		pos += chunkSize
-
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- StreamChunk{
-			Delta: chunk,
-			Done:  false,
-		}:
-		}
-
-		// Add small delay between chunks for typewriter effect (10-30ms)
-		if pos < len(runes) {
-			delay := time.Duration(10+timeutil.NowNano()%20) * time.Millisecond
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(delay):
-			}
-		}
+	case ch <- StreamChunk{
+		Delta: text,
+		Done:  false,
+	}:
 	}
 }
 
-// sendTextChunksCallback splits text into small chunks and calls callback for typewriter effect.
+// sendTextChunksCallback sends text as a single callback invocation. The frontend handles typewriter/streaming reveal.
 func (p *ClaudeProvider) sendTextChunksCallback(ctx context.Context, text string, callback StreamCallback) error {
-	// For very short text (1-2 chars), send directly with a small delay
-	runes := []rune(text)
-	if len(runes) <= 2 {
-		if err := callback(StreamChunk{
-			Delta: text,
-			Done:  false,
-		}); err != nil {
-			return err
-		}
-		// Small delay for single character chunks (15-25ms)
-		delay := time.Duration(15+timeutil.NowNano()%10) * time.Millisecond
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(delay):
-		}
-		return nil
-	}
-
-	// Split into small chunks (3-6 characters for better typewriter effect)
-	pos := 0
-
-	for pos < len(runes) {
-		// Random chunk size between 3-6 characters
-		chunkSize := 3 + int(timeutil.NowNano()%4)
-		if pos+chunkSize > len(runes) {
-			chunkSize = len(runes) - pos
-		}
-
-		chunk := string(runes[pos : pos+chunkSize])
-		pos += chunkSize
-
-		if err := callback(StreamChunk{
-			Delta: chunk,
-			Done:  false,
-		}); err != nil {
-			return err
-		}
-
-		// Add small delay between chunks for typewriter effect (10-30ms)
-		if pos < len(runes) {
-			delay := time.Duration(10+timeutil.NowNano()%20) * time.Millisecond
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(delay):
-			}
-		}
-	}
-	return nil
+	return callback(StreamChunk{
+		Delta: text,
+		Done:  false,
+	})
 }
 
 // convertRequest converts a ChatRequest to Claude format.
