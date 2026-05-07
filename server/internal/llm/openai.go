@@ -224,6 +224,7 @@ type openAIRequest struct {
 	Tools         []openAITool         `json:"tools,omitempty"`
 	Stream        bool                 `json:"stream,omitempty"`
 	StreamOptions *openAIStreamOptions `json:"stream_options,omitempty"`
+	SessionID     string               `json:"session_id,omitempty"`
 }
 
 // openAIStreamOptions represents streaming options for OpenAI API.
@@ -845,6 +846,7 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 		Stream:      req.Stream,
+		SessionID:   req.SessionID,
 	}
 
 	// Request usage data in streaming mode

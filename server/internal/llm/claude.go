@@ -136,6 +136,7 @@ type claudeRequest struct {
 	Temperature float64         `json:"temperature,omitempty"`
 	Tools       []claudeTool    `json:"tools,omitempty"`
 	Stream      bool            `json:"stream,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
 }
 
 type claudeMessage struct {
@@ -865,6 +866,7 @@ func (p *ClaudeProvider) convertRequest(req ChatRequest) claudeRequest {
 		MaxTokens:   maxTokens,
 		Temperature: req.Temperature,
 		Stream:      req.Stream,
+		SessionID:   req.SessionID,
 	}
 
 	if len(req.Tools) > 0 {

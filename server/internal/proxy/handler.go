@@ -2241,6 +2241,10 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(finalPath); ok {
 		effectiveFormat = endpointFormat
 	}
+	if sessionID := SessionIDFromContext(r.Context()); sessionID != "" {
+		body, _ = sjson.SetBytes(body, "session_id", sessionID)
+	}
+
 	upstreamURL.RawQuery = r.URL.RawQuery
 
 	fullURL := upstreamURL.String()
