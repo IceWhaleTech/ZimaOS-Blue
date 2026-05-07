@@ -433,10 +433,47 @@ func (s *SQLiteStore) initSchema() error {
 	);
 
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_latency_samples_model_type ON latency_samples(model, sample_type);
+
+	-- Turn-level metrics for dev dashboard and replay
+	CREATE TABLE IF NOT EXISTS turn_metrics (
+		id              TEXT PRIMARY KEY,
+		conversation_id TEXT NOT NULL,
+		user_id         TEXT NOT NULL DEFAULT '',
+		turn_id         TEXT NOT NULL,
+		model           TEXT NOT NULL DEFAULT '',
+		status          TEXT NOT NULL DEFAULT 'success',
+		latency_ms      REAL NOT NULL DEFAULT 0,
+		llm_latency_ms  REAL NOT NULL DEFAULT 0,
+		ttft_ms         REAL NOT NULL DEFAULT 0,
+		input_tokens    INTEGER NOT NULL DEFAULT 0,
+		output_tokens   INTEGER NOT NULL DEFAULT 0,
+		cache_read      INTEGER NOT NULL DEFAULT 0,
+		cache_write     INTEGER NOT NULL DEFAULT 0,
+		cost_usd        REAL NOT NULL DEFAULT 0,
+		tool_calls      TEXT NOT NULL DEFAULT '[]',
+		tool_count      INTEGER NOT NULL DEFAULT 0,
+		tool_latency_ms REAL NOT NULL DEFAULT 0,
+		llm_request     TEXT NOT NULL DEFAULT '',
+		llm_response    TEXT NOT NULL DEFAULT '',
+		error_type      TEXT NOT NULL DEFAULT '',
+		created_at      TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_turn_metrics_conv ON turn_metrics(conversation_id, created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_turn_metrics_turn ON turn_metrics(turn_id);
+	CREATE INDEX IF NOT EXISTS idx_turn_metrics_created ON turn_metrics(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_turn_metrics_user ON turn_metrics(user_id, created_at DESC);
 	`
 
 	_, err := s.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migrations for existing databases
+	s.db.Exec("ALTER TABLE turn_metrics ADD COLUMN ttft_ms REAL NOT NULL DEFAULT 0")
+
+	return nil
 }
 
 // Write writes a single point to the store.

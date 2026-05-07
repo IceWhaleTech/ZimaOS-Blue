@@ -36,4 +36,13 @@ func registerRouteRuntimeMetricsSurface(options routeRuntimeContractPlatformSurf
 		options.metricsWriter,
 		options.metricsTarget,
 	)
+
+	// Register dev dashboard routes when dev mode is enabled (no auth required)
+	if options.appConfig != nil && options.appConfig.DevMode && options.metricsWriter != nil {
+		devHandler := metrics.NewDevHandler(options.metricsWriter, true)
+		if options.v1 != nil {
+			devGroup := options.v1.Group("/dev")
+			devHandler.RegisterRoutes(devGroup)
+		}
+	}
 }

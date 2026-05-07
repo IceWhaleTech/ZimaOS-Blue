@@ -548,6 +548,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
+    path: '/dev',
+    name: 'DevDashboard',
+    component: () => import('@/views/DevDashboardView.vue'),
+    meta: {},
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),

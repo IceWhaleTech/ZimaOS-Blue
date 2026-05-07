@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"sync"
@@ -577,6 +578,11 @@ func (w *MetricsWriter) GetTokenUsage() *TokenUsage {
 	return w.tokenTracker.GetTokenUsage()
 }
 
+// CalculateCost returns the USD cost for the given token usage and model.
+func (w *MetricsWriter) CalculateCost(model string, inputTokens, outputTokens, cacheRead, cacheWrite int64) float64 {
+	return w.tokenTracker.CalculateCost(model, inputTokens, outputTokens, cacheRead, cacheWrite)
+}
+
 // GetLatencyStats returns current latency statistics.
 func (w *MetricsWriter) GetLatencyStats() *LatencyStats {
 	return w.latencyTracker.GetLatencyStats()
@@ -690,4 +696,70 @@ func (w *MetricsWriter) ensureSystemMonitorForAccess() *SystemMonitor {
 	}
 	w.startSystemMetricsLoopIfNeeded()
 	return monitor
+}
+
+// ToolCallSummary captures per-tool-call data for turn-level metrics.
+type ToolCallSummary struct {
+	Name       string  `json:"name"`
+	ToolCallID string  `json:"tool_call_id"`
+	LatencyMs  float64 `json:"latency_ms"`
+	Success    bool    `json:"success"`
+}
+
+// TurnMetrics represents a single user turn (message → LLM → tools → response).
+type TurnMetrics struct {
+	ID             string           `json:"id"`
+	ConversationID string           `json:"conversation_id"`
+	UserID         string           `json:"user_id"`
+	TurnID         string           `json:"turn_id"`
+	Model          string           `json:"model"`
+	Status         string           `json:"status"`
+	LatencyMs      float64          `json:"latency_ms"`
+	LLMLatencyMs   float64          `json:"llm_latency_ms"`
+	TTFTMs         float64          `json:"ttft_ms"`
+	InputTokens    int64            `json:"input_tokens"`
+	OutputTokens   int64            `json:"output_tokens"`
+	CacheRead      int64            `json:"cache_read"`
+	CacheWrite     int64            `json:"cache_write"`
+	CostUSD        float64          `json:"cost_usd"`
+	ToolCalls      []ToolCallSummary `json:"tool_calls"`
+	ToolCount      int              `json:"tool_count"`
+	ToolLatencyMs  float64          `json:"tool_latency_ms"`
+	LLMRequest     string           `json:"llm_request"`
+	LLMResponse    string           `json:"llm_response"`
+	ErrorType      string           `json:"error_type"`
+	CreatedAt      time.Time        `json:"created_at"`
+}
+
+// RecordTurn persists a turn-level metrics record for the dev dashboard.
+func (w *MetricsWriter) RecordTurn(ctx context.Context, t TurnMetrics) error {
+	if w.sqliteStore == nil {
+		return nil
+	}
+	w.sqliteStore.mu.Lock()
+	defer w.sqliteStore.mu.Unlock()
+
+	toolCallsJSON, _ := json.Marshal(t.ToolCalls)
+	status := t.Status
+	if status == "" {
+		status = "success"
+	}
+	createdAt := t.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+
+	_, err := w.sqliteStore.db.ExecContext(ctx, `
+		INSERT OR REPLACE INTO turn_metrics
+		(id, conversation_id, user_id, turn_id, model, status,
+		 latency_ms, llm_latency_ms, ttft_ms, input_tokens, output_tokens, cache_read, cache_write,
+		 cost_usd, tool_calls, tool_count, tool_latency_ms,
+		 llm_request, llm_response, error_type, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.ConversationID, t.UserID, t.TurnID, t.Model, status,
+		t.LatencyMs, t.LLMLatencyMs, t.TTFTMs, t.InputTokens, t.OutputTokens, t.CacheRead, t.CacheWrite,
+		t.CostUSD, string(toolCallsJSON), t.ToolCount, t.ToolLatencyMs,
+		t.LLMRequest, t.LLMResponse, t.ErrorType, createdAt.Format(time.RFC3339Nano),
+	)
+	return err
 }

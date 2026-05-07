@@ -68,6 +68,7 @@ type Message struct {
 	Model          string              `json:"model,omitempty"`
 	Stats          *MessageStats       `json:"stats,omitempty"`
 	Attachments    []MessageAttachment `json:"attachments,omitempty"`
+	TurnID         string              `json:"turn_id,omitempty"`
 	CreatedAt      time.Time           `json:"created_at"`
 }
 
@@ -180,6 +181,7 @@ func (s *Store) migrate() error {
 		stats TEXT,
 		attachments TEXT,
 		has_attachments BOOLEAN NOT NULL DEFAULT 0,
+		turn_id TEXT,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
@@ -260,6 +262,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE conversation_command_state ADD COLUMN last_good_model_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE conversation_command_state ADD COLUMN last_good_native_surface_mode TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE conversation_command_state ADD COLUMN agentcore_runner_ref TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE messages ADD COLUMN turn_id TEXT",
 	}
 
 	for _, migration := range migrations {

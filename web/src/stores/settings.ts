@@ -183,7 +183,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? DEFAULT_MAX_TOKENS)
   const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'minimize')
-  const showToolDetails = ref(stored.showToolDetails ?? false)
+  const showToolDetails = ref(stored.showToolDetails ?? true)
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)

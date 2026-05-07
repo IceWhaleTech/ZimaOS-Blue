@@ -75,6 +75,9 @@ const UserTaskProjectionDock = defineAsyncComponent(
 const DeepResearchTaskDock = defineAsyncComponent(
   () => import('@/components/DeepResearchTaskDock.vue')
 )
+const TurnDetailPanel = defineAsyncComponent(
+  () => import('@/components/TurnDetailPanel.vue')
+)
 
 const { t, te, locale } = useI18n()
 const route = useRoute()
@@ -192,6 +195,39 @@ const showTopbarMenu = ref(false)
 type MobileFeatureSheetKind = 'deep-research' | 'smart-resume'
 const activeMobileFeatureSheet = ref<MobileFeatureSheetKind | null>(null)
 const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
+
+// Turn detail panel state
+const showTurnDetail = ref(false)
+const selectedTurnId = ref<string | null>(null)
+const selectedMessageId = ref<string | null>(null)
+
+function handleSelectMessageForDetail(message: ChatMessageRecord) {
+  // Only show panel for assistant messages with a turn_id or model info
+  if (message.role !== 'assistant') return
+  // Look up turn_id from metadata (set during SSE streaming, survives fetchMessages)
+  const meta = chatStore.getMessageMetadata(message.id)
+  const turnId = (message as any).turn_id || meta?.turn_id || null
+  if (!turnId) return
+  selectedTurnId.value = turnId
+  selectedMessageId.value = message.id
+  showTurnDetail.value = true
+}
+
+function handleCloseTurnDetail() {
+  showTurnDetail.value = false
+}
+
+function handleForkFromTurn(messageId: string) {
+  if (!chatStore.currentConversationId) return
+  chatStore.forkConversation(chatStore.currentConversationId, messageId)
+  showTurnDetail.value = false
+}
+
+function handleRewindToTurn(messageId: string) {
+  if (!chatStore.currentConversationId) return
+  chatStore.rewindConversation(chatStore.currentConversationId, messageId)
+  showTurnDetail.value = false
+}
 
 const presetQuestionDraft = ref('')
 const presetQuestionContextText = computed(() => {
@@ -4771,6 +4807,7 @@ onUnmounted(() => {
                       :ref="bindVirtualItemHeight(message, updateHeight)"
                       :data-message-id="message.id"
                       :class="messageShellClasses(message)"
+                      @click="handleSelectMessageForDetail(message)"
                     >
                       <ChatMessage
                         v-memo="messageMemoDeps(message)"
@@ -4794,6 +4831,7 @@ onUnmounted(() => {
                     v-memo="messageMemoDeps(message)"
                     :data-message-id="message.id"
                     :class="messageShellClasses(message)"
+                    @click="handleSelectMessageForDetail(message)"
                   >
                     <ChatMessage
                       :message="message"
@@ -5776,6 +5814,16 @@ onUnmounted(() => {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Turn Detail Panel (right-side sliding panel) -->
+    <TurnDetailPanel
+      :visible="showTurnDetail"
+      :turn-id="selectedTurnId"
+      :message-id="selectedMessageId"
+      @close="handleCloseTurnDetail"
+      @fork="handleForkFromTurn"
+      @rewind="handleRewindToTurn"
+    />
   </div>
 </template>
 

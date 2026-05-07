@@ -108,6 +108,7 @@ type messageRow struct {
 	Stats             *string `json:"stats" zorm:"stats"`
 	LegacyAttachments *string `json:"attachments" zorm:"attachments"`
 	HasAttachments    bool    `json:"has_attachments" zorm:"has_attachments"`
+	TurnID            *string `json:"turn_id" zorm:"turn_id"`
 	CreatedAt         string  `json:"created_at" zorm:"created_at"`
 }
 
@@ -221,6 +222,7 @@ func messageValues(msg Message, toolCallsJSON, statsJSON, attachmentsJSON []byte
 		"stats":           jsonTextValue(statsJSON),
 		"attachments":     jsonTextValue(attachmentsJSON),
 		"has_attachments": hasAttachments,
+		"turn_id":         msg.TurnID,
 		"created_at":      formatStoreTime(msg.CreatedAt),
 	}
 }
@@ -270,6 +272,9 @@ func rowToScannedMessage(row messageRow) (scannedMessage, error) {
 	}
 	if row.Model != nil {
 		msg.Model = *row.Model
+	}
+	if row.TurnID != nil {
+		msg.TurnID = *row.TurnID
 	}
 	if row.Stats != nil && strings.TrimSpace(*row.Stats) != "" {
 		var stats MessageStats

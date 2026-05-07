@@ -13,6 +13,7 @@ type RuntimeEventObserver interface {
 
 type ToolRuntimeEvent struct {
 	RunID          string                 `json:"run_id,omitempty"`
+	TurnID         string                 `json:"turn_id,omitempty"`
 	StepIndex      int                    `json:"step_index,omitempty"`
 	ToolCallID     string                 `json:"tool_call_id,omitempty"`
 	ToolName       string                 `json:"tool_name"`

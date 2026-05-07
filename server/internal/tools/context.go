@@ -32,6 +32,8 @@ const (
 	artifactEmitKey toolContextKey = "tool_artifact_emit"
 	eventEmitKey    toolContextKey = "tool_event_emit"
 	artifactRootKey toolContextKey = "tool_artifact_root"
+	turnIDKey       toolContextKey = "tool_turn_id"
+	turnToolsKey    toolContextKey = "tool_turn_tools"
 )
 
 type BrowserLaunchMode string
@@ -405,6 +407,50 @@ func GetAutoConfirm(ctx context.Context) bool {
 		return v
 	}
 	return false
+}
+
+// WithTurnID returns a context carrying the turn trace ID for metrics and replay.
+func WithTurnID(ctx context.Context, turnID string) context.Context {
+	return context.WithValue(ctx, turnIDKey, turnID)
+}
+
+// GetTurnID extracts the turn trace ID from the context.
+func GetTurnID(ctx context.Context) string {
+	if v, ok := ctx.Value(turnIDKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// TurnToolSummary captures per-tool-call data for turn-level metrics.
+type TurnToolSummary struct {
+	Name       string  `json:"name"`
+	ToolCallID string  `json:"tool_call_id"`
+	LatencyMs  float64 `json:"latency_ms"`
+	Success    bool    `json:"success"`
+}
+
+// WithTurnToolCollector returns a context carrying a tool call collector for turn metrics.
+func WithTurnToolCollector(ctx context.Context) context.Context {
+	collector := make([]TurnToolSummary, 0, 8)
+	return context.WithValue(ctx, turnToolsKey, &collector)
+}
+
+// AppendTurnTool records a tool call summary into the turn collector.
+func AppendTurnTool(ctx context.Context, summary TurnToolSummary) {
+	if collector, ok := ctx.Value(turnToolsKey).(*[]TurnToolSummary); ok && collector != nil {
+		*collector = append(*collector, summary)
+	}
+}
+
+// GetTurnToolSummaries returns the collected tool summaries for the current turn.
+func GetTurnToolSummaries(ctx context.Context) []TurnToolSummary {
+	if collector, ok := ctx.Value(turnToolsKey).(*[]TurnToolSummary); ok && collector != nil {
+		out := make([]TurnToolSummary, len(*collector))
+		copy(out, *collector)
+		return out
+	}
+	return nil
 }
 
 // WithFSScope returns a context carrying additional filesystem roots and aliases

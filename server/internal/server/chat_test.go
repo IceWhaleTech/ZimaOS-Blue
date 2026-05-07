@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
@@ -11507,6 +11508,14 @@ func (m *MockMetricsRecorder) RecordSpeed(model string, tokensPerSecond, ttftMs,
 		TTFTMs:          ttftMs,
 		DecodeSpeed:     decodeSpeed,
 	})
+}
+
+func (m *MockMetricsRecorder) RecordTurn(ctx context.Context, t metrics.TurnMetrics) error {
+	return nil
+}
+
+func (m *MockMetricsRecorder) CalculateCost(model string, inputTokens, outputTokens, cacheRead, cacheWrite int64) float64 {
+	return 0
 }
 
 // Test SetMetricsRecorder

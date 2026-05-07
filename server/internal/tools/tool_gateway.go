@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -89,6 +90,7 @@ type ToolGatewayResult struct {
 	AuditContent          string                `json:"audit_content,omitempty"`
 	Approval              *ToolApprovalEnvelope `json:"approval,omitempty"`
 	GroundingEvidenceRefs []string              `json:"grounding_evidence_refs,omitempty"`
+	ToolDurationMs        float64               `json:"tool_duration_ms,omitempty"`
 }
 
 // ToolGateway centralizes tool validation, approval, execution, and output shaping.
@@ -231,6 +233,7 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 	capabilityKind := inferToolTraceCapabilityKind(resolvedName, args)
 	toolEvent := ToolRuntimeEvent{
 		RunID:          GetRunID(ctx),
+		TurnID:         GetTurnID(ctx),
 		StepIndex:      GetRunStep(ctx),
 		ToolCallID:     strings.TrimSpace(req.ToolCallID),
 		ToolName:       resolvedName,
@@ -318,7 +321,10 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 		}
 	}
 
+	toolStart := time.Now()
 	rawResult, execErr := g.executor.Execute(ctx, resolvedName, args)
+	toolDuration := time.Since(toolStart)
+	result.ToolDurationMs = float64(toolDuration.Milliseconds())
 	normalizedResult := normalizeGatewayToolResult(rawResult)
 	if execErr != nil {
 		execToolErr := normalizeToolExecutionError(resolvedName, execErr)

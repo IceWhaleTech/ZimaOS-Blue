@@ -38,6 +38,7 @@ export interface Message {
   provider?: string
   model?: string
   stats?: MessageStats
+  turn_id?: string
   // Attachments for user messages (for display purposes)
   attachments?: MessageAttachment[]
 }
@@ -152,6 +153,7 @@ export interface StreamChunk {
   awaiting_user_input?: boolean
   provider?: string
   model?: string
+  turn_id?: string
   // Tool execution status (sent when backend starts executing tool calls)
   tool_executing?: boolean
   tool_calls?: number
@@ -233,6 +235,18 @@ export const conversationApi = {
 
   patchCommandState: (id: string, patch: ConversationCommandStatePatch) =>
     api.patch<ConversationCommandState>(`/conversations/${id}/command-state`, patch),
+
+  fork: (id: string, messageId: string) =>
+    api.post<{ new_conversation_id: string; title: string; message_count: number }>(
+      `/conversations/${id}/fork`,
+      { message_id: messageId },
+    ),
+
+  rewind: (id: string, messageId: string) =>
+    api.post<{ remaining_messages: number; deleted_messages: number }>(
+      `/conversations/${id}/rewind`,
+      { message_id: messageId },
+    ),
 }
 
 // Message API

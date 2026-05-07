@@ -769,9 +769,9 @@ function resolveProcessTraceStatusLabel(item: ProcessTraceItem): string {
   }
 }
 
-// Store for message metadata (provider, model, stats) - keyed by message ID
+// Store for message metadata (provider, model, stats, turn_id) - keyed by message ID
 const messageMetadata = ref<
-  Map<string, { provider?: string; model?: string; stats?: MessageStats }>
+  Map<string, { provider?: string; model?: string; stats?: MessageStats; turn_id?: string }>
 >(new Map())
 
 export type StreamUIPhase =
@@ -3514,6 +3514,33 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function forkConversation(conversationId: string, messageId: string) {
+    try {
+      const res = await conversationApi.fork(conversationId, messageId)
+      const newId = res.data.new_conversation_id
+      // Refresh conversation list to show the new fork
+      await fetchConversations()
+      // Select the new forked conversation
+      await selectConversation(newId)
+      return newId
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fork conversation'
+      throw e
+    }
+  }
+
+  async function rewindConversation(conversationId: string, messageId: string) {
+    try {
+      const res = await conversationApi.rewind(conversationId, messageId)
+      // Refresh messages to reflect the rewound state
+      await fetchMessages(conversationId)
+      return res.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to rewind conversation'
+      throw e
+    }
+  }
+
   async function selectConversation(id: string) {
     if (currentConversationId.value === id) return
 
@@ -3647,6 +3674,19 @@ export const useChatStore = defineStore('chat', () => {
               model: fetchedMessages[index].model || meta.model,
               stats: fetchedMessages[index].stats || meta.stats,
             }
+          }
+        })
+        // Preserve runtime-only local_process_tool_results across fetch
+        const savedToolResults = new Map<string, any[]>()
+        messages.value.forEach((msg: any) => {
+          if (msg.local_process_tool_results?.length) {
+            savedToolResults.set(msg.id, msg.local_process_tool_results)
+          }
+        })
+        fetchedMessages.forEach((msg: any) => {
+          const saved = savedToolResults.get(msg.id)
+          if (saved?.length && !msg.local_process_tool_results?.length) {
+            msg.local_process_tool_results = saved
           }
         })
         messages.value = fetchedMessages
@@ -4136,13 +4176,14 @@ export const useChatStore = defineStore('chat', () => {
           const shouldReconcile = finalizedLocally
             ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
             : false
-          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats || finalChunk.turn_id)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
             if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
               lastMsg.stats = finalChunk.stats
+              lastMsg.turn_id = finalChunk.turn_id
               triggerRef(messages)
             }
             const msgId = finalChunk.message_id?.trim() || lastMsg?.id
@@ -4151,6 +4192,7 @@ export const useChatStore = defineStore('chat', () => {
                 provider: finalChunk.provider,
                 model: finalChunk.model,
                 stats: finalChunk.stats,
+                turn_id: finalChunk.turn_id,
               })
             }
           }
@@ -4525,13 +4567,14 @@ export const useChatStore = defineStore('chat', () => {
           const shouldReconcile = finalizedLocally
             ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
             : false
-          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats || finalChunk.turn_id)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
             if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
               lastMsg.stats = finalChunk.stats
+              lastMsg.turn_id = finalChunk.turn_id
               triggerRef(messages)
             }
           }
@@ -4760,7 +4803,7 @@ export const useChatStore = defineStore('chat', () => {
           const shouldReconcile = finalizedLocally
             ? shouldReconcileAfterFinalChunk(beforeFinalizeContent, finalChunk)
             : false
-          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats || finalChunk.turn_id)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
             if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
@@ -4768,6 +4811,7 @@ export const useChatStore = defineStore('chat', () => {
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
               lastMsg.stats = finalChunk.stats
+              lastMsg.turn_id = finalChunk.turn_id
               triggerRef(messages)
             }
           }
@@ -5531,6 +5575,8 @@ export const useChatStore = defineStore('chat', () => {
     deleteConversation,
     pinConversation,
     unpinConversation,
+    forkConversation,
+    rewindConversation,
     selectConversation,
     fetchMessages,
     loadMoreMessages,

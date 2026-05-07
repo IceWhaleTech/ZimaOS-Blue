@@ -35,6 +35,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
@@ -12683,10 +12684,58 @@ type MetricsRecorder interface {
 	RecordAPICall(model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string)
 	RecordAPICallForUser(userID, model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string)
 	RecordSpeed(model string, tokensPerSecond, ttftMs, decodeSpeed float64)
+	RecordTurn(ctx context.Context, t metrics.TurnMetrics) error
+	CalculateCost(model string, inputTokens, outputTokens, cacheRead, cacheWrite int64) float64
 }
 
 type runtimeCounterRecorder interface {
 	RecordCounter(name string, value int64, tags map[string]string)
+}
+
+func convertToolSummaries(summaries []tools.TurnToolSummary) []metrics.ToolCallSummary {
+	if len(summaries) == 0 {
+		return nil
+	}
+	out := make([]metrics.ToolCallSummary, len(summaries))
+	for i, s := range summaries {
+		out[i] = metrics.ToolCallSummary{
+			Name:       s.Name,
+			ToolCallID: s.ToolCallID,
+			LatencyMs:  s.LatencyMs,
+			Success:    s.Success,
+		}
+	}
+	return out
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// normalizeJSONString round-trips a JSON string through unmarshal/marshal to
+// decode literal escape sequences like &, \n, \" etc. that some providers
+// emit in tool call arguments. Returns the original string on failure.
+func normalizeJSONString(s string) string {
+	if s == "" {
+		return s
+	}
+	var decoded string
+	if err := json.Unmarshal([]byte(s), &decoded); err != nil {
+		return s
+	}
+	b, err := json.Marshal(decoded)
+	if err != nil {
+		return s
+	}
+	// Strip surrounding quotes that json.Marshal adds
+	out := string(b)
+	if len(out) >= 2 && out[0] == '"' && out[len(out)-1] == '"' {
+		out = out[1 : len(out)-1]
+	}
+	return out
 }
 
 func newConfiguredChatToolGateway(registry *tools.Registry, executor *tools.Executor, recorder MetricsRecorder, audit *tools.ToolSurfaceAuditState) *tools.ToolGateway {
@@ -17801,6 +17850,12 @@ func (h *ChatHandler) executeToolCallsWithAudit(ctx context.Context, toolCalls [
 			if gatewayResult != nil {
 				content = gatewayResult.CompactLLMContent
 				auditPayload = gatewayResult.AuditContent
+				tools.AppendTurnTool(ctx, tools.TurnToolSummary{
+					Name:       tc.Name,
+					ToolCallID: tc.ID,
+					LatencyMs:  gatewayResult.ToolDurationMs,
+					Success:    err == nil,
+				})
 			}
 			if err != nil {
 				logger.Error().Err(err).Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] tool call failed")
@@ -24541,6 +24596,73 @@ func (h *ChatHandler) DeleteMessages(c echo.Context) error {
 	})
 }
 
+type ForkConversationRequest struct {
+	MessageID string `json:"message_id"`
+}
+
+// ForkConversation creates a new conversation with all messages up to the given message.
+func (h *ChatHandler) ForkConversation(c echo.Context) error {
+	convID := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
+
+	var req ForkConversationRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if req.MessageID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "message_id is required")
+	}
+
+	result, err := h.store.ForkConversation(c.Request().Context(), convID, req.MessageID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+type RewindConversationRequest struct {
+	MessageID string `json:"message_id"`
+}
+
+// RewindConversation deletes all messages after the given message.
+func (h *ChatHandler) RewindConversation(c echo.Context) error {
+	convID := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
+
+	var req RewindConversationRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if req.MessageID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "message_id is required")
+	}
+
+	result, err := h.store.RewindConversation(c.Request().Context(), convID, req.MessageID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	// Invalidate caches after rewind
+	h.clearWarmupToken(convID)
+	h.cancelProviderWarmup(convID, "messages_deleted")
+	h.clearPreviousResponseID(convID)
+	h.invalidateWarmup(convID)
+	h.conversationCache.Invalidate(convID)
+	h.clearPromptCacheToolSurface(convID)
+	h.summaryCache.Del(convID)
+
+	return c.JSON(http.StatusOK, result)
+}
+
 // RegisterChatRoutes registers chat-related routes.
 func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	chatBodyLimit := chatRequestBodyLimitMiddleware()
@@ -24571,6 +24693,8 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/streams/active", h.ListActiveStreams)
 	g.POST("/streams/cancel-all", h.CancelAllStreams)
 	g.POST("/conversations/:id/messages/:msgid/card-action", h.HandleCardAction)
+	g.POST("/conversations/:id/fork", h.ForkConversation)
+	g.POST("/conversations/:id/rewind", h.RewindConversation)
 }
 
 func chatRequestBodyLimitMiddleware() echo.MiddlewareFunc {
@@ -25573,6 +25697,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// client disconnects (e.g. user switches page). Explicit cancel still works
 	// via streamController.Cancel(streamID).
 	streamID := uuid.New().String()
+	turnID := uuid.New().String()
 	ctx, cancel := context.WithCancel(context.WithoutCancel(c.Request().Context()))
 	h.streamController.Register(streamID, cancel)
 	defer h.streamController.Unregister(streamID)
@@ -25612,6 +25737,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	ctx = tools.WithUserID(ctx, streamUserID)
 	ctx = tools.WithChannel(ctx, "web")
 	ctx = tools.WithSessionID(ctx, convID)
+	ctx = tools.WithTurnID(ctx, turnID)
+	ctx = tools.WithTurnToolCollector(ctx)
 	ctx = tools.WithImageInputs(ctx, toolImageInputsFromRequestAttachments(req.Attachments))
 	streamBaseCtx := ctx
 	buildStreamCtxForBudgetAttempt := func(attempt *preparedBudgetAttempt) context.Context {
@@ -26181,7 +26308,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return false
 		}
 		now := timeutil.NowTime()
-		streamingMsgID = h.persistBestEffortMessageContent(streamingMsgID, convID, "assistant", fullContent, "", "", nil, false)
+		streamingMsgID = h.persistBestEffortMessageContent(streamingMsgID, convID, "assistant", fullContent, "", "", nil, false, turnID)
 		if streamingMsgID == "" {
 			logger.Warn().Str("conv_id", convID).Msg("[chat] failed to persist streaming draft")
 			return false
@@ -26826,7 +26953,114 @@ STREAM_LOOP:
 				// Record successful completion metrics
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				if h.metricsRecorder != nil {
-					h.metricsRecorder.RecordAPICallForUser(userID, model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "")
+					h.metricsRecorder.RecordAPICallForUser(userID, model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), int64(totalCacheReadInputTokens), int64(totalCacheCreationInputTokens), "")
+
+					// Record turn-level metrics for dev dashboard
+					toolSummaries := tools.GetTurnToolSummaries(toolCtx)
+					var totalToolLatencyMs float64
+					for _, ts := range toolSummaries {
+						totalToolLatencyMs += ts.LatencyMs
+					}
+
+					// Build enriched llm_request JSON
+					msgs := make([]map[string]interface{}, 0, len(chatReq.Messages))
+					for _, m := range chatReq.Messages {
+						msg := map[string]interface{}{
+							"role":    string(m.Role),
+							"content": m.Content,
+						}
+						if len(m.ToolCalls) > 0 {
+							tcs := make([]map[string]interface{}, 0, len(m.ToolCalls))
+							for _, tc := range m.ToolCalls {
+								tcs = append(tcs, map[string]interface{}{
+									"id":   tc.ID,
+									"name": tc.Name,
+									"args": normalizeJSONString(tc.Arguments),
+								})
+							}
+							msg["tool_calls"] = tcs
+						}
+						if m.ToolCallID != "" {
+							msg["tool_call_id"] = m.ToolCallID
+						}
+						if m.ToolName != "" {
+							msg["name"] = m.ToolName
+						}
+						msgs = append(msgs, msg)
+					}
+					toolDefs := make([]map[string]interface{}, 0, len(chatReq.Tools))
+					for _, t := range chatReq.Tools {
+						td := map[string]interface{}{
+							"name":        t.Name,
+							"description": t.Description,
+						}
+						if t.Parameters != nil {
+							td["input_schema"] = t.Parameters
+						}
+						toolDefs = append(toolDefs, td)
+					}
+					llmReqJSON, _ := json.Marshal(map[string]interface{}{
+						"model":       model,
+						"messages":    msgs,
+						"tools":       toolDefs,
+						"temperature": chatReq.Temperature,
+						"max_tokens":  chatReq.MaxTokens,
+						"stream":      true,
+					})
+
+					// Build llm_response JSON
+					llmRespJSON := ""
+					if fullContent != "" || len(streamToolCalls) > 0 {
+						respObj := map[string]interface{}{
+							"content": fullContent,
+						}
+						if len(streamToolCalls) > 0 {
+							respToolCalls := make([]map[string]interface{}, 0, len(streamToolCalls))
+							for _, tc := range streamToolCalls {
+								respToolCalls = append(respToolCalls, map[string]interface{}{
+									"id":   tc.ID,
+									"name": tc.Name,
+									"args": normalizeJSONString(tc.Arguments),
+								})
+							}
+							respObj["tool_calls"] = respToolCalls
+						}
+						respBytes, _ := json.Marshal(respObj)
+						llmRespJSON = string(respBytes)
+					}
+
+					// Calculate cost
+					costUSD := h.metricsRecorder.CalculateCost(model, int64(totalInputTokens), int64(totalOutputTokens), int64(totalCacheReadInputTokens), int64(totalCacheCreationInputTokens))
+
+					// TTFT
+					var ttftMs float64
+					if !firstChunkTime.IsZero() {
+						ttftMs = float64(firstChunkTime.Sub(startTime).Milliseconds())
+					}
+
+					h.metricsRecorder.RecordTurn(toolCtx, metrics.TurnMetrics{
+						ID:             turnID,
+						ConversationID: convID,
+						UserID:         userID,
+						TurnID:         turnID,
+						Model:          model,
+						Status:         "success",
+						LatencyMs:      latencyMs,
+						LLMLatencyMs:   latencyMs,
+						TTFTMs:         ttftMs,
+						InputTokens:    int64(totalInputTokens),
+						OutputTokens:   int64(totalOutputTokens),
+						CacheRead:      int64(totalCacheReadInputTokens),
+						CacheWrite:     int64(totalCacheCreationInputTokens),
+						CostUSD:        costUSD,
+						ToolCalls:      convertToolSummaries(toolSummaries),
+						ToolCount:      len(toolSummaries),
+						ToolLatencyMs:  totalToolLatencyMs,
+						LLMRequest:     string(llmReqJSON),
+						LLMResponse:    llmRespJSON,
+						ErrorType:      "",
+						CreatedAt:      time.Now(),
+					})
 					// Record speed metrics
 					if !firstChunkTime.IsZero() && totalOutputTokens > 0 {
 						ttftMs := float64(firstChunkTime.Sub(startTime).Milliseconds())
@@ -26876,6 +27110,7 @@ STREAM_LOOP:
 					"delta":     "",
 					"done":      true,
 					"stream_id": streamID,
+					"turn_id":   turnID,
 					"provider":  actualProvider,
 					"model":     actualModel,
 					"stats": map[string]interface{}{
@@ -29576,6 +29811,7 @@ STREAM_LOOP:
 				Provider:       actualProvider,
 				Model:          actualModel,
 				Stats:          finalStats,
+				TurnID:         turnID,
 			}
 		} else {
 			// No incremental message was created (short response) — insert now
@@ -29587,6 +29823,7 @@ STREAM_LOOP:
 				Provider:       actualProvider,
 				Model:          actualModel,
 				Stats:          finalStats,
+				TurnID:         turnID,
 			}
 			if persistedID := h.persistResponsePathMessage(*assistantMsg); persistedID == "" {
 				logger.Error().Str("conv_id", convID).Msg("[chat] failed to persist assistant message")

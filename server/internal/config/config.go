@@ -47,6 +47,7 @@ type Config struct {
 	Proxy       *proxy.ProxyConfig   `yaml:"proxy"`    // v0.10.5.1: API Proxy
 	Pruner      *pruner.Config       `yaml:"pruner"`   // v0.10.27: Context Pruner
 	Update      UpdateConfig         `yaml:"update"`   // OTA Update
+	DevMode     bool                 `yaml:"dev_mode"` // Dev dashboard and turn metrics
 }
 
 // CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
@@ -545,6 +546,11 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("BLUE_BROWSER_NETWORK_OBSERVE_ENABLED"); v != "" {
 		if enabled, err := strconv.ParseBool(v); err == nil {
 			cfg.Browser.NetworkObserveEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_DEV_MODE"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.DevMode = enabled
 		}
 	}
 }

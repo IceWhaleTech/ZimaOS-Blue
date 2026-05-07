@@ -725,7 +725,7 @@ func (h *ChatHandler) flushConversationOnResponse(conversationID string) {
 	h.persistCoordinator.FlushConversation(conversationID)
 }
 
-func (h *ChatHandler) persistBestEffortMessageContent(messageID, conversationID, role, content, provider, model string, stats *memory.MessageStats, forceFlush bool) string {
+func (h *ChatHandler) persistBestEffortMessageContent(messageID, conversationID, role, content, provider, model string, stats *memory.MessageStats, forceFlush bool, turnID ...string) string {
 	if h == nil || h.store == nil || strings.TrimSpace(conversationID) == "" {
 		return ""
 	}
@@ -740,6 +740,9 @@ func (h *ChatHandler) persistBestEffortMessageContent(messageID, conversationID,
 		Provider:       provider,
 		Model:          model,
 		Stats:          stats,
+	}
+	if len(turnID) > 0 {
+		msg.TurnID = turnID[0]
 	}
 	return h.persistAsyncMessage(msg, forceFlush)
 }

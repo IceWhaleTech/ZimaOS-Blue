@@ -1292,7 +1292,8 @@ const isContentEmpty = computed(() => {
   return (
     assistantTextState.value.isEmpty &&
     !showProcessDetailsToggle.value &&
-    (!props.isStreaming || streamToolResults.value.length === 0)
+    (!props.isStreaming || streamToolResults.value.length === 0) &&
+    !(props.message as any).tool_calls?.length
   )
 })
 

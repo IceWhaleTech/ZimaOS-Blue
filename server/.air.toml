@@ -2,10 +2,10 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -tags dev -o ./tmp/blue ./cmd/blue"
-  full_bin = "BLUE_DISABLE_COMMAND_SAFETY=true ./tmp/blue --no-intercept gateway run"
+  cmd = "cd ../web && pnpm build 2>/dev/null && cp -r dist/* ../server/internal/web/dist/ 2>/dev/null; cd ../server && go build -tags dev -o ./tmp/blue ./cmd/blue"
+  full_bin = "BLUE_DISABLE_COMMAND_SAFETY=true BLUE_DEV_MODE=true ./tmp/blue --no-intercept gateway run"
   include_ext = ["go", "tmpl", "html", "yaml", "yml", "json"]
-  exclude_dir = ["tmp", "vendor", "testdata", "node_modules"]
+  exclude_dir = ["tmp", "vendor", "testdata", "node_modules", "web/dist", "internal/web/dist"]
   exclude_untracked = false
   exclude_regex = ["_test\\.go$"]
   delay = 500
