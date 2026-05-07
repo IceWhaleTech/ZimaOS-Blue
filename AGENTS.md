@@ -137,3 +137,17 @@ This ensures:
 - Better tracking of progress
 - Easier debugging if issues arise
 - Clear accountability for each step
+
+## Development
+
+```bash
+cd server && air
+```
+
+Hot-reload via [air](https://github.com/air-verse/air). Config in `server/.air.toml`.
+
+**Dev safety toggles** (both on in `.air.toml`):
+- `--no-intercept` — disables PromptGuard (prompt injection detection on chat input)
+- `BLUE_DISABLE_COMMAND_SAFETY=true` — disables `MatchCommandSafety` (dangerous shell command pattern blocking, e.g. `rm -rf /`, `| sh`)
+
+They are independent: PromptGuard checks user text, MatchCommandSafety checks exec tool commands.

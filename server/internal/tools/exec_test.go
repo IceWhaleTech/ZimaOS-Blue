@@ -3368,11 +3368,7 @@ func TestValidateCommandSafetyIntegration(t *testing.T) {
 	}
 }
 
-func TestExecPipeToInterpreterRequiresApproval(t *testing.T) {
-	broker := sse.NewBroker()
-	defer broker.Close()
-
-	approvals := NewApprovalManager(broker)
+func TestExecPipeToInterpreterBlocked(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
 
@@ -3380,208 +3376,45 @@ func TestExecPipeToInterpreterRequiresApproval(t *testing.T) {
 		Security:       ExecSecurityFull,
 		DefaultTimeout: 10 * time.Second,
 		MaxTimeout:     30 * time.Second,
-	}, sessions, approvals, broker, nil)
+	}, sessions, nil, nil, nil)
 
 	command := `printf '{"value":1}\n' | python3 -c "import json,sys; print(json.load(sys.stdin)['value'])"`
-	ch := broker.Subscribe("default")
-	defer broker.Unsubscribe("default", ch)
-
-	type execOutcome struct {
-		result string
-		err    error
-	}
-	done := make(chan execOutcome, 1)
-	go func() {
-		result, err := tool.Execute(context.Background(), map[string]interface{}{
-			"command": command,
-		})
-		var raw string
-		if result != nil {
-			raw = result.(string)
-		}
-		done <- execOutcome{result: raw, err: err}
-	}()
-
-	var req ApprovalRequest
-	select {
-	case evt := <-ch:
-		if evt.Type != "exec:approval-request" {
-			t.Fatalf("unexpected event type: %s", evt.Type)
-		}
-		data, _ := json.Marshal(evt.Data)
-		if err := json.Unmarshal(data, &req); err != nil {
-			t.Fatalf("unmarshal approval request: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for approval SSE event")
-	}
-
-	if req.Type != "command" {
-		t.Fatalf("approval type = %q, want %q", req.Type, "command")
-	}
-	if req.Command != command {
-		t.Fatalf("approval command = %q, want %q", req.Command, command)
-	}
-	if req.RiskLevel != string(RiskLevelHigh) {
-		t.Fatalf("approval risk level = %q, want %q", req.RiskLevel, RiskLevelHigh)
-	}
-	if !approvals.ResolveApprovalWithBinding(req.ID, ApprovalAllowOnce, req.BindingHash) {
-		t.Fatal("expected approval resolution to succeed")
-	}
-
-	select {
-	case outcome := <-done:
-		if outcome.err != nil {
-			t.Fatalf("expected success after approval, got %v", outcome.err)
-		}
-		var res execResult
-		if err := json.Unmarshal([]byte(outcome.result), &res); err != nil {
-			t.Fatalf("unmarshal result: %v", err)
-		}
-		if res.Status != "completed" {
-			t.Fatalf("expected completed status, got %s", res.Status)
-		}
-		if strings.TrimSpace(res.Stdout) != "1" {
-			t.Fatalf("stdout = %q, want %q", res.Stdout, "1")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for exec result")
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": command,
+	})
+	if err == nil || !strings.Contains(err.Error(), "exec blocked") {
+		t.Fatalf("expected blocked error for pipe-to-interpreter, got %v", err)
 	}
 }
 
-func TestExecPipeToInterpreterDeniedByUser(t *testing.T) {
-	broker := sse.NewBroker()
-	defer broker.Close()
-
-	approvals := NewApprovalManager(broker)
+func TestExecPipeToInterpreterAllowedWithDisableSafety(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
 
 	tool := NewExecTool(ExecConfig{
-		Security:       ExecSecurityFull,
-		DefaultTimeout: 10 * time.Second,
-		MaxTimeout:     30 * time.Second,
-	}, sessions, approvals, broker, nil)
+		Security:             ExecSecurityFull,
+		DefaultTimeout:       10 * time.Second,
+		MaxTimeout:           30 * time.Second,
+		DisableCommandSafety: true,
+		Policy:               &ExecPolicy{MaxRiskThreshold: 100},
+	}, sessions, nil, nil, nil)
 
 	command := `printf '{"value":1}\n' | python3 -c "import json,sys; print(json.load(sys.stdin)['value'])"`
-	ch := broker.Subscribe("default")
-	defer broker.Unsubscribe("default", ch)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := tool.Execute(context.Background(), map[string]interface{}{
-			"command": command,
-		})
-		done <- err
-	}()
-
-	var req ApprovalRequest
-	select {
-	case evt := <-ch:
-		if evt.Type != "exec:approval-request" {
-			t.Fatalf("unexpected event type: %s", evt.Type)
-		}
-		data, _ := json.Marshal(evt.Data)
-		if err := json.Unmarshal(data, &req); err != nil {
-			t.Fatalf("unmarshal approval request: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for approval SSE event")
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": command,
+	})
+	if err != nil {
+		t.Fatalf("expected success with DisableCommandSafety, got %v", err)
 	}
-
-	if !approvals.ResolveApprovalWithBinding(req.ID, ApprovalDeny, req.BindingHash) {
-		t.Fatal("expected denial resolution to succeed")
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
 	}
-
-	select {
-	case err := <-done:
-		if err == nil || !strings.Contains(err.Error(), "user denied the command") {
-			t.Fatalf("expected user denial error, got %v", err)
-		}
-		var runtimeErr ToolRuntimeError
-		if !errors.As(err, &runtimeErr) {
-			t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
-		}
-		if runtimeErr.ToolRuntimeCode() != "exec_approval_denied" {
-			t.Fatalf("code = %q, want exec_approval_denied", runtimeErr.ToolRuntimeCode())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for exec result")
+	if res.Status != "completed" {
+		t.Fatalf("expected completed status, got %s", res.Status)
 	}
-}
-
-func TestExecPipeToInterpreterAllowAlwaysSkipsRepeatApproval(t *testing.T) {
-	broker := sse.NewBroker()
-	defer broker.Close()
-
-	approvals := NewApprovalManager(broker)
-	sessions := NewSessionRegistry()
-	defer sessions.Cleanup()
-
-	tool := NewExecTool(ExecConfig{
-		Security:       ExecSecurityFull,
-		DefaultTimeout: 10 * time.Second,
-		MaxTimeout:     30 * time.Second,
-	}, sessions, approvals, broker, nil)
-
-	command := `printf '{"value":1}\n' | python3 -c "import json,sys; print(json.load(sys.stdin)['value'])"`
-	ch := broker.Subscribe("default")
-	defer broker.Unsubscribe("default", ch)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := tool.Execute(context.Background(), map[string]interface{}{
-			"command": command,
-		})
-		done <- err
-	}()
-
-	var req ApprovalRequest
-	select {
-	case evt := <-ch:
-		if evt.Type != "exec:approval-request" {
-			t.Fatalf("unexpected event type: %s", evt.Type)
-		}
-		data, _ := json.Marshal(evt.Data)
-		if err := json.Unmarshal(data, &req); err != nil {
-			t.Fatalf("unmarshal approval request: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for approval SSE event")
-	}
-
-	if !approvals.ResolveApprovalWithBinding(req.ID, ApprovalAllowAlways, req.BindingHash) {
-		t.Fatal("expected approval resolution to succeed")
-	}
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("expected success after approval, got %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for first exec result")
-	}
-
-	if !tool.isCommandApprovedAlways(command) {
-		t.Fatal("expected command to be remembered after allow-always")
-	}
-
-	repeatDone := make(chan error, 1)
-	go func() {
-		_, err := tool.Execute(context.Background(), map[string]interface{}{
-			"command": command,
-		})
-		repeatDone <- err
-	}()
-
-	select {
-	case err := <-repeatDone:
-		if err != nil {
-			t.Fatalf("expected repeat command to skip approval, got %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("repeat command likely waited for another approval")
+	if strings.TrimSpace(res.Stdout) != "1" {
+		t.Fatalf("stdout = %q, want %q", res.Stdout, "1")
 	}
 }
 

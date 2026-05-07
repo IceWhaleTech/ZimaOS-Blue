@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"os"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -14,5 +15,8 @@ func NewRuntimeExecConfig(dataDir string, allowedDirs []string) tools.ExecConfig
 	cfg := tools.DefaultExecConfig()
 	cfg.DataDir = strings.TrimSpace(dataDir)
 	cfg.AllowedDirs = append([]string(nil), allowedDirs...)
+	if v := os.Getenv("BLUE_DISABLE_COMMAND_SAFETY"); v == "true" || v == "1" {
+		cfg.DisableCommandSafety = true
+	}
 	return cfg
 }

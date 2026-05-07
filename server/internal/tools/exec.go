@@ -38,9 +38,10 @@ type ExecConfig struct {
 	ServicePort    int           // port exposed to blue CLI subprocesses
 	AllowPTY       bool          // whether PTY mode is available
 	AllowedDirs    []string      // directories the exec tool may operate in; empty = unrestricted
-	Shell          string        // override shell binary (empty = auto-detect via GetShellConfig)
-	ShellArgs      []string      // override shell args (empty = auto-detect)
-	Policy         *ExecPolicy   // runtime policy (nil = default)
+	Shell               string        // override shell binary (empty = auto-detect via GetShellConfig)
+	ShellArgs           []string      // override shell args (empty = auto-detect)
+	Policy              *ExecPolicy   // runtime policy (nil = default)
+	DisableCommandSafety bool         // skip dangerous-command pattern matching (dev/benchmark only)
 }
 
 // SandboxExecutor is the interface for sandbox execution, decoupled from the
@@ -657,17 +658,20 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		hostArg = t.config.Host
 	}
 
-	safetyMatch := MatchCommandSafety(command)
-	if safetyMatch != nil {
-		if safetyMatch.RequiresApproval {
-			if err := t.requestCommandSafetyApproval(ctx, command, workdirArg, hostArg, safetyMatch); err != nil {
+	var safetyMatch *CommandSafetyMatch
+	if !t.config.DisableCommandSafety {
+		safetyMatch = MatchCommandSafety(command)
+		if safetyMatch != nil {
+			if safetyMatch.RequiresApproval {
+				if err := t.requestCommandSafetyApproval(ctx, command, workdirArg, hostArg, safetyMatch); err != nil {
+					t.recordAudit(ctx, command, workdirArg, 100, safetyMatch.RiskLevel, "blocked", nil, 0, 0, 0, err.Error())
+					return nil, err
+				}
+			} else {
+				err := fmt.Errorf("exec blocked: %s", safetyMatch.Reason)
 				t.recordAudit(ctx, command, workdirArg, 100, safetyMatch.RiskLevel, "blocked", nil, 0, 0, 0, err.Error())
 				return nil, err
 			}
-		} else {
-			err := fmt.Errorf("exec blocked: %s", safetyMatch.Reason)
-			t.recordAudit(ctx, command, workdirArg, 100, safetyMatch.RiskLevel, "blocked", nil, 0, 0, 0, err.Error())
-			return nil, err
 		}
 	}
 
