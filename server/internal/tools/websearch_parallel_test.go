@@ -351,3 +351,39 @@ func TestParallelSearchLive(t *testing.T) {
 	}
 	t.Logf("Anonymous runtime search returned %d useful results; first=%s", len(response.Results), response.Results[0].URL)
 }
+
+func TestParallelSearchPreservesBrowserFallbackChoice(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			f := &parallelFixture{t: t, failure: "quota"}
+			search := NewWebSearchTool(WebSearchConfig{Provider: "parallel", CacheTTL: -1, BrowserFallback: WebSearchBrowserFallbackConfig{Enabled: &enabled, Engine: "bing"}})
+			search.SetHTTPClientForTest(&http.Client{Transport: parallelTestTransport(f.roundTrip)})
+			reader := &scriptedWebTool{exec: func(args map[string]interface{}) (interface{}, error) {
+				return `{"url":"https://example.com/browser","final_url":"https://example.com/browser","title":"Browser result","content":"A readable fallback page with concrete documentation, installation instructions, operational guidance, and enough useful detail to satisfy the existing reader. This deliberately long fixture confirms that the unchanged browser fallback still works for a failed optional search provider.","format":"text","source":"http"}`, nil
+			}}
+			browser := &scriptedWebQueryBrowserBackend{execute: func(recipe string, params map[string]string) (BrowserRecipeResult, error) {
+				return BrowserRecipeResult{Success: true, Data: map[string]interface{}{"engine": "bing", "results": []map[string]interface{}{{"title": "Browser result", "url": "https://example.com/browser", "snippet": "Fallback excerpt"}}}}, nil
+			}}
+			web := NewWebQueryTool(search, nil, reader, nil, nil)
+			web.SetBrowser(browser)
+			raw, err := web.Execute(context.Background(), map[string]interface{}{"input": "Blue docs", "provider": "parallel", "depth": "quick"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var envelope webQueryEnvelope
+			if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if enabled {
+				if browser.recipeCalls != 1 || envelope.Provider != "browser:bing" || envelope.Diagnostics.Route != "search_browser" || !envelope.Diagnostics.Degraded {
+					t.Fatalf("fallback choice not preserved: %+v", envelope)
+				}
+				if len(envelope.Diagnostics.Attempts) < 2 || !strings.Contains(envelope.Diagnostics.Attempts[0].Error, "HTTP 429") {
+					t.Fatalf("missing failed-provider provenance: %+v", envelope.Diagnostics.Attempts)
+				}
+			} else if browser.recipeCalls != 0 || len(envelope.Sources) != 0 || len(envelope.Warnings) == 0 || envelope.Warnings[0].Code != "search_failed" {
+				t.Fatalf("disabled fallback not honored: %+v", envelope)
+			}
+		})
+	}
+}
