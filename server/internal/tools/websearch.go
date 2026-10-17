@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	xhtml "golang.org/x/net/html"
 )
 
@@ -79,7 +80,7 @@ const (
 // WebSearchConfig holds configuration for the web search tool.
 type WebSearchConfig struct {
 	// Provider specifies the search provider to use.
-	// Supported: "duckduckgo", "bing", "searxng", "brave", "tavily"
+	// Supported: "duckduckgo", "bing", "searxng", "brave", "tavily", "parallel"
 	Provider string
 
 	// Providers specifies a prioritized provider list for fallback (high availability).
@@ -137,13 +138,14 @@ type WebSearchProviderSetting struct {
 
 // WebSearchTool performs web searches using various search providers.
 type WebSearchTool struct {
-	config     WebSearchConfig
-	httpClient *http.Client
-	cacheMu    sync.Mutex
-	cache      map[string]webSearchCacheEntry
-	inFlight   map[string]*inflightWebSearchCall
-	retryMax   int
-	retrySleep func(context.Context, time.Duration) error
+	config          WebSearchConfig
+	httpClient      *http.Client
+	parallelSession string
+	cacheMu         sync.Mutex
+	cache           map[string]webSearchCacheEntry
+	inFlight        map[string]*inflightWebSearchCall
+	retryMax        int
+	retrySleep      func(context.Context, time.Duration) error
 }
 
 // SetHTTPClientForTest overrides the HTTP client used by this tool.
@@ -267,7 +269,8 @@ func NewWebSearchTool(config WebSearchConfig) *WebSearchTool {
 	config.BrowserFallback = normalizeWebSearchBrowserFallbackConfig(config.BrowserFallback)
 
 	return &WebSearchTool{
-		config: config,
+		config:          config,
+		parallelSession: uuid.NewString(),
 		httpClient: &http.Client{
 			Timeout: config.Timeout,
 		},
@@ -507,6 +510,8 @@ func (w *WebSearchTool) searchWithProviderOnce(ctx context.Context, provider, qu
 
 func (w *WebSearchTool) providerFor(provider string) (SearchProvider, error) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "parallel":
+		return searchProviderFunc{name: "parallel", run: w.searchParallel}, nil
 	case "duckduckgo":
 		return searchProviderFunc{name: "duckduckgo", run: w.searchDuckDuckGo}, nil
 	case "bing":

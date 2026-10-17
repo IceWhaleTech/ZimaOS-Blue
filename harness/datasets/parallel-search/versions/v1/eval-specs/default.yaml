@@ -1,0 +1,7 @@
+name: Parallel Search provider workflow
+subject: web-search-provider
+run_kind: workflow
+profile: parallel-search
+scoring:
+  mode: rule
+  pass_threshold: 1

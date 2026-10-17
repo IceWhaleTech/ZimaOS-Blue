@@ -1,0 +1,35 @@
+{
+  "dataset": {
+    "name": "parallel-search",
+    "subject": "web-search-provider"
+  },
+  "defaults": {
+    "run_kind": "workflow",
+    "profile": "parallel-search",
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "parallel-source-results",
+      "input": {
+        "goal": "Discover Blue documentation with the optional Parallel provider"
+      },
+      "expected": {
+        "status": "completed"
+      },
+      "metadata": {
+        "critical": true,
+        "provider": "parallel",
+        "workflow_id": "parallel-search-fixture",
+        "required_output": [
+          "https://docs.example.com/blue",
+          "Focused source excerpt",
+          "parallel"
+        ]
+      }
+    }
+  ]
+}
