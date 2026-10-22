@@ -1,0 +1,11 @@
+api_version: blue.harness/v1
+kind: dataset
+name: parallel-search
+subject: web-search-provider
+description: Deterministic runtime provider dispatch and source-consumption coverage.
+default_run_kind: workflow
+default_profile: parallel-search
+default_version: v1
+versions:
+  v1:
+    eval_specs: [default.yaml]

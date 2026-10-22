@@ -221,6 +221,9 @@ tool_calling:
       quality_threshold: 52
       max_browser_retries: 1
     provider_settings:
+      # parallel:  # optional anonymous Search MCP; select with providers: [parallel]
+      #   enabled: true
+      #   api_key: ""  # optional Parallel key for higher limits
       brave:
         enabled: false
         api_key: ""

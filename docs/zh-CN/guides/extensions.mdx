@@ -62,6 +62,23 @@ Blue 的扩展页已经从简单插件列表演进成统一的能力管理入口
 3. 安装前确认来源、契约和安全元数据
 4. 如果能力很关键，再去 Harness 做可追踪评测
 
+## 可选的 Parallel 网页搜索
+
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) 提供包含相关摘录和来源链接的网页搜索。匿名搜索使用 Fast 模式，无需注册账户或 API 密钥。在 `config.yaml` 中配置后重启 Blue：
+
+```yaml
+tool_calling:
+  web_search:
+    provider: parallel
+    providers: [parallel]
+```
+
+现有的网页查询和研究搜索流程会使用此提供商，打开搜索结果时仍使用 Blue 现有的页面读取工具。在主动更改配置之前，默认提供商列表仍为 `duckduckgo,bing`。搜索提供商链仅使用您选择的提供商。搜索失败后，现有网页查询流程仍可使用配置好的浏览器引擎进行回退。如果只允许所选搜索提供商，请设置 `tool_calling.web_search.browser_fallback.enabled: false`。浏览器回退结果会在响应中标明浏览器提供商。
+
+如需更高的服务限额，可在 `tool_calling.web_search.provider_settings.parallel.api_key` 中填写 Parallel API 密钥。仅发送 Parallel 专用密钥，不会转发通用搜索密钥或环境变量中的密钥。`provider_settings.parallel.base_url` 可覆盖完整的 MCP 地址，默认地址为 `https://search.parallel.ai/mcp`。设置 `provider_settings.parallel.enabled: false` 可禁用该提供商，包括单次调用中的显式选择。现有工具权限仍然生效。
+
+匿名服务有使用限额。Parallel 不支持 Blue 的 `region` 或 `safe_search` 开关；需要这些过滤条件时，请选择其他提供商。
+
 ## 相关页面
 
 - [Harness 与 Evolution](/zh-CN/guides/harness-evolution)

@@ -74,6 +74,23 @@ If your team is deciding what to allow into a shared runtime, start here before 
 4. Install by URL or file only after the contract and risk surface make sense
 5. Revisit Harness or Evolution if the new capability needs tracked evaluation
 
+## Optional Parallel web search
+
+Use [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) for web search with focused excerpts and source URLs. Anonymous searches use Fast mode and need no account or API key. Enable the provider in your `config.yaml`, then restart Blue:
+
+```yaml
+tool_calling:
+  web_search:
+    provider: parallel
+    providers: [parallel]
+```
+
+This selects Parallel for the existing web-query and research search paths. Blue continues to use its existing page readers when a workflow opens a result. The default provider list remains `duckduckgo,bing` until you change it. The search provider chain only uses providers you select. The existing web-query browser fallback can still use its configured browser engine after search failure; set `tool_calling.web_search.browser_fallback.enabled: false` if you require provider-only operation. Browser fallback results identify the browser provider in the response.
+
+For higher service limits, set `tool_calling.web_search.provider_settings.parallel.api_key` to a Parallel API key. Only Parallel's provider-specific key is sent; generic search credentials and environment API keys are not forwarded. `provider_settings.parallel.base_url` can override the complete MCP endpoint; the default is `https://search.parallel.ai/mcp`. Set `provider_settings.parallel.enabled: false` to disable the provider, including per-call overrides. Existing tool permissions still apply.
+
+Anonymous access has service limits. Parallel does not implement Blue's `region` or `safe_search` switches; select another provider when those filters are required.
+
 ## Related pages
 
 - [Harness and Evolution](/guides/harness-evolution)
