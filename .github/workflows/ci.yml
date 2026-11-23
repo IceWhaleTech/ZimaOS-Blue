@@ -8,9 +8,20 @@ on:
 
 env:
   GO_VERSION: "1.24"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
 
 jobs:
+  release-checks:
+    name: Release Configuration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check versions, packaging, and signing safeguards
+        run: |
+          python3 -m unittest discover -s scripts -p 'release_*test.py'
+          bash -n .github/scripts/install-apple-certificate.sh
+          bash -n .github/scripts/notarize-apple-artifact.sh
+
   web:
     name: Web Build
     runs-on: ubuntu-latest

@@ -6282,7 +6282,7 @@ dependencies = [
 
 [[package]]
 name = "zimaos-blue"
-version = "0.10.39"
+version = "0.11.0"
 dependencies = [
  "clap",
  "dirs 5.0.1",

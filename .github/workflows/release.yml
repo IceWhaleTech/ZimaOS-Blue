@@ -2,21 +2,55 @@ name: Release
 
 on:
   release:
-    types: [created]
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to validate and build without publishing
+        required: true
+        default: "0.11.0"
+        type: string
 
 permissions:
   contents: write
 
 env:
   GO_VERSION: "1.24"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   RUST_VERSION: "stable"
   BINARY_NAME: blue
   EMBEDDED_DISABLE_MERMAID: "1"
+  RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.version || github.ref_name }}
 
 jobs:
+  preflight:
+    name: Validate release version and Apple credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version metadata
+        run: python3 scripts/release_version_test.py
+      - name: Check Apple credentials
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name secret is empty or unavailable."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
   build-web:
     name: Build Web Frontend
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +84,7 @@ jobs:
 
   build-web-embedded:
     name: Build Embedded Web Frontend
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,10 +118,10 @@ jobs:
         include:
           - goos: darwin
             goarch: arm64
-            runner: macos-14
+            runner: macos-15
           - goos: darwin
             goarch: amd64
-            runner: macos-15
+            runner: macos-15-intel
           - goos: linux
             goarch: amd64
             runner: ubuntu-latest
@@ -141,6 +176,7 @@ jobs:
         env:
           CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash .github/scripts/install-apple-certificate.sh
 
       # Linux arm64 cross-compile needs aarch64 C toolchain for CGO (sqlite3)
@@ -185,9 +221,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "1"
           ZIMAOS_TRIAL_LICENSE: ${{ secrets.ZIMAOS_TRIAL_LICENSE }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
-          export VERSION="${GITHUB_REF_NAME}"
+          export VERSION="${RELEASE_VERSION}"
           export GIT_COMMIT="$(git rev-parse --short HEAD)"
           export BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           make build
@@ -206,7 +241,7 @@ jobs:
             export CC=aarch64-linux-gnu-gcc
           fi
 
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_VERSION}"
           GIT_COMMIT="$(git rev-parse --short HEAD)"
           BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -230,7 +265,7 @@ jobs:
             --dist-dir "$GITHUB_WORKSPACE/web/dist-module" \
             --module-name zimaos-blue \
             --command-name blue \
-            --version "${GITHUB_REF_NAME}"
+            --version "${RELEASE_VERSION}"
 
       # Pack dist into binary (Linux only — macOS launcher handles this)
       - name: Pack dist into binary
@@ -273,19 +308,21 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         working-directory: server/bin
         run: |
+          arch="${{ matrix.goarch }}"
+          [[ "$arch" != amd64 ]] || arch=x86_64
+          lipo -verify_arch "$arch" blue bluecli
+
           # Sign the final launcher binary too
           codesign --force --options runtime \
-            --sign "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
+            --sign "$APPLE_SIGNING_IDENTITY" \
             --entitlements ../../tauri-app/src-tauri/entitlements.plist \
             --timestamp blue
 
           # Notarize
-          zip blue.zip blue
-          xcrun notarytool submit blue.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+          codesign --verify --strict --verbose=2 blue
+          codesign --verify --strict --verbose=2 bluecli
+          zip blue.zip blue bluecli
+          bash ../../.github/scripts/notarize-apple-artifact.sh blue.zip
           rm blue.zip
 
       - name: Cleanup keychain
@@ -297,7 +334,7 @@ jobs:
         working-directory: server/bin
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_VERSION}"
           ARCHIVE="${BINARY_NAME}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
           mkdir -p language-id-notices
           for notice in NOTICE.md CC-BY-SA-3.0.txt LICENSE.fasttext LICENSE.OpenCC; do
@@ -323,10 +360,10 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-14
+            runner: macos-15
             goarch: arm64
           - arch: amd64
-            runner: macos-15
+            runner: macos-15-intel
             goarch: amd64
     steps:
       - uses: actions/checkout@v4
@@ -363,15 +400,17 @@ jobs:
         env:
           CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash .github/scripts/install-apple-certificate.sh
 
       - name: Build Go static library
         working-directory: server
         env:
           CGO_ENABLED: "1"
+          GOARCH: ${{ matrix.goarch }}
           ZIMAOS_TRIAL_LICENSE: ${{ secrets.ZIMAOS_TRIAL_LICENSE }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_VERSION}"
           GIT_COMMIT="$(git rev-parse --short HEAD)"
           BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -391,15 +430,17 @@ jobs:
       - name: Build Tauri app
         working-directory: tauri-app
         run: |
-          npm install
+          npm ci
           npm run build
 
       - name: Codesign .app
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           APP_DIR="tauri-app/src-tauri/target/release/bundle/macos"
           APP_NAME="ZimaOS Blue"
+
+          arch="${{ matrix.arch }}"
+          [[ "$arch" != amd64 ]] || arch=x86_64
+          lipo -verify_arch "$arch" "$APP_DIR/$APP_NAME.app/Contents/MacOS/blue"
 
           # Copy web dist into .app Resources
           RESOURCES_DIR="$APP_DIR/$APP_NAME.app/Contents/Resources/dist"
@@ -411,7 +452,7 @@ jobs:
             --entitlements tauri-app/src-tauri/entitlements.plist \
             --timestamp \
             "$APP_DIR/$APP_NAME.app"
-          codesign --verify --verbose=2 "$APP_DIR/$APP_NAME.app"
+          codesign --verify --deep --strict --verbose=2 "$APP_DIR/$APP_NAME.app"
 
       - name: Create LZMA DMG
         run: |
@@ -419,7 +460,7 @@ jobs:
           APP_DIR="tauri-app/src-tauri/target/release/bundle/macos"
           DMG_DIR="tauri-app/src-tauri/target/release/bundle/dmg"
           APP_NAME="ZimaOS Blue"
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_VERSION}"
           DMG_NAME="ZimaOS-Blue-${VERSION}-macos-${{ matrix.arch }}.dmg"
 
           mkdir -p "$DMG_DIR"
@@ -441,12 +482,11 @@ jobs:
 
       - name: Sign & Notarize DMG
         env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_VERSION}"
           DMG_DIR="tauri-app/src-tauri/target/release/bundle/dmg"
           DMG_NAME="ZimaOS-Blue-${VERSION}-macos-${{ matrix.arch }}.dmg"
           DMG_FILE="$DMG_DIR/$DMG_NAME"
@@ -459,11 +499,7 @@ jobs:
 
           codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG_FILE"
 
-          xcrun notarytool submit "$DMG_FILE" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+          bash .github/scripts/notarize-apple-artifact.sh "$DMG_FILE"
 
           xcrun stapler staple "$DMG_FILE"
           MACOS_APP_PATH="tauri-app/src-tauri/target/release/bundle/macos/ZimaOS Blue.app" \
@@ -484,6 +520,7 @@ jobs:
 
   release:
     name: Upload Release Assets
+    if: github.event_name == 'release'
     needs: [build, build-tauri-macos]
     runs-on: ubuntu-latest
     steps:

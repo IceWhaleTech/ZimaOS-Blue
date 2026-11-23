@@ -9,7 +9,7 @@
 .PHONY: provider-catalog provider-catalog-check stage-windows-codex-assets build-zimaos-raw
 
 # Version info
-VERSION ?= 0.10.39
+VERSION ?= 0.11.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

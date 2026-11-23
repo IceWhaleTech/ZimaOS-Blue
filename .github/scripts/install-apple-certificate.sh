@@ -45,12 +45,13 @@ identity_list="$(security find-identity -v -p codesigning "$keychain_path" 2>/de
 signing_identity="$(printf '%s\n' "$identity_list" | awk -F\" '/Developer ID Application:/ {print $2; exit}')"
 
 if [[ -z "$signing_identity" ]]; then
-  signing_identity="$(printf '%s\n' "$identity_list" | awk -F\" 'NF >= 2 { print $2; exit }')"
+  echo "::error::No valid Developer ID Application identity was imported into the temporary keychain."
+  security find-identity -v -p codesigning "$keychain_path" || true
+  exit 1
 fi
 
-if [[ -z "$signing_identity" ]]; then
-  echo "::error::No codesigning identity was imported into the temporary keychain."
-  security find-identity -v -p codesigning "$keychain_path" || true
+if [[ -n "${APPLE_TEAM_ID:-}" && "$signing_identity" != *"(${APPLE_TEAM_ID})" ]]; then
+  echo "::error::Imported Developer ID does not belong to APPLE_TEAM_ID."
   exit 1
 fi
 
