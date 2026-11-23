@@ -614,7 +614,11 @@ jobs:
               '',
               'Build your personal cloud with ZimaOS: manage files, back up your data, and run local AI agents with Blue. [Explore ZimaOS](https://www.zimaspace.com/en/zimaos?utm_source=github&utm_medium=referral&utm_campaign=blue_zimaos&utm_content=release_text_en).',
             ].join('\n');
-            let body = existing;
+            const assetPrefix = `https://github.com/${repo}/releases/download/`;
+            let body = existing.replace(
+              /https:\/\/github\.com\/[^\s)]+\/releases\/download\/untagged-[^/\s)]+\//g,
+              prefix => prefix.startsWith(assetPrefix) ? `${dl}/` : prefix
+            );
             if (!/^## (?:Downloads|下载)\s*$/m.test(body)) body += downloads;
             if (!body.includes('utm_campaign=blue_zimaos')) body += promo;
 

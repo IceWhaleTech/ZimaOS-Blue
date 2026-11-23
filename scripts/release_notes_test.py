@@ -62,6 +62,14 @@ class ReleaseNotesTest(unittest.TestCase):
         result = run_step('Upload assets to release', {})
         self.assertEqual(result['calls'], [['delete', 7], ['upload', 'blue-0.11.0-darwin-arm64.tar.gz']])
 
+    def test_publication_normalizes_only_this_repositories_draft_links(self):
+        body = ('## Downloads\n\n'
+                '[Package](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/download/untagged-abc/blue.tar.gz)\n'
+                '[Other](https://github.com/example/other/releases/download/untagged-abc/other.zip)\n')
+        updated = run_step('Update release body', {'body': body})['body']
+        self.assertIn('/IceWhaleTech/ZimaOS-Blue/releases/download/0.11.0/blue.tar.gz', updated)
+        self.assertIn('/example/other/releases/download/untagged-abc/other.zip', updated)
+
 
 if __name__ == '__main__':
     unittest.main()
