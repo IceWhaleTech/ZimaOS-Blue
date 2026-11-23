@@ -23,6 +23,7 @@ type routeRuntimeContractSkillOptions struct {
 	services        *Services
 	settings        *serverpkg.SettingsHandler
 	chat            *serverpkg.ChatHandler
+	runtimeLLM      llmChatCaller
 	authPageV1Group func(string) *echo.Group
 	ipcServer       *sockipc.Server
 	ctx             context.Context

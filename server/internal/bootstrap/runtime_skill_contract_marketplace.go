@@ -46,6 +46,18 @@ func bindRouteRuntimeSkillMarketplace(
 		marketCfg.SemanticRatio = options.appConfig.SkillMarket.SemanticRatio
 		marketCfg.SearchCandidateLimit = options.appConfig.SkillMarket.SearchCandidateLimit
 	}
+	semanticLanguage := ""
+	if options.appConfig != nil {
+		model := strings.ToLower(options.appConfig.Embedding.Model)
+		switch {
+		case model == "" || strings.Contains(model, "-zh"):
+			semanticLanguage = "zh"
+		case strings.Contains(model, "-en"):
+			semanticLanguage = "en"
+		}
+	}
+	queryPlanner := skillmarket.NewSearchQueryPlanner(options.runtimeLLM, semanticLanguage)
+	handler.SetSearchQueryPlanner(queryPlanner)
 
 	var marketEmbedding embedding.Provider
 	var marketEmbeddingOnce sync.Once
@@ -71,6 +83,7 @@ func bindRouteRuntimeSkillMarketplace(
 			Registry:          options.services.SkillRegistry,
 			LocalScanner:      localScanner,
 			EmbeddingProvider: resolveMarketEmbedding(),
+			QueryPlanner:      queryPlanner,
 			HTTPClient:        network.NewPooledHTTPClient(5 * time.Minute),
 			RemoteReader:      newSkillMarketRemoteReader(options.services.ToolRegistry),
 			DiscoverEventBroadcaster: func(eventType string, data any) {
@@ -94,6 +107,7 @@ func bindRouteRuntimeSkillMarketplace(
 	})
 
 	advisor := skilladvisor.NewService(skilladvisor.SearchFunc(handler.SearchMarket))
+	advisor.SetSearchQueryPlanner(queryPlanner)
 	if options.settings != nil {
 		options.settings.SetSkillAdvisor(advisor)
 	}

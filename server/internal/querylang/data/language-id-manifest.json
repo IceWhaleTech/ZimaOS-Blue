@@ -1,0 +1,15 @@
+{
+  "model": "fastText lid.176.ftz",
+  "bytes": 938013,
+  "sha256": "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83",
+  "source": "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
+  "documentation": "https://fasttext.cc/docs/en/language-identification.html",
+  "license": "CC-BY-SA-3.0",
+  "modified": false,
+  "native_reference": {
+    "version": "v0.9.2",
+    "commit": "5b5943c118b0ec5fb9cd8d20587de2b2d3966dfe",
+    "license": "MIT",
+    "cases": 829
+  }
+}

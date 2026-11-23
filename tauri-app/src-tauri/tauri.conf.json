@@ -20,7 +20,11 @@
       "nsis/icons/icon.ico"
     ],
     "resources": {
-      "../../web/dist": "dist"
+      "../../web/dist": "dist",
+      "../../server/internal/querylang/data/NOTICE.md": "licenses/language-id/NOTICE.md",
+      "../../server/internal/querylang/data/CC-BY-SA-3.0.txt": "licenses/language-id/CC-BY-SA-3.0.txt",
+      "../../server/internal/querylang/data/LICENSE.fasttext": "licenses/language-id/LICENSE.fasttext",
+      "../../server/internal/querylang/data/LICENSE.OpenCC": "licenses/language-id/LICENSE.OpenCC"
     },
     "category": "Utility",
     "shortDescription": "Open-Source Agent Runtime & Toolkit",

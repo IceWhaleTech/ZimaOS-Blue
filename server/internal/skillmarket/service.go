@@ -54,6 +54,7 @@ type Options struct {
 	Registry                 *skill.Registry
 	LocalScanner             *skillstore.LocalSkillScanner
 	EmbeddingProvider        embedding.Provider
+	QueryPlanner             *SearchQueryPlanner
 	HTTPClient               *http.Client
 	RemoteReader             RemoteReader
 	Scanner                  *Scanner
@@ -67,6 +68,7 @@ type Service struct {
 	registry            *skill.Registry
 	localScanner        *skillstore.LocalSkillScanner
 	embeddingProvider   embedding.Provider
+	queryPlanner        *SearchQueryPlanner
 	httpClient          *http.Client
 	remoteReader        RemoteReader
 	scanner             *Scanner
@@ -139,6 +141,7 @@ func newService(writeDB, readDB *sql.DB, opts Options, ownsDB bool) (*Service, e
 		registry:            opts.Registry,
 		localScanner:        opts.LocalScanner,
 		embeddingProvider:   opts.EmbeddingProvider,
+		queryPlanner:        opts.QueryPlanner,
 		httpClient:          opts.HTTPClient,
 		remoteReader:        opts.RemoteReader,
 		scanner:             opts.Scanner,
@@ -450,12 +453,26 @@ func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 	return status, true
 }
 
-func (s *Service) Search(ctx context.Context, query SearchQuery) (*SearchResponse, error) {
+func (s *Service) Search(ctx context.Context, query SearchQuery) (result *SearchResponse, err error) {
+	var plan SearchQueryPlan
+	if query.Semantic {
+		var prepared bool
+		plan, prepared = PreparedSearchQuery(ctx, query.Query)
+		if !prepared {
+			plan = s.queryPlanner.Plan(ctx, query.Query)
+		}
+		query.Query = plan.Query
+		defer func() {
+			if result != nil {
+				result.QueryPlan = plan.Diagnostic()
+			}
+		}()
+	}
 	if !query.Semantic || s.embeddingProvider == nil || strings.TrimSpace(query.Query) == "" {
 		return s.store.Search(ctx, query)
 	}
 
-	queryVector, err := s.embeddingProvider.Embed(ctx, query.Query)
+	queryVector, err := s.embeddingProvider.Embed(ctx, plan.SemanticQuery)
 	if err != nil || len(queryVector) == 0 {
 		return s.store.Search(ctx, query)
 	}

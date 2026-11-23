@@ -67,6 +67,8 @@ config.yaml
 server/data/
 src-tauri/data/
 data/
+!server/internal/querylang/data/
+!server/internal/querylang/data/**
 
 # Compiled binaries
 server/zimaos-blue

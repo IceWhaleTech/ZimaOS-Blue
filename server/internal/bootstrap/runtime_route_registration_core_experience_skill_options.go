@@ -9,6 +9,7 @@ func newRouteRuntimeExperienceSkillOptions(state *routeRegistrationState) routeR
 		services:        state.services,
 		settings:        state.bootstrapSupport.settingsHandler,
 		chat:            state.deps.ChatHandler,
+		runtimeLLM:      state.runtimeLLM,
 		authPageV1Group: state.authSurface.authPageV1Group,
 		ipcServer:       state.mediaRuntime.ipcServer,
 		ctx:             state.deps.Ctx,

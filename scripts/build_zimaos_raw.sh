@@ -142,6 +142,13 @@ mkdir -p "$bin_dir" "$module_dir" "$module_ui_dir" "$extension_dir" "$(dirname "
 cp "$binary_path" "$bin_dir/$command_name"
 chmod 0755 "$bin_dir/$command_name"
 
+notice_source="$(cd "$(dirname "$0")/../server/internal/querylang/data" && pwd)"
+notice_dir="$raw_dir/usr/share/doc/zimaos-blue/language-id"
+mkdir -p "$notice_dir"
+for notice in NOTICE.md CC-BY-SA-3.0.txt LICENSE.fasttext LICENSE.OpenCC; do
+  cp "$notice_source/$notice" "$notice_dir/$notice"
+done
+
 if [[ -n "$dist_dir" ]]; then
   cp -R "$dist_dir"/. "$module_ui_dir"/
   rm -f "$module_ui_dir/stats.html"

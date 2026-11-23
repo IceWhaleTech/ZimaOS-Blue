@@ -349,11 +349,12 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Skills     []SearchResult `json:"skills"`
-	Total      int            `json:"total"`
-	Page       int            `json:"page"`
-	PageSize   int            `json:"page_size"`
-	TotalPages int            `json:"total_pages"`
+	QueryPlan  *SearchQueryPlan `json:"query_plan,omitempty"`
+	Skills     []SearchResult   `json:"skills"`
+	Total      int              `json:"total"`
+	Page       int              `json:"page"`
+	PageSize   int              `json:"page_size"`
+	TotalPages int              `json:"total_pages"`
 }
 
 type FilterOption struct {

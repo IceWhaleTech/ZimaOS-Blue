@@ -107,6 +107,12 @@ class BuildZimaOSRawScriptTest(unittest.TestCase):
             self.assertTrue(os.stat(staged_binary).st_mode & stat.S_IXUSR)
             self.assertEqual(staged_binary.read_text(encoding="utf-8"), "blue-binary\n")
 
+            notices = raw_dir / "usr/share/doc/zimaos-blue/language-id"
+            source = REPO_ROOT / "server/internal/querylang/data"
+            for name in ("NOTICE.md", "CC-BY-SA-3.0.txt", "LICENSE.fasttext", "LICENSE.OpenCC"):
+                self.assertEqual((notices / name).read_bytes(), (source / name).read_bytes())
+            self.assertFalse((notices / "lid.176.ftz").exists())
+
             self.assertTrue(module_json.exists())
             self.assertEqual(
                 json.loads(module_json.read_text(encoding="utf-8")),

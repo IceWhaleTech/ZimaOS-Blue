@@ -7,6 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/Microsoft/go-winio v0.6.1
 	github.com/SherClockHolmes/webpush-go v1.4.0
+	github.com/abadojack/whatlanggo v1.0.1
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/cloudflare/cloudflared v0.0.0-20250203150802-c19f9194281e

@@ -299,7 +299,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}"
           ARCHIVE="${BINARY_NAME}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
-          tar czf "${ARCHIVE}.tar.gz" "${BINARY_NAME}"
+          mkdir -p language-id-notices
+          for notice in NOTICE.md CC-BY-SA-3.0.txt LICENSE.fasttext LICENSE.OpenCC; do
+            cp "../internal/querylang/data/$notice" "language-id-notices/$notice"
+          done
+          tar czf "${ARCHIVE}.tar.gz" "${BINARY_NAME}" language-id-notices
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

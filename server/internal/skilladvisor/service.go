@@ -16,15 +16,16 @@ const (
 )
 
 type Advice struct {
-	Query             string                     `json:"query"`
-	InstalledDecision *agentcore.Decision        `json:"installed_decision,omitempty"`
-	NeedStoreSearch   bool                       `json:"need_store_search"`
-	Reason            string                     `json:"reason,omitempty"`
-	SearchQueries     []string                   `json:"search_queries,omitempty"`
-	CapabilityTags    []string                   `json:"capability_tags,omitempty"`
-	Results           []skillmarket.SearchResult `json:"results,omitempty"`
-	RecommendedIDs    []string                   `json:"recommended_ids,omitempty"`
-	InstallMode       string                     `json:"install_mode,omitempty"`
+	QueryPlan         *skillmarket.SearchQueryPlan `json:"query_plan,omitempty"`
+	Query             string                       `json:"query"`
+	InstalledDecision *agentcore.Decision          `json:"installed_decision,omitempty"`
+	NeedStoreSearch   bool                         `json:"need_store_search"`
+	Reason            string                       `json:"reason,omitempty"`
+	SearchQueries     []string                     `json:"search_queries,omitempty"`
+	CapabilityTags    []string                     `json:"capability_tags,omitempty"`
+	Results           []skillmarket.SearchResult   `json:"results,omitempty"`
+	RecommendedIDs    []string                     `json:"recommended_ids,omitempty"`
+	InstallMode       string                       `json:"install_mode,omitempty"`
 }
 
 type Plan struct {
@@ -55,6 +56,7 @@ func (fn SearchFunc) Search(ctx context.Context, query skillmarket.SearchQuery) 
 
 type Service struct {
 	searcher         Searcher
+	queryPlanner     *skillmarket.SearchQueryPlanner
 	planner          Planner
 	reranker         Reranker
 	searchPageSize   int
@@ -69,6 +71,11 @@ func NewService(searcher Searcher) *Service {
 		searchPageSize:   defaultSearchPageSize,
 		maxMergedResults: defaultMaxMergedResults,
 	}
+}
+
+// SetSearchQueryPlanner configures query rewriting before serving requests.
+func (s *Service) SetSearchQueryPlanner(planner *skillmarket.SearchQueryPlanner) {
+	s.queryPlanner = planner
 }
 
 func (s *Service) Advise(ctx context.Context, query string, installed *agentcore.Decision) (*Advice, error) {
@@ -95,7 +102,14 @@ func (s *Service) Advise(ctx context.Context, query string, installed *agentcore
 		return advice, nil
 	}
 
-	plan := s.planner.Plan(query, installed)
+	queryPlan, prepared := skillmarket.PreparedSearchQuery(ctx, query)
+	if !prepared {
+		queryPlan = s.queryPlanner.Plan(ctx, query)
+		ctx = skillmarket.WithSearchQueryPlan(ctx, queryPlan)
+	}
+	advice.QueryPlan = queryPlan.Diagnostic()
+	capability := queryPlan.Query
+	plan := s.planner.Plan(capability, installed)
 	advice.NeedStoreSearch = plan.NeedNewSkill
 	advice.Reason = plan.Reason
 	advice.SearchQueries = append(advice.SearchQueries, plan.SearchQueries...)
@@ -116,7 +130,7 @@ func (s *Service) Advise(ctx context.Context, query string, installed *agentcore
 		return advice, err
 	}
 	advice.Results = results
-	advice.RecommendedIDs = s.reranker.Recommend(query, results)
+	advice.RecommendedIDs = s.reranker.Recommend(capability, results)
 	return advice, nil
 }
 

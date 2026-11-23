@@ -1,0 +1,21 @@
+{
+  "source": "OpenCC",
+  "revision": "fae2a0a911c30764e669a7d8b0591cd8e852934a",
+  "license": "Apache-2.0",
+  "derivation": "ST single-character keys without self mapping, excluding JPShinjitai keys",
+  "characters": 3689,
+  "bytes": 12209,
+  "sha256": "7110890e19cdef71f78b558ced2694bdd5ff792b4f2c76885d8b75e2f96fd49e",
+  "inputs": [
+    {
+      "name": "STCharacters",
+      "url": "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/STCharacters.txt",
+      "sha256": "a0ca1601c70648cf48b33c3c6210ccbecc5c7eead4b4c3daf76587ba2c03582b"
+    },
+    {
+      "name": "JPShinjitaiCharacters",
+      "url": "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/JPShinjitaiCharacters.txt",
+      "sha256": "12cec7250b873ef52b36d8f92218d4f92c0aaf5d8cd7c58fe42d9785bdcdc43a"
+    }
+  ]
+}

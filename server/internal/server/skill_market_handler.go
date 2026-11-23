@@ -79,13 +79,16 @@ func (h *SkillHandler) MarketAdviseSkills(c echo.Context) error {
 	}
 
 	var selectorErr string
+	ctx := c.Request().Context()
 	selectedDecision := req.InstalledDecision
 	if selectedDecision == nil && selector != nil {
+		plan := h.planSkillSearch(ctx, req.Query)
+		ctx = skillmarket.WithSearchQueryPlan(ctx, plan)
 		opts := agentcore.SelectOptions{}
 		if selectOptions != nil {
 			opts = selectOptions()
 		}
-		decision, err := selector.Select(c.Request().Context(), req.Query, opts)
+		decision, err := selector.Select(ctx, plan.Query, opts)
 		if err != nil {
 			selectorErr = err.Error()
 		} else {
@@ -94,7 +97,12 @@ func (h *SkillHandler) MarketAdviseSkills(c echo.Context) error {
 		}
 	}
 
-	advice, err := advisor.Advise(c.Request().Context(), req.Query, selectedDecision)
+	advice, err := advisor.Advise(ctx, req.Query, selectedDecision)
+	if advice != nil && advice.QueryPlan == nil {
+		if plan, ok := skillmarket.PreparedSearchQuery(ctx, req.Query); ok {
+			advice.QueryPlan = plan.Diagnostic()
+		}
+	}
 	if advice == nil {
 		advice = &skilladvisor.Advice{Query: req.Query, InstalledDecision: selectedDecision}
 	}
@@ -540,6 +548,7 @@ type fallbackMarketSearchResult struct {
 }
 
 type fallbackMarketSearchResponse struct {
+	QueryPlan  *skillmarket.SearchQueryPlan `json:"query_plan,omitempty"`
 	Skills     []fallbackMarketSearchResult `json:"skills"`
 	Total      int                          `json:"total"`
 	Page       int                          `json:"page"`
@@ -547,7 +556,13 @@ type fallbackMarketSearchResponse struct {
 	TotalPages int                          `json:"total_pages"`
 }
 
-func (h *SkillHandler) fallbackMarketSearch(ctx context.Context, query skillmarket.SearchQuery) fallbackMarketSearchResponse {
+func (h *SkillHandler) fallbackMarketSearch(ctx context.Context, query skillmarket.SearchQuery) (response fallbackMarketSearchResponse) {
+	if query.Semantic {
+		plan := h.planSkillSearch(ctx, query.Query)
+		query.Query = plan.Query
+		ctx = skillmarket.WithSearchQueryPlan(ctx, plan)
+		defer func() { response.QueryPlan = plan.Diagnostic() }()
+	}
 	page := query.Page
 	if page < 1 {
 		page = 1
@@ -584,6 +599,9 @@ func (h *SkillHandler) fallbackMarketSearch(ctx context.Context, query skillmark
 }
 
 func (h *SkillHandler) collectFallbackMarketResults(ctx context.Context, query skillmarket.SearchQuery) ([]fallbackMarketSearchResult, error) {
+	if query.Semantic {
+		query.Query = skillmarket.RewriteSearchQuery(query.Query)
+	}
 	if h.store != nil {
 		categories := append([]string{}, query.Categories...)
 		if strings.TrimSpace(query.Category) != "" {

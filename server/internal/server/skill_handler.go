@@ -711,6 +711,7 @@ type SkillHandler struct {
 	statsCache      *cache.GenericCache[string]
 	categoriesCache *cache.GenericCache[string]
 	skillAdvisor    *skilladvisor.Service
+	queryPlanner    *skillmarket.SearchQueryPlanner
 	skillSelector   InstalledSkillSelector
 	selectOptions   func() agentcore.SelectOptions
 
@@ -788,6 +789,22 @@ func (h *SkillHandler) SetSkillAdvisor(advisor *skilladvisor.Service) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.skillAdvisor = advisor
+}
+
+func (h *SkillHandler) SetSearchQueryPlanner(planner *skillmarket.SearchQueryPlanner) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.queryPlanner = planner
+}
+
+func (h *SkillHandler) planSkillSearch(ctx context.Context, query string) skillmarket.SearchQueryPlan {
+	if plan, ok := skillmarket.PreparedSearchQuery(ctx, query); ok {
+		return plan
+	}
+	h.mu.RLock()
+	planner := h.queryPlanner
+	h.mu.RUnlock()
+	return planner.Plan(ctx, query)
 }
 
 // SetSkillSelector wires the optional installed-skill selector used before
@@ -3641,14 +3658,18 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 				"has_data_exfiltration": doc.HasDataExfiltration,
 			})
 		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		response := map[string]interface{}{
 			"skills":      legacySkills,
 			"total":       result.Total,
 			"page":        result.Page,
 			"page_size":   result.PageSize,
 			"total_pages": result.TotalPages,
 			"has_more":    result.Page < result.TotalPages,
-		})
+		}
+		if result.QueryPlan != nil {
+			response["query_plan"] = result.QueryPlan
+		}
+		return c.JSON(http.StatusOK, response)
 	}
 	if h.store == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
@@ -3664,6 +3685,11 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 		Query:     c.QueryParam("q"),
 		SortBy:    c.QueryParam("sort_by"),
 		SortOrder: c.QueryParam("sort_order"),
+	}
+	var queryPlan *skillmarket.SearchQueryPlan
+	if parseTruthy(c.QueryParam("semantic")) {
+		plan := h.planSkillSearch(c.Request().Context(), opts.Query)
+		opts.Query, queryPlan = plan.Query, plan.Diagnostic()
 	}
 
 	// Parse categories
@@ -3722,7 +3748,10 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, struct {
+		*skillstore.SearchResponse
+		QueryPlan *skillmarket.SearchQueryPlan `json:"query_plan,omitempty"`
+	}{result, queryPlan})
 }
 
 // GetCategories returns all unique skill categories
