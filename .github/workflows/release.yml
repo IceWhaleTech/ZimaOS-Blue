@@ -547,9 +547,22 @@ jobs:
 
             const dir = './artifacts';
             const files = fs.readdirSync(dir);
+            const existingAssets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id
+            });
             for (const file of files) {
               const filePath = path.join(dir, file);
               if (!fs.statSync(filePath).isFile()) continue;
+              const previous = existingAssets.find(asset => asset.name === file);
+              if (previous) {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: previous.id
+                });
+              }
               console.log(`Uploading ${file}...`);
               await github.rest.repos.uploadReleaseAsset({
                 owner: context.repo.owner,
@@ -593,9 +606,21 @@ jobs:
               `- [ZimaOS raw module](${dl}/zimaos-blue.raw)`,
             ].join('\n');
 
+            const promo = [
+              '',
+              '## Run Blue on ZimaOS',
+              '',
+              `<p align="center"><a href="https://www.zimaspace.com/en/zimaos?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=blue_zimaos&amp;utm_content=release_banner_en"><img src="https://raw.githubusercontent.com/${repo}/main/docs/assets/release/zimaos-banner.en.png" alt="ZimaOS: your personal cloud, with local AI agents" width="640" /></a></p>`,
+              '',
+              'Build your personal cloud with ZimaOS: manage files, back up your data, and run local AI agents with Blue. [Explore ZimaOS](https://www.zimaspace.com/en/zimaos?utm_source=github&utm_medium=referral&utm_campaign=blue_zimaos&utm_content=release_text_en).',
+            ].join('\n');
+            let body = existing;
+            if (!/^## (?:Downloads|下载)\s*$/m.test(body)) body += downloads;
+            if (!body.includes('utm_campaign=blue_zimaos')) body += promo;
+
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: context.payload.release.id,
-              body: existing + downloads
+              body
             });
