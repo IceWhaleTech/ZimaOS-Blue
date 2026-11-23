@@ -28560,7 +28560,7 @@ STREAM_LOOP:
 
 		// Auto-continue: when LLM stopped without tool calls but the content
 		// still implies pending action, inject a continuation prompt and loop back.
-		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries && !providerFailoverAutoSwitchedThisRound {
+		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && toolRound+1 < maxToolRoundsForRequest && autoContinueCount < maxAutoContinueRetries && !providerFailoverAutoSwitchedThisRound {
 			preferReminderTool := toolRound == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 			if shouldContinue, reason := shouldAutoContinueAfterToollessReplyForRequest(fullContent, todoContent, routingMessage, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 				if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {

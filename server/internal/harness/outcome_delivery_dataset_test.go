@@ -19,7 +19,7 @@ func TestOutcomeDeliveryDataset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Items) != 9 || len(expectedStrings(manifest.Items[0].Expected, "contains")) != 1 {
+	if len(manifest.Items) != 10 || len(expectedStrings(manifest.Items[0].Expected, "contains")) != 1 {
 		t.Fatal("analysis fixture must check delivery of actual source content")
 	}
 	if len(expectedStrings(manifest.Items[1].Expected, "required_observations")) != 1 || len(expectedStrings(manifest.Items[1].Expected, "forbidden_observations")) != 2 {

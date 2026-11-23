@@ -193,6 +193,30 @@
         "critical": true,
         "scope": "Observed 692ecea4: all bash attempts failed, verified output was unknown, but VerifyTask marked successful execution and complete delivery PASS. Missing or failed execution evidence must block completion, while a later successful recovery remains valid."
       }
+    },
+    {
+      "id": "chat-final-report-survives-last-round-todo-continuation",
+      "input": {
+        "goal": "检查新华网首页并用中文汇总要闻；日期未核实请明确说明。已获取正文后，即使遗留待办仍未勾选且轮数耗尽，也必须保留实际报告。"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "新华网简报",
+          "日期尚未逐篇核实。"
+        ],
+        "required_tool_calls": [
+          "exec"
+        ],
+        "required_observations": [
+          "evidence_tool_used"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "runtime_path": "chat",
+        "scope": "Observed MiniMax round16 produced1261characters but pending-todo auto-continuation reset fullContent and streamCompleted with no round left, emitting empty done. Preserve final content, persistence and usage without marking unverified todos complete."
+      }
     }
   ]
 }
