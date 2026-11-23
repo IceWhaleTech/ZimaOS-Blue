@@ -104,3 +104,54 @@ func TestExecPreviewNamesRecoveryTool(t *testing.T) {
 		t.Fatalf("recovery must name callable exec, got %v", recovery)
 	}
 }
+
+func TestExecSkillDuplicateDataKeepsSourceAndRecoverableOutput(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+	tool := NewExecTool(DefaultExecConfig(), sessions, nil, nil, nil)
+	const headline = "测试要闻甲：发布前完成双人复核。"
+	source := headline + "\n" + strings.Repeat("来源正文证据内容\n", 1200) + "FINAL_FINDING=证据末尾\n"
+	tool.SetSkillExecutor(func(context.Context, string, map[string]any) (map[string]string, error) {
+		return map[string]string{"content": source, "url": "https://www.xinhuanet.com/test-news.html"}, nil
+	})
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{"command": "blue web_query input=\"https://www.xinhuanet.com/\""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview := serializeToolPayload(compactToolPayloadForLLM(context.Background(), ToolGatewayRequest{}, "exec", raw, raw.(string)))
+	if !strings.Contains(preview, headline) {
+		t.Errorf("gateway discarded source text: %s", preview)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal([]byte(preview), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(preview) > maxToolGatewayLLMStringBytes || !utf8.ValidString(preview) {
+		t.Fatal("invalid preview budget or encoding")
+	}
+	id, _ := envelope["session_id"].(string)
+	var collected strings.Builder
+	offset := 0
+	for i := 0; i < 20; i++ {
+		page, err := tool.Execute(context.Background(), map[string]interface{}{"action": "log", "session_id": id, "offset": offset, "limit": 16384})
+		if err != nil {
+			t.Fatalf("omitted skill output must be retrievable: %v", err)
+		}
+		var recovered map[string]interface{}
+		if err := json.Unmarshal([]byte(page.(string)), &recovered); err != nil {
+			t.Fatal(err)
+		}
+		collected.WriteString(recovered["output"].(string))
+		if recovered["has_more"] == false {
+			break
+		}
+		next := int(recovered["next_offset"].(float64))
+		if next <= offset {
+			t.Fatal("retrieval did not advance")
+		}
+		offset = next
+	}
+	if !strings.Contains(collected.String(), "FINAL_FINDING=证据末尾") {
+		t.Fatal("retained skill output lost source tail")
+	}
+}

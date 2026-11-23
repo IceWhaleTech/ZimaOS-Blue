@@ -1415,6 +1415,17 @@ func (t *ExecTool) buildSkillResult(ctx context.Context, command, skillName stri
 		Warnings:  warnings,
 		Host:      "local",
 	}
+	if t.sessions != nil {
+		session := &ProcessSession{
+			ID: result.SessionID, Command: command, StartedAt: timeutil.NowTime(),
+			Stdout: NewOutputBuffer(t.config.MaxOutput), Stderr: NewOutputBuffer(t.config.MaxOutput),
+		}
+		session.Stdout.Append(result.Stdout)
+		t.sessions.Add(session)
+		t.sessions.MarkExited(session.ID, &exitCode, "", ProcessCompleted)
+		result.Truncated = session.Stdout.Truncated()
+	}
+
 	resultJSON, _ := json.Marshal(result)
 	return string(resultJSON)
 }

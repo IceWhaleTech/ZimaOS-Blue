@@ -14892,6 +14892,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 		var resp *llm.ChatResponse
 		var err error
+		rejectedToolCallRetries := 0
 		maxResumeToolRounds := h.resolveToolRoundLimitForRequest(
 			pendingState.AgentMode,
 			pendingState.RoutingMessage,
@@ -14920,6 +14921,13 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 						Msg("[im] dropped assistant tool calls outside the current allowed tool set")
 				}
 				resp.Message.ToolCalls = sanitizedCalls
+				if len(sanitizedCalls) == 0 {
+					if retry, rejectionErr := retryRejectedAssistantToolCalls(&req, droppedCalls, &rejectedToolCallRetries, maxResumeToolRounds-imRound-1); rejectionErr != nil {
+						return "", buildIMChatFailureError(lang, rejectionErr)
+					} else if retry {
+						continue
+					}
+				}
 			}
 			if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, req.Tools) {
 				if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(ctx, resp.Message.Content, req.Tools); recovered {
@@ -23106,7 +23114,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	startTime := timeutil.NowTime()
 	var resp *llm.ChatResponse
 	var err error
-	var accumulatedToolRoundInputTokens, accumulatedToolRoundOutputTokens int64
+	var accumulatedRoundInputTokens, accumulatedRoundOutputTokens int64
 	todoContent := ""
 	workspaceArtifactHistoryTarget := extractRequestedArtifactPath(routingMessage)
 	workspaceArtifactHistoryCalls := make([]llm.ToolCall, 0, 8)
@@ -23237,6 +23245,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	if resp == nil {
 		autoContinueCount := 0
+		rejectedToolCallRetries := 0
 		pseudoToolCallAutoContinueCount := 0
 		actionPledgeAutoContinueCount := 0
 		missingTodoAutoContinueCount := 0
@@ -23410,6 +23419,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 				break
 			}
+			// Count every completed response, including rejected calls and continuations.
+			accumulatedRoundInputTokens += int64(resp.Usage.PromptTokens)
+			accumulatedRoundOutputTokens += int64(resp.Usage.CompletionTokens)
+
 			if len(resp.Message.ToolCalls) > 0 {
 				sanitizedCalls, droppedCalls := sanitizeAssistantToolCallsForAllowedSet(resp.Message.ToolCalls, chatReq.Tools)
 				if len(droppedCalls) > 0 {
@@ -23419,6 +23432,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Msg("[chat] dropped assistant tool calls outside the current allowed tool set")
 				}
 				resp.Message.ToolCalls = sanitizedCalls
+				if len(sanitizedCalls) == 0 {
+					if retry, rejectionErr := retryRejectedAssistantToolCalls(&chatReq, droppedCalls, &rejectedToolCallRetries, maxToolRoundsForRequest-round-1); rejectionErr != nil {
+						err = rejectionErr
+						break
+					} else if retry {
+						continue
+					}
+				}
 			}
 			if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, chatReq.Tools) {
 				if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(llmCtx, resp.Message.Content, chatReq.Tools); recovered {
@@ -23430,12 +23451,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Int("tool_calls", len(recoveredCalls)).
 						Msg("[chat] recovered pseudo tool-call text into assistant tool calls")
 				}
-			}
-			// Accumulate usage for intermediate tool rounds so trial quota (and
-			// metrics) reflects the full request cost, not just the final round.
-			if len(resp.Message.ToolCalls) > 0 {
-				accumulatedToolRoundInputTokens += int64(resp.Usage.PromptTokens)
-				accumulatedToolRoundOutputTokens += int64(resp.Usage.CompletionTokens)
 			}
 
 			// Pin provider after first successful round with tool calls
@@ -24347,10 +24362,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		resp.Usage.PromptTokens = estimateInputTokens(chatReq.Messages)
 		resp.Usage.CompletionTokens = estimateTokens(resp.Message.Content)
 		resp.Usage.TotalTokens = resp.Usage.PromptTokens + resp.Usage.CompletionTokens
+		accumulatedRoundInputTokens += int64(resp.Usage.PromptTokens)
+		accumulatedRoundOutputTokens += int64(resp.Usage.CompletionTokens)
 	}
-	if resp != nil && (accumulatedToolRoundInputTokens > 0 || accumulatedToolRoundOutputTokens > 0) {
-		resp.Usage.PromptTokens += int(accumulatedToolRoundInputTokens)
-		resp.Usage.CompletionTokens += int(accumulatedToolRoundOutputTokens)
+	if resp != nil && (accumulatedRoundInputTokens > 0 || accumulatedRoundOutputTokens > 0) {
+		resp.Usage.PromptTokens = int(accumulatedRoundInputTokens)
+		resp.Usage.CompletionTokens = int(accumulatedRoundOutputTokens)
 		resp.Usage.TotalTokens = resp.Usage.PromptTokens + resp.Usage.CompletionTokens
 	}
 
@@ -26477,6 +26494,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		emitContextCompacting()
 	}
 	primaryStreamProviderAvailable := h.runtimeProvider != nil || h.proxyBridge != nil
+	rejectedToolCallRetries := 0
 STREAM_LOOP:
 	for toolRound := 0; toolRound < maxToolRoundsForRequest; toolRound++ {
 		streamToolCalls = streamToolCalls[:0]
@@ -27481,6 +27499,18 @@ STREAM_LOOP:
 					Msg("[chat] stream: dropped assistant tool calls outside the current allowed tool set")
 			}
 			streamToolCalls = sanitizedCalls
+			if err == nil && len(sanitizedCalls) == 0 {
+				if retry, rejectionErr := retryRejectedAssistantToolCalls(&chatReq, droppedCalls, &rejectedToolCallRetries, maxToolRoundsForRequest-toolRound-1); rejectionErr != nil {
+					err = rejectionErr
+					break
+				} else if retry {
+					accumulateCompletedRoundUsage()
+					pinAutoContinueRoute("rejected_tool_call")
+					fullContent = ""
+					streamCompleted = false
+					continue
+				}
+			}
 		}
 		if len(streamToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, chatReq.Tools) {
 			if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(ctx, fullContent, chatReq.Tools); recovered {

@@ -135,6 +135,47 @@
       }
     },
     {
+      "id": "chat-xinhua-report-recovers-rejected-native-call",
+      "input": {
+        "goal": "现在检查新华网（xinhuanet.com）今天发布的重要新闻，浏览要闻和重点栏目，挑出头条与值得关注的内容，用中文给我一份简洁的汇总。"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": ["新华网"],
+        "required_tool_calls": ["exec"],
+        "required_observations": ["evidence_tool_used"]
+      },
+      "metadata": {
+        "critical": true,
+        "runtime_path": "chat",
+        "initial_rejected_tool": "web_query",
+        "scope": "macOS0.11.0 emitted web_query on an exec-only surface. Rejection must give the model bounded corrective feedback, execute the supported skill entry point and deliver a source-backed report, or expose an explicit error. Empty done is not success."
+      }
+    },
+    {
+      "id": "chat-exec-web-evidence-survives-gateway-budget",
+      "input": {
+        "goal": "Read https://www.xinhuanet.com/ through blue web_query and summarize its actual headlines. The tool gateway must retain source text when structured data duplicates stdout beyond the model-output budget."
+      },
+      "expected": {
+        "status": "completed",
+        "required_tool_calls": [
+          "exec"
+        ],
+        "required_observations": [
+          "evidence_tool_used"
+        ],
+        "forbidden_observations": [
+          "evidence_collection_empty"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "runtime_path": "chat",
+        "scope": "Live replay fetched 1852 source characters but the gateway compacted the large duplicated data/stdout envelope into only exit_code and session_id. Preserve evidence and make omitted skill output recoverable."
+      }
+    },
+    {
       "id": "failed-command-cannot-pass-as-unknown",
       "input": {
         "goal": "Run python3 -c 'raise SystemExit(7)' and return its actual output. Report that execution failed; do not claim successful completion when execution evidence is missing."

@@ -46,6 +46,16 @@ func CompactExecOutputForLLM(payload map[string]interface{}, budget int) string 
 			}
 		}
 		if longest == "" {
+			if _, exists := out["data"]; exists {
+				// Oversized skill data must not crowd out all of the rendered evidence.
+				delete(out, "data")
+				for _, key := range []string{"stdout", "stderr", "output"} {
+					if value, ok := payload[key].(string); ok {
+						out[key] = sanitizeToolString(value, 0)
+					}
+				}
+				continue
+			}
 			break
 		}
 		value := out[longest].(string)
