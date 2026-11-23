@@ -80,6 +80,22 @@ func TestToolSearchTool_SchemaAcceptsStringSelectCompat(t *testing.T) {
 	}
 }
 
+func TestToolSearchTool_LegacySkillHintReadsInstructions(t *testing.T) {
+	path := "/workspace/.agents/skills/filens/SKILL.md"
+	snapshot := skillmanifest.SkillExposureSnapshot{VisibleSkills: []skillmanifest.SkillExposureView{{
+		ModelInvocable: true,
+		Document:       skillmanifest.Document{ID: "filens", Name: "filens", ModelInvocable: true, Location: path},
+	}}}
+	search := NewToolSearchTool(NewRegistry())
+	caps := search.buildCapabilities(nil, nil, DeferredToolExposureState{}, ToolSearchRuntimeInfo{}, snapshot, toolSearchParsedQuery{})
+	if len(caps) != 1 {
+		t.Fatalf("capabilities = %+v", caps)
+	}
+	if !strings.Contains(caps[0].CallHint, path) || strings.Contains(caps[0].CallHint, "blue filens") {
+		t.Fatalf("legacy skill must provide its instructions instead of inventing a command: %+v", caps[0])
+	}
+}
+
 func TestToolSearchTool_SelectAndRequiredTermsActivateDeferredTool(t *testing.T) {
 	registry := NewRegistry()
 	searchTool := NewToolSearchTool(registry)

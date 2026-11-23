@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
 func writeSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation string, capabilityTags ...string) {
@@ -603,6 +605,94 @@ func TestStage0RuleRoute_RoutesWorkspaceQueryToExec(t *testing.T) {
 	}
 }
 
+func TestStage0RuleRoute_RespectsNegationScope(t *testing.T) {
+	for _, tc := range []struct{ query, want string }{
+		{"不要搜索网页；读取目录中的文件，总结报告。", "exec"},
+		{"Read files in the directory; do not use any tools.", ""},
+		{"Do not open https://example.com; read files in the directory.", "exec"},
+	} {
+		if got := stage0RuleRoute(tc.query); got.SelectedSkill != tc.want {
+			t.Errorf("%q: selected %q, want %q", tc.query, got.SelectedSkill, tc.want)
+		}
+	}
+}
+
+func TestSkillSelector_LocalTaskDiscoversExternalCLI(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	dir := filepath.Join(workspace, ".agents", "skills", "filens")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	content := `---
+name: filens
+version: "9.0.0"
+description: Search and read local documents, reports, PDFs and scanned files in a directory.
+category: external_cli
+invocation: "blue exec command='filens search /path/documents --query budget'"
+examples:
+  - Search local documents in the directory for the budget.
+capability_tags: [read, search, document, report, directory, pdf, 回答, 读取, 搜索, 文档, 文件, 目录, 预算]
+interaction_mode: stateless
+card_support: none
+---
+Use filens for local document search.
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	selector := NewSkillSelector(workspace, nil)
+	for _, tc := range []struct{ query, want string }{
+		{"Read documents in the directory for the budget; do not open reference answers.", "filens"},
+		{"读取目录中的文件，回答预算；不要读取参考答案，数字使用两位小数。", "filens"},
+		{`{"corpus":"/tmp/data","question":"工单复核周期是多少天？","instruction":"根据 corpus 内文件回答。不要读取参考答案；数字使用整数。"}`, "filens"},
+		{`{"corpus":"/tmp/data","task":{"id":"text-control","question":"工单复核周期是多少天？"},"answerSchema":{"type":"object","properties":{"source":{"type":"string"}}},"instruction":"根据 corpus 内文件回答。不要读取参考答案；数字使用整数。"}`, "filens"},
+		{"Review source code in the repository and fix the Go compiler error.", "exec"},
+		{"Do not use any tools; read documents in the directory.", ""},
+	} {
+		d, err := selector.Select(context.Background(), tc.query, SelectOptions{Mode: SkillSelectorModeIROnly})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.SelectedSkill != tc.want {
+			t.Errorf("%q: got %q, want %q (%+v)", tc.query, d.SelectedSkill, tc.want, d)
+		}
+		if tc.want == "filens" {
+			if d.NeedClarify {
+				t.Errorf("confident local document task requested clarification: %+v", d)
+			}
+			hint := d.PromptHint(3)
+			if !strings.Contains(hint, path) || !strings.Contains(hint, "filens search") {
+				t.Errorf("missing external CLI instructions in hint: %s", hint)
+			}
+		}
+	}
+}
+
+func TestSkillSelector_ShippedExternalCLICopyKeepsExecFallback(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	_, raw, err := skillmanifest.ReadEmbedded("summarize", skillmanifest.Options{AllowLegacyFallback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(workspace, ".agents", "skills", "summarize")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := NewSkillSelector(workspace, nil).Select(context.Background(), "Review files in the workspace and summarize the report.", SelectOptions{Mode: SkillSelectorModeIROnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.SelectedSkill != "exec" {
+		t.Fatalf("shipped skill copy bypassed fallback: %+v", d)
+	}
+}
+
 func TestStage0RuleRoute_RoutesEmailCLIQuery(t *testing.T) {
 	query := "Search my IMAP inbox for unread mail from Alice and reply from the terminal."
 	d := stage0RuleRoute(query)
@@ -994,5 +1084,24 @@ func TestSkillSelector_URLDeepResearchBypassesBrowserRule(t *testing.T) {
 	}
 	if decision.SelectedSkill != "research" || decision.ResearchMode != "deep_research" {
 		t.Fatalf("expected research/deep_research for URL research request, got=%+v", decision)
+	}
+}
+
+func TestEmbeddedResearchScreenshotReviewLocales(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	selector := NewSkillSelector(t.TempDir(), NewHeuristicSkillReranker())
+	for _, example := range routingcue.LocalizedExamples("ui_reviewer") {
+		t.Run(example.Locale, func(t *testing.T) {
+			decision, err := selector.Select(context.Background(), example.Query, SelectOptions{Mode: SkillSelectorModeHybrid, EnableRerank: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.SelectedSkill != "research" || decision.ResearchMode != "ui_review" || decision.NeedClarify {
+				t.Fatalf("embedded-only review must select research/ui_review with a prompt hint: %+v", decision)
+			}
+			if decision.PromptHint(3) == "" {
+				t.Fatal("missing selected-skill instructions")
+			}
+		})
 	}
 }

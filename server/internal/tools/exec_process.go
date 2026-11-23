@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ProcessTool implements the Tool interface for managing exec sessions.
@@ -22,7 +24,7 @@ func NewProcessTool(sessions *SessionRegistry) *ProcessTool {
 func (t *ProcessTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "process",
-		Description: "Manage running and recently finished exec sessions. Actions: list (show all sessions), poll (get pending output), log (get full output), kill (terminate a session).",
+		Description: "Manage running and recently finished exec sessions. Actions: list, poll (pending output), log (page retained output), kill. Log offsets are UTF-8 bytes; follow next_offset while has_more is true. A truncated buffer cannot prove absence.",
 		Icon:        "process",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -36,6 +38,8 @@ func (t *ProcessTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "Session ID (required for poll, log, kill)",
 				},
+				"offset": map[string]interface{}{"type": "integer", "minimum": 0, "description": "For log: UTF-8 byte offset, default 0."},
+				"limit":  map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 16384, "description": "For log: maximum UTF-8 bytes, default 4096."},
 			},
 			"required": []string{"action"},
 		},
@@ -65,11 +69,15 @@ type processPollResult struct {
 }
 
 type processLogResult struct {
-	SessionID string `json:"session_id"`
-	Status    string `json:"status"`
-	Output    string `json:"output"`
-	ExitCode  *int   `json:"exit_code,omitempty"`
-	Truncated bool   `json:"truncated,omitempty"`
+	SessionID  string `json:"session_id"`
+	Status     string `json:"status"`
+	Output     string `json:"output"`
+	ExitCode   *int   `json:"exit_code,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	Offset     int    `json:"offset"`
+	NextOffset int    `json:"next_offset"`
+	TotalBytes int    `json:"total_bytes"`
+	HasMore    bool   `json:"has_more"`
 }
 
 type processKillResult struct {
@@ -95,7 +103,7 @@ func executeProcessAction(sessions *SessionRegistry, args map[string]interface{}
 	case "poll", "poll_session":
 		return pollProcessSession(sessions, sessionID)
 	case "log", "session_log":
-		return logProcessSession(sessions, sessionID)
+		return logProcessSession(sessions, sessionID, args)
 	case "kill", "kill_session":
 		return killProcessSession(sessions, sessionID)
 	default:
@@ -169,37 +177,70 @@ func pollProcessSession(sessions *SessionRegistry, sessionID string) (interface{
 	return nil, fmt.Errorf("session %q not found", sessionID)
 }
 
-func logProcessSession(sessions *SessionRegistry, sessionID string) (interface{}, error) {
+func logProcessSession(sessions *SessionRegistry, sessionID string, args map[string]interface{}) (interface{}, error) {
 	if sessionID == "" {
 		return nil, errors.New("session_id is required for log")
 	}
 
-	s := sessions.Get(sessionID)
-	if s != nil {
-		result := processLogResult{
+	var result processLogResult
+	if s := sessions.Get(sessionID); s != nil {
+		result = processLogResult{
 			SessionID: s.ID,
 			Status:    string(s.Status),
 			Output:    SanitizeBinaryOutput(s.Stdout.String() + s.Stderr.String()),
 			Truncated: s.Stdout.Truncated() || s.Stderr.Truncated(),
 		}
-		data, _ := json.Marshal(result)
-		return string(data), nil
-	}
-
-	f := sessions.GetFinished(sessionID)
-	if f != nil {
-		result := processLogResult{
+	} else if f := sessions.GetFinished(sessionID); f != nil {
+		result = processLogResult{
 			SessionID: f.ID,
 			Status:    string(f.Status),
 			Output:    SanitizeBinaryOutput(f.Output),
 			ExitCode:  f.ExitCode,
 			Truncated: f.Truncated,
 		}
-		data, _ := json.Marshal(result)
-		return string(data), nil
+	} else {
+		return nil, fmt.Errorf("session %q not found", sessionID)
 	}
-
-	return nil, fmt.Errorf("session %q not found", sessionID)
+	parse := func(key string, fallback int) (int, error) {
+		value, exists := firstCompatValueDeep(args, key)
+		if !exists {
+			return fallback, nil
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(fmt.Sprint(value)))
+		if err != nil {
+			return 0, fmt.Errorf("%s must be an integer", key)
+		}
+		return n, nil
+	}
+	offset, err := parse("offset", 0)
+	if err != nil {
+		return nil, err
+	}
+	limit, err := parse("limit", 4096)
+	if err != nil {
+		return nil, err
+	}
+	output := sanitizeToolString(result.Output, 0)
+	if offset < 0 || offset > len(output) || (offset < len(output) && !utf8.RuneStart(output[offset])) {
+		return nil, errors.New("offset must be a UTF-8 byte boundary within retained output")
+	}
+	if limit < 1 || limit > 16384 {
+		return nil, errors.New("limit must be between 1 and 16384 bytes")
+	}
+	end := offset + min(limit, len(output)-offset)
+	for end > offset && end < len(output) && !utf8.RuneStart(output[end]) {
+		end--
+	}
+	if end == offset && offset < len(output) {
+		return nil, errors.New("limit is too small for the next UTF-8 character")
+	}
+	result.Output = output[offset:end]
+	result.Offset = offset
+	result.NextOffset = end
+	result.TotalBytes = len(output)
+	result.HasMore = end < len(output)
+	data, _ := json.Marshal(result)
+	return string(data), nil
 }
 
 func killProcessSession(sessions *SessionRegistry, sessionID string) (interface{}, error) {

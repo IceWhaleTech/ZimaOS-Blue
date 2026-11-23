@@ -369,10 +369,6 @@ func (s *RodService) removeTab(tab *tabInfo) {
 	delete(s.tabs, tab.targetID)
 	s.tabsMu.Unlock()
 	s.clearSessionScreenshotHistory(tab.targetID)
-	if !s.config.UsesRelayDriver() {
-		s.pool.ReleasePage(tab.page, tab.browser)
-		return
-	}
 	if tab.page != nil {
 		_ = tab.page.Close()
 	}
@@ -1015,6 +1011,8 @@ func (s *RodService) openTabNormalized(ctx context.Context, normalizedURL string
 	tab.active = true
 	s.tabs[targetID] = tab
 	s.tabsMu.Unlock()
+	// Retained tabs own their pages, not an exclusive browser creation lease.
+	s.pool.Release(browser)
 
 	return &Tab{
 		TargetID: targetID,
@@ -1063,9 +1061,6 @@ func (s *RodService) CloseTab(ctx context.Context, targetID string) error {
 	}
 	tab.network = nil
 	tab.networkMu.Unlock()
-	if tab.browser != nil {
-		s.pool.Release(tab.browser)
-	}
 	delete(s.tabs, targetID)
 	s.clearSessionScreenshotHistory(targetID)
 

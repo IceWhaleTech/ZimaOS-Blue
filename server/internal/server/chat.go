@@ -43,6 +43,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -674,11 +675,26 @@ func hasDefaultFallbackOffer(content string) bool {
 	return false
 }
 
-// shouldPreferDeepSearchReport returns true for requests that should run
-// multi-round search and produce a complete research report instead of a
-// one-shot short answer.
+func researchQueryText(message string) string {
+	lower := strings.ToLower(strings.TrimSpace(selector.QueryText(message)))
+	// Local sources can contain research/release terminology without requesting
+	// outside evidence. Keep explicit mixed local + web requests eligible.
+	signals := selector.AnalyzeQuery(message)
+	if signals.LocalWorkspace && selector.ContainsAny(signals.Normalized, []string{
+		"workspace", "directory", "folder", "corpus", "local file", "local files",
+		"工作区", "目录", "文件夹", "本地文件",
+	}) && !selector.ContainsAny(signals.Normalized, []string{
+		"web", "website", "internet", "online", "http://", "https://",
+		"联网", "网页", "官网", "互联网", "公开资料", "公共资料",
+	}) {
+		return ""
+	}
+	return lower
+}
+
+// shouldPreferDeepSearchReport identifies requests for research reports.
 func shouldPreferDeepSearchReport(message string) bool {
-	lower := strings.ToLower(strings.TrimSpace(message))
+	lower := researchQueryText(message)
 	if lower == "" {
 		return false
 	}
@@ -1213,7 +1229,7 @@ func normalizeEmbeddedSlashCommand(command string) string {
 }
 
 func shouldEnforceDeepSearchMinRounds(message string) bool {
-	lower := strings.ToLower(strings.TrimSpace(message))
+	lower := researchQueryText(message)
 	if lower == "" {
 		return false
 	}
@@ -1414,7 +1430,7 @@ func buildDeepSearchMinRoundsNudge(state *deepSearchLoopState) string {
 		}
 	}
 	return fmt.Sprintf(
-		"Deep-search guard: do not finalize yet. Search rounds completed: %d/%d. Run at least one more web_query round with a different query angle and preferably new sources. After that, provide one complete report with: executive summary, key findings, timeline/version facts (if relevant), risks/uncertainties, and source URLs. If the next search still yields no new evidence or returns tool errors, finish with a best-effort report and explicitly state evidence limitations.",
+		"Deep-search guard: do not finalize yet. Search rounds completed: %d/%d. Run at least one more web_query round with a different query angle and preferably new sources. Then answer the user's actual questions, preserving the requested output format, fields, and source scope. When no format is specified, provide a complete report with key findings, relevant dates, uncertainties, and source URLs. If the next search still yields no new evidence or returns tool errors, finish using the available evidence and state limitations within the requested format.",
 		completed,
 		target,
 	)
@@ -7721,7 +7737,7 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
 			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 		}
-		execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
+		execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq)
 		if !ok {
 			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 		}
@@ -7952,8 +7968,35 @@ func (h *ChatHandler) lookupNativeToolDefinitionForRoute(name string, kind tools
 	return tools.ToolDefinition{}, false
 }
 
-func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(kind tools.ToolRouteKind) (tools.ToolDefinition, bool) {
-	return h.lookupNativeToolDefinitionForRoute("exec", kind)
+func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(policyReq tools.ToolPolicyRequest) (tools.ToolDefinition, bool) {
+	if h == nil || h.toolRegistry == nil {
+		return tools.ToolDefinition{}, false
+	}
+	policyReq.SkipDefaultChatDirectAllowlist = true
+	var def tools.ToolDefinition
+	for _, candidate := range h.toolDefinitionsForPolicy(policyReq) {
+		if strings.EqualFold(candidate.Name, "exec") {
+			def = candidate
+			break
+		}
+	}
+	if def.Name == "" {
+		return tools.ToolDefinition{}, false
+	}
+	// Session controls are loaded after execution yields a session or log preview.
+	props := map[string]interface{}{
+		"command": map[string]interface{}{"type": "string"},
+		"workdir": map[string]interface{}{"type": "string"},
+		"timeout": map[string]interface{}{"type": "number"},
+	}
+	if original, ok := def.Parameters["properties"].(map[string]interface{}); ok {
+		if host, ok := original["host"].(map[string]interface{}); ok {
+			props["host"] = map[string]interface{}{"enum": host["enum"]}
+		}
+	}
+	def.Parameters = map[string]interface{}{"type": "object", "properties": props, "required": []string{"command"}}
+	def.Description = "Run a shell or Blue skill command. Optional workdir and timeout in seconds. Session controls become available for running commands and paged output."
+	return def, true
 }
 
 func (h *ChatHandler) preserveAdvisorToolOnResearchCutover(policyReq tools.ToolPolicyRequest, selection chatToolSurfaceSelection) chatToolSurfaceSelection {
@@ -10110,10 +10153,14 @@ func forcedSkillSelectionHint(userMessage, skill string) string {
 }
 
 func shouldUseSkillDecisionForDiscoverFirst(decision agentcore.Decision) bool {
+	// A weak skill match is capability uncertainty, not a missing user choice.
+	if decision.NeedClarify && decision.Reason == "ir_ranked" && len(decision.ConflictFlags) == 0 && !selector.AnalyzeQuery(decision.Query).HighRisk {
+		return false
+	}
 	if strings.TrimSpace(decision.SelectedSkill) != "" {
 		return true
 	}
-	return len(decision.ConflictFlags) > 0
+	return len(decision.ConflictFlags) > 0 || decision.Reason == "ir_no_match"
 }
 
 func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
@@ -10206,7 +10253,7 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 		}
 	}
 
-	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
+	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq)
 	if !ok {
 		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
@@ -17839,6 +17886,9 @@ func (h *ChatHandler) executeToolCallsWithAudit(ctx context.Context, toolCalls [
 				switch v := result.(type) {
 				case string:
 					content = sanitizeToolOutput(v)
+					if strings.EqualFold(tc.Name, "bash") || strings.EqualFold(tc.Name, "exec") {
+						content = compactToolResultContentForLLM(tc.Name, v)
+					}
 				default:
 					b, marshalErr := json.Marshal(v)
 					if marshalErr != nil {
@@ -17986,8 +18036,6 @@ const (
 	maxLLMToolOutputBytes       = 8 * 1024
 	maxLLMToolOutputsTotalBytes = 12 * 1024
 	minLLMToolOutputBytes       = 320
-	maxLLMToolStdoutBytes       = 1800
-	maxLLMExecReadStdoutBytes   = 6 * 1024
 	maxLLMToolStderrBytes       = 1200
 	maxLLMSearchRoundsKeepFull  = 3
 	maxLLMSearchSummaryBytes    = 1400
@@ -19434,6 +19482,9 @@ func extractRequestedArtifactPathForWrite(userMessage string) string {
 		return ""
 	}
 	if len(candidates) == 1 {
+		if hasExplicitWorkspaceSourceCue(userMessage) && scoreArtifactWriteTargetCandidate(userMessage, candidates[0]) == 0 {
+			return ""
+		}
 		return strings.TrimSpace(candidates[0].path)
 	}
 
@@ -19894,6 +19945,12 @@ func extractSearchMetadataForLLM(toolName string, payload map[string]interface{}
 }
 
 func compactToolResultContentForLLM(toolName, content string) string {
+	if strings.EqualFold(strings.TrimSpace(toolName), "exec") || strings.EqualFold(strings.TrimSpace(toolName), "bash") {
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(content), &payload) == nil && payload != nil {
+			return tools.CompactExecOutputForLLM(compactExecPayloadForLLM(payload), maxLLMToolOutputBytes)
+		}
+	}
 	sanitized := sanitizeToolOutput(content)
 	if strings.TrimSpace(sanitized) == "" {
 		return sanitized
@@ -19905,7 +19962,7 @@ func compactToolResultContentForLLM(toolName, content string) string {
 	}
 
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "exec":
+	case "exec", "bash":
 		if m, ok := payload.(map[string]interface{}); ok {
 			payload = compactExecPayloadForLLM(m)
 		} else {
@@ -19980,9 +20037,10 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 	out := make(map[string]interface{}, 16)
 	for _, k := range []string{
 		"status", "exit_code", "duration_ms", "truncated", "risk_level", "session_id", "host",
+		"llm_output_truncated", "output_retrieval", "output_notice", "offset", "next_offset", "total_bytes", "has_more",
 	} {
 		if v, ok := payload[k]; ok {
-			out[k] = compactJSONValueForLLM(v, 1)
+			out[k] = v
 		}
 	}
 
@@ -19994,11 +20052,10 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 	if command := anyToStringForLLM(payload["command"]); command != "" {
 		out["command"] = truncateUTF8Bytes(command, 320)
 	}
-	if stdout := anyToStringForLLM(payload["stdout"]); stdout != "" {
-		out["stdout"] = truncateUTF8Bytes(stdout, execStdoutByteLimitForLLM(payload))
-	}
-	if stderr := anyToStringForLLM(payload["stderr"]); stderr != "" {
-		out["stderr"] = truncateUTF8Bytes(stderr, maxLLMToolStderrBytes)
+	for _, key := range []string{"stdout", "stderr", "output"} {
+		if value, ok := payload[key].(string); ok {
+			out[key] = value
+		}
 	}
 	if errMsg := anyToStringForLLM(payload["error"]); errMsg != "" {
 		out["error"] = truncateUTF8Bytes(errMsg, maxLLMToolStderrBytes)
@@ -20016,17 +20073,6 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 	}
 
 	return out
-}
-
-func execStdoutByteLimitForLLM(payload map[string]interface{}) int {
-	command := strings.TrimSpace(anyToStringForLLM(payload["command"]))
-	if command == "" {
-		return maxLLMToolStdoutBytes
-	}
-	if _, ok := extractWorkspaceExecReadPathFromCommand(command); ok {
-		return min(maxLLMExecReadStdoutBytes, maxLLMToolOutputBytes)
-	}
-	return maxLLMToolStdoutBytes
 }
 
 func compactExecDataForLLM(data map[string]interface{}) map[string]interface{} {
@@ -21983,6 +22029,12 @@ func recompactToolResultForLLMBudget(toolName, content string, budget int) strin
 	if len(content) <= budget {
 		return content
 	}
+	if strings.EqualFold(toolName, "bash") || strings.EqualFold(toolName, "exec") {
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(content), &payload) == nil && payload != nil {
+			return tools.CompactExecOutputForLLM(payload, budget)
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(toolName), "web_query") {
 		mode := tools.WebQueryLLMCompactionSummary
 		if budget <= 640 {
@@ -23765,7 +23817,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 			roundToolCtx := withToolProviderContext(toolCtx, resp.Provider, resp.ProviderID, resp.Model)
+			roundToolCtx = tools.WithLoadedToolNames(roundToolCtx, llmToolNamesWithAdded(chatReq.Tools))
 			toolResults, toolAuditResults := h.executeToolCallsWithAudit(roundToolCtx, resp.Message.ToolCalls)
+			chatReq = h.refreshDiscoveredTools(roundToolCtx, chatReq, resp.Message.ToolCalls, toolResults, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
 			if workspaceArtifactHistoryTarget != "" {
 				workspaceArtifactHistoryCalls = append(workspaceArtifactHistoryCalls, resp.Message.ToolCalls...)
 				workspaceArtifactHistoryResults = append(workspaceArtifactHistoryResults, toolAuditResults...)
@@ -27667,7 +27721,9 @@ STREAM_LOOP:
 			// Execute tools with the stream-scoped context. It already survives raw
 			// HTTP disconnects, but still stops on explicit stream cancellation.
 			roundToolCtx := withToolProviderContext(toolCtx, actualProvider, actualProviderID, actualModel)
+			roundToolCtx = tools.WithLoadedToolNames(roundToolCtx, llmToolNamesWithAdded(chatReq.Tools))
 			toolResults, toolAuditResults := h.executeToolCallsWithAudit(roundToolCtx, streamToolCalls)
+			chatReq = h.refreshDiscoveredTools(roundToolCtx, chatReq, streamToolCalls, toolResults, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
 			if toolErr := roundToolCtx.Err(); toolErr != nil {
 				err = toolErr
 				cancelReason := loadStreamCancelReason()

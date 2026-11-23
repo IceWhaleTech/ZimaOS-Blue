@@ -1,0 +1,63 @@
+{
+  "dataset": {
+    "name": "runtime-resource-limits",
+    "subject": "runtime_resources"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "persistent-tabs-do-not-exhaust-browser-pool",
+      "input": {
+        "goal": "Read four separate browser tabs for https://example.com/ and return the title of each, retaining them until all four have opened."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Example Domain"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "browser_pool_size": 1,
+        "tab_count": 4,
+        "scope": "Persistent tabs must release the browser creation lease without closing the tabs."
+      }
+    },
+    {
+      "id": "agent-honors-harness-duration",
+      "input": {
+        "goal": "Run python3 -c 'import time; time.sleep(60)' and wait for it to complete.",
+        "max_duration_seconds": 1
+      },
+      "expected": {
+        "status": "failed"
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "A task that exceeds the declared duration must terminate without a success verdict."
+      }
+    },
+    {
+      "id": "browser-replacement-kills-disconnected-process",
+      "input": {
+        "goal": "After the browser connection fails while Chromium is still alive, recover the browser and read https://example.com/."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Example Domain"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Replacement and shutdown must terminate the disconnected managed browser before waiting for launcher cleanup, without permanently holding the pool lock."
+      }
+    }
+  ]
+}

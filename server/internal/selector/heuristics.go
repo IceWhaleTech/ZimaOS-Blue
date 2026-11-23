@@ -1,10 +1,10 @@
 package selector
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
-	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
 )
@@ -39,10 +39,12 @@ type QueryIntentSignals struct {
 
 func AnalyzeQuery(query string) QueryIntentSignals {
 	q := strings.TrimSpace(query)
-	lower := strings.ToLower(q)
+	lower := strings.ToLower(QueryText(q))
+	lower, negated := selectionQuery(lower)
 	signals := QueryIntentSignals{
 		Query:      query,
 		Normalized: lower,
+		Negated:    negated,
 	}
 	if lower == "" {
 		return signals
@@ -58,7 +60,7 @@ func AnalyzeQuery(query string) QueryIntentSignals {
 	signals.Productivity = staticCueMatchers.productivityTermMatcher().ContainsAnyFold(lower)
 	signals.UIArtifact = staticCueMatchers.uiArtifactTermMatcher().ContainsAnyFold(lower)
 	signals.HighRisk = staticCueMatchers.highRiskTermMatcher().ContainsAnyFold(lower)
-	if signals.LiveWeb && signals.Productivity && !signals.URLPresent && !staticCueMatchers.liveWebStrongTermMatcher().ContainsAnyFold(lower) {
+	if signals.LiveWeb && (signals.LocalWorkspace || signals.Productivity) && !signals.URLPresent && !staticCueMatchers.liveWebStrongTermMatcher().ContainsAnyFold(lower) {
 		signals.LiveWeb = false
 	}
 
@@ -67,9 +69,42 @@ func AnalyzeQuery(query string) QueryIntentSignals {
 
 	signals.PlainReply = staticCueMatchers.plainReplyTermMatcher().ContainsAnyFold(lower) && !operational
 	signals.Smalltalk = staticCueMatchers.smalltalkPrefixMatcher().HasAnyPrefix(lower) && !operational
-	signals.Negated = detectNegation(lower)
 
 	return signals
+}
+
+// QueryText extracts request text without JSON field names or output schemas.
+func QueryText(query string) string {
+	var value interface{}
+	if json.Unmarshal([]byte(query), &value) != nil {
+		return query
+	}
+	var parts []string
+	var collect func(interface{})
+	collect = func(value interface{}) {
+		switch value := value.(type) {
+		case string:
+			parts = append(parts, value)
+		case []interface{}:
+			for _, item := range value {
+				collect(item)
+			}
+		case map[string]interface{}:
+			if _, ok := value["properties"].(map[string]interface{}); ok && value["type"] == "object" {
+				return
+			}
+			keys := make([]string, 0, len(value))
+			for key := range value {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				collect(value[key])
+			}
+		}
+	}
+	collect(value)
+	return strings.Join(parts, "\n")
 }
 
 func (q QueryIntentSignals) BlocksAutomaticSelection() bool {
@@ -339,19 +374,37 @@ func detectLocalWorkspace(lower string) bool {
 	return hasContainer || hasFile
 }
 
-func detectNegation(lower string) bool {
-	if lower == "" {
-		return false
+// selectionQuery excludes local prohibitions from capability matching. The full
+// user query still reaches the model, which must obey those restrictions.
+func selectionQuery(lower string) (string, bool) {
+	if !staticCueMatchers.negationTermMatcher().ContainsAnyFold(lower) {
+		return lower, false
 	}
-	match, ok := staticCueMatchers.negationTermMatcher().FirstMatchFold(lower)
-	if !ok {
-		return false
+	if ContainsAny(lower, []string{
+		"don't use tools", "don't use any tools", "don't use any tool", "don't call tools",
+		"do not use tools", "do not use any tools", "do not use any tool", "do not call tools",
+		"without tools", "without using tools", "不要使用任何工具", "不要使用工具",
+		"不要调用任何工具", "不要调用工具", "不用工具", "别用工具",
+	}) {
+		return "", true
 	}
-	if match.Start < 12 {
-		return true
+
+	// shortcut: clause boundaries handle explicit restrictions, not arbitrary
+	// natural-language scope; extend with regression cases when new forms occur.
+	clauses := strings.NewReplacer(" but ", ";", " and ", ";", "但是", "；", "然后", "；").Replace(lower)
+	var affirmative []string
+	for _, clause := range strings.FieldsFunc(clauses, func(r rune) bool {
+		return strings.ContainsRune(";；,，。!?！？\n", r)
+	}) {
+		if match, ok := staticCueMatchers.negationTermMatcher().FirstMatchFold(clause); ok {
+			clause = string([]rune(clause)[:match.Start])
+		}
+		if clause = strings.TrimSpace(clause); clause != "" {
+			affirmative = append(affirmative, clause)
+		}
 	}
-	after := strings.TrimLeftFunc(string([]rune(lower)[match.Start:]), unicode.IsSpace)
-	return staticCueMatchers.followupActionTermMatcher().ContainsAnyFold(after)
+	positive := strings.Join(affirmative, " ")
+	return positive, !staticCueMatchers.operationalTermMatcher().ContainsAnyFold(positive) && !detectLocalWorkspace(positive)
 }
 
 func prefixedSignals(prefix string, values []string) []string {
@@ -501,7 +554,7 @@ var (
 		"search", "open", "run", "use", "create", "delete", "generate", "执行", "搜索", "打开", "运行", "使用", "创建", "删除",
 	}
 	workspaceContainerBaseTerms = []string{
-		"workspace", "repo", "repository", "folder", "directory", "path", "branch", "commit",
+		"workspace", "repo", "repository", "folder", "directory", "corpus", "path", "branch", "commit",
 		"working tree", "working copy", "project", "in my workspace", "in your workspace",
 		"工作区", "仓库", "目录", "文件夹", "路径", "分支", "提交",
 	}

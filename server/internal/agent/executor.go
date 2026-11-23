@@ -109,7 +109,7 @@ func (e *GroundedExecutor) Execute(ctx context.Context, task *Task, stepIndex, p
 		return &GroundedExecution{Call: call, Result: result}, fmt.Errorf("planner rejected: missing tool name")
 	}
 
-	resolvedTool, err := e.resolveTool(call.Tool)
+	resolvedTool, err := e.resolveTool(nextTool.Tool)
 	if err != nil {
 		result := e.makeResult(call, groundedExitPlannerReject, false, map[string]any{"error": err.Error()}, err.Error(), startedAt, time.Now().UTC())
 		return &GroundedExecution{Call: call, Result: result}, err
@@ -182,6 +182,9 @@ func (e *GroundedExecutor) Execute(ctx context.Context, task *Task, stepIndex, p
 }
 
 func (e *GroundedExecutor) resolveTool(name string) (string, error) {
+	if strings.EqualFold(strings.TrimSpace(name), "exec") && e.registry != nil && e.registry.Get("exec") != nil {
+		return "exec", nil
+	}
 	normalized := normalizeGroundToolName(name)
 	switch normalized {
 	case "read":

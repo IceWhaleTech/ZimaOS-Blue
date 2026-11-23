@@ -17,6 +17,7 @@ const (
 	imageInputsKey  toolContextKey = "tool_image_inputs"
 	cardEmitKey     toolContextKey = "tool_card_emit"
 	sessionIDKey    toolContextKey = "tool_session_id"
+	loadedToolsKey  toolContextKey = "tool_loaded_tools"
 	providerKey     toolContextKey = "tool_provider"
 	providerIDKey   toolContextKey = "tool_provider_id"
 	modelKey        toolContextKey = "tool_model"
@@ -583,4 +584,9 @@ func GetBrowserLaunchMode(ctx context.Context) BrowserLaunchMode {
 		return BrowserLaunchMode(v)
 	}
 	return BrowserLaunchModeDefault
+}
+
+// WithLoadedToolNames records the callable schemas offered for this model round.
+func WithLoadedToolNames(ctx context.Context, names []string) context.Context {
+	return context.WithValue(ctx, loadedToolsKey, append([]string{}, names...))
 }

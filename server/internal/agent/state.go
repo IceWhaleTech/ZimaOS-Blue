@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
 )
@@ -351,9 +352,9 @@ func BuildGroundStateSummary(state *GroundTruthState) string {
 	}
 	sort.Slice(commandFacts, func(i, j int) bool {
 		if commandFacts[i].ObservedAt.Equal(commandFacts[j].ObservedAt) {
-			return commandFacts[i].ToolCallID < commandFacts[j].ToolCallID
+			return commandFacts[i].ToolCallID > commandFacts[j].ToolCallID
 		}
-		return commandFacts[i].ObservedAt.Before(commandFacts[j].ObservedAt)
+		return commandFacts[i].ObservedAt.After(commandFacts[j].ObservedAt)
 	})
 	commandLines := make([]string, 0, minInt(len(commandFacts), 6))
 	for _, command := range commandFacts {
@@ -408,15 +409,15 @@ func groundedResultSummaryLines(state *GroundTruthState) []string {
 		left := entries[i].result.FinishedAt
 		right := entries[j].result.FinishedAt
 		if left.Equal(right) {
-			return entries[i].result.ToolCallID < entries[j].result.ToolCallID
+			return entries[i].result.ToolCallID > entries[j].result.ToolCallID
 		}
 		if left.IsZero() {
-			return true
-		}
-		if right.IsZero() {
 			return false
 		}
-		return left.Before(right)
+		if right.IsZero() {
+			return true
+		}
+		return left.After(right)
 	})
 	lines := make([]string, 0, minInt(len(entries), 6))
 	for _, entry := range entries {
@@ -438,6 +439,11 @@ func groundedResultSummaryLine(call GroundedToolCall, result GroundedToolResult)
 		"- id=" + firstNonEmptyString(strings.TrimSpace(result.ToolCallID), strings.TrimSpace(call.ToolCallID), "unknown_call"),
 		toolName,
 		status,
+	}
+	if normalizeGroundToolName(toolName) == "bash" {
+		if payload, ok := normalizeToolResultValue(result.Result).(map[string]any); ok {
+			return strings.Join(parts, " ") + " result=" + llm.ExecOutputText(tools.CompactExecOutputForLLM(payload, 12_000))
+		}
 	}
 	if value := strings.TrimSpace(asString(extractField(result.Result, "status"))); value != "" {
 		parts = append(parts, "status="+groundedCompactSummaryValue(value, 48))

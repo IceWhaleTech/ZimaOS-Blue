@@ -303,6 +303,7 @@ func (p *Pool) closeAllInstances() {
 			_ = instance.transportCloser.Close()
 		}
 		if instance.launcher != nil {
+			instance.launcher.Kill()
 			instance.launcher.Cleanup()
 		}
 	}
@@ -401,6 +402,7 @@ func (p *Pool) replaceInstance(ctx context.Context, deadBrowser *rod.Browser) (*
 				_ = instance.transportCloser.Close()
 			}
 			if instance.launcher != nil {
+				instance.launcher.Kill()
 				instance.launcher.Cleanup()
 			}
 

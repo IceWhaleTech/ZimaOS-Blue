@@ -1,0 +1,157 @@
+{
+  "dataset": {
+    "name": "analysis-outcome-delivery",
+    "subject": "analysis_outcome"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "analyze-delivers-source-summary",
+      "input": {
+        "goal": "Run blue analyze topic=\"Summarize the page and quote its documentation example policy\" url=\"https://example.com/\". Return its actual summary, including the page's sentence about permission. A topic echo or ready notice is not a result."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "This domain is for use in documentation examples without needing permission."
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Analysis must deliver source content, not mark a topic or ready message as a completed answer."
+      }
+    },
+    {
+      "id": "web-query-does-not-complete-on-empty-partial-result",
+      "input": {
+        "goal": "Pretrazi najnoviju dokumentaciju za OpenAI Responses API."
+      },
+      "expected": {
+        "status": "completed",
+        "required_tool_calls": [
+          "bash"
+        ],
+        "required_observations": [
+          "evidence_tool_used"
+        ],
+        "forbidden_observations": [
+          "evidence_collection_empty",
+          "verification_unknown_evidence"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Observed Croatian request: status=partial, empty content and sources, refine_query must continue or report a blocker. Query text and diagnostics are not fetched evidence."
+      }
+    },
+    {
+      "id": "external-qa-receives-complete-analysis-evidence",
+      "input": {
+        "goal": "Summarize https://example.com/ and include the final permission-policy finding from blue analyze; finish once the source-backed answer is delivered."
+      },
+      "expected": {
+        "status": "completed",
+        "required_tool_calls": [
+          "bash"
+        ],
+        "contains": [
+          "without needing permission"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "enable_external_qa": true,
+        "scope": "Verification must receive the complete delivered answer with original tool_call_id, canonical command, successful result and source; optional skipped expansion steps alone do not prove failure."
+      }
+    },
+    {
+      "id": "empty-web-search-recovers-with-long-source-evidence",
+      "input": {
+        "goal": "Find the OpenAI Responses API documentation. If the initial query yields no results, refine it and return source-backed findings from the documentation page."
+      },
+      "expected": {
+        "status": "completed",
+        "required_tool_calls": [
+          "bash"
+        ],
+        "required_observations": [
+          "evidence_tool_used"
+        ],
+        "forbidden_observations": [
+          "evidence_collection_empty",
+          "verification_unknown_evidence"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Harness must preserve structured source/status metadata after content exceeds its observer string limit, including a successful retry after an empty first query. Serialized tool envelopes exceeding the64KB gateway audit limit must keep JSON structure and trailing source/status fields before the8KB observer sanitizer."
+      }
+    },
+    {
+      "id": "verified-answer-finishes-before-optional-reflection-exhausts-task-budget",
+      "input": {
+        "goal": "Summarize https://example.com/ and return the source-backed answer after verification. Optional lesson capture must not consume the remaining task duration or turn verified success into cancellation."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "without needing permission"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Observed critical summary delivered actual answer and external QA PASS then waited in task_reflection_started until task deadline. Give optional reflection a bounded child context and reserve finalization time; preserve explicit cancellation and strict verification."
+      }
+    },
+    {
+      "id": "final-report-preserves-verified-result-tail",
+      "input": {
+        "goal": "Run python3 -c 'print(\"source detail\\n\" * 80 + \"FINAL_FINDING=发布前完成双人复核。\")' and return the complete actual output verbatim, including its final finding."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "FINAL_FINDING=发布前完成双人复核。"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "A verified answer must survive final report construction. The former 500-byte step-output slice dropped answer tails and split Chinese UTF-8 even after external QA passed. Planner and responder must see the actual multiline stdout, not a 96-byte whitespace-collapsed summary. Recent evidence after more than six calls must remain available."
+      }
+    },
+    {
+      "id": "failed-command-cannot-pass-as-unknown",
+      "input": {
+        "goal": "Run python3 -c 'raise SystemExit(7)' and return its actual output. Report that execution failed; do not claim successful completion when execution evidence is missing."
+      },
+      "expected": {
+        "status": "failed",
+        "required_tool_calls": [
+          "bash"
+        ],
+        "forbidden_observations": [
+          "verification_passed"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Observed 692ecea4: all bash attempts failed, verified output was unknown, but VerifyTask marked successful execution and complete delivery PASS. Missing or failed execution evidence must block completion, while a later successful recovery remains valid."
+      }
+    }
+  ]
+}

@@ -213,8 +213,8 @@ func TestSelectorCuratedDatasetManifest_CriticalCasesPreserveExpectations(t *tes
 	}
 
 	bypass := findSelectorManifestItem(t, manifest.Items, "ui-review-url-zh-cn")
-	if bypass.Expected["canonical_skill_id"] != "ui_reviewer" {
-		t.Fatalf("bypass expected canonical_skill_id = %#v, want ui_reviewer", bypass.Expected["canonical_skill_id"])
+	if bypass.Expected["canonical_skill_id"] != "research" || bypass.Expected["research_mode"] != "ui_review" {
+		t.Fatalf("bypass expected Research ui_review, got %#v", bypass.Expected)
 	}
 	if metadataString(bypass.Metadata, "selector_case_type") != "url_bypass" {
 		t.Fatalf("bypass selector_case_type = %q, want url_bypass", metadataString(bypass.Metadata, "selector_case_type"))
@@ -248,8 +248,12 @@ func TestSelectorCuratedDatasetManifest_URLBypassCasesCoverAllSupportedLocales(t
 			if _, ok := seen[locale]; ok {
 				t.Fatalf("%s URL bypass duplicates locale %s", skill, locale)
 			}
-			if item.Expected["canonical_skill_id"] != skill {
-				t.Fatalf("%s URL bypass canonical_skill_id = %#v, want %s", locale, item.Expected["canonical_skill_id"], skill)
+			mode := skill
+			if mode == "ui_reviewer" {
+				mode = "ui_review"
+			}
+			if item.Expected["canonical_skill_id"] != "research" || item.Expected["research_mode"] != mode {
+				t.Fatalf("%s URL bypass must select Research %s: %#v", locale, mode, item.Expected)
 			}
 			if item.Expected["skill_route_outcome"] != "selected" {
 				t.Fatalf("%s URL bypass route_outcome = %#v, want selected", locale, item.Expected["skill_route_outcome"])
@@ -420,4 +424,15 @@ func findSelectorGroupItem(t *testing.T, items []RunGroupItemSpec, caseID string
 	}
 	t.Fatalf("group item %q not found", caseID)
 	return RunGroupItemSpec{}
+}
+
+func TestSelectorCuratedRequiresAllContractFields(t *testing.T) {
+	manifest := SelectorCuratedDatasetManifest()
+	if manifest.Defaults.Scoring.Mode != ScoringModeRule || manifest.Defaults.Scoring.PassThreshold != 1 {
+		t.Fatalf("selector manifest must check every field: %+v", manifest.Defaults.Scoring)
+	}
+	spec := SelectorCuratedEvalSpecSpec("dataset", "version", "owner")
+	if spec.ScoringConfig.PassThreshold != 1 {
+		t.Fatalf("selector spec must check every field: %+v", spec.ScoringConfig)
+	}
 }

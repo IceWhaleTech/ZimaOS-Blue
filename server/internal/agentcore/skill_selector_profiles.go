@@ -30,6 +30,12 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		ContextCues:  sel.CompactTerms(doc.Category, doc.Example),
 	}
 	profile, sharedPresetApplied := sel.ApplyCommonProfilePreset(profile, name)
+	if doc.Category == "external_cli" {
+		profile.PreferredDomains = []string{sel.DomainLocalWorkspace}
+		profile.Actions = sel.FindMatches(strings.ToLower(doc.Description+" "+strings.Join(doc.Tags, " ")), []string{
+			"read", "search", "find", "summarize", "extract", "convert", "answer", "读取", "搜索", "查找", "总结", "提取", "转换", "回答",
+		})
+	}
 
 	for _, route := range doc.TaskRoutes {
 		profile.ContextCues = sel.CompactTerms(append(profile.ContextCues, route.Intent, route.Action)...)

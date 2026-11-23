@@ -12,7 +12,7 @@ const (
 	Batch1ExecutionDatasetName        = "skill-exec-batch1"
 	Batch1ExecutionDatasetDescription = "Curated batch-1 execution equivalence dataset for tool-to-skill migration."
 	Batch1ExecutionDatasetSubject     = "skill_execution_batch1"
-	Batch1ExecutionDatasetVersion     = "skill-exec-batch1-v6"
+	Batch1ExecutionDatasetVersion     = "skill-exec-batch1-v7"
 	Batch1ExecutionEvalName           = "Skill Execution Batch 1"
 	batch1ExecutionMaxConcurrency     = 4
 	batch1ExecutionMaxAttempts        = 3
@@ -232,6 +232,8 @@ func batch1ExecutionCriticalCaseWithOptions(id, skill, locale, query, rubric, ca
 }
 
 func batch1ExecutionInput(query, locale string) map[string]interface{} {
+	// /blog returns HTTP 404; use the existing page for successful summary cases.
+	query = strings.ReplaceAll(query, "https://example.com/blog", "https://example.com/")
 	return map[string]interface{}{
 		"goal":   strings.TrimSpace(query),
 		"query":  strings.TrimSpace(query),

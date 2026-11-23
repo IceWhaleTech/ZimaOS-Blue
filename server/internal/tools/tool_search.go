@@ -493,6 +493,14 @@ func (t *ToolSearchTool) Execute(ctx context.Context, args map[string]interface{
 		loadedTools["subagents"] = struct{}{}
 	}
 
+	actualLoaded, hasActualLoaded := ctx.Value(loadedToolsKey).([]string)
+	if hasActualLoaded {
+		loadedTools = make(map[string]struct{}, len(actualLoaded))
+		for _, name := range actualLoaded {
+			loadedTools[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+		}
+	}
+
 	snapshot := skillmanifest.SkillExposureSnapshot{}
 	if parsed.wantsKind("skill") {
 		var err error
@@ -507,8 +515,10 @@ func (t *ToolSearchTool) Execute(ctx context.Context, args map[string]interface{
 	if len(searchToolDefs) == 0 && len(selected) > 0 {
 		activationSearchToolDefs, activationLoadedToolDefs := t.visibleToolDefinitionSubset(ctx, runtimeInfo, toolSearchSelectedSupportToolNames(selected))
 		searchToolDefs = activationSearchToolDefs
-		for _, def := range activationLoadedToolDefs {
-			loadedTools[strings.ToLower(strings.TrimSpace(def.Name))] = struct{}{}
+		if !hasActualLoaded {
+			for _, def := range activationLoadedToolDefs {
+				loadedTools[strings.ToLower(strings.TrimSpace(def.Name))] = struct{}{}
+			}
 		}
 	}
 	limit := parsed.maxResults
@@ -731,9 +741,6 @@ func (t *ToolSearchTool) buildCapabilities(
 	for _, def := range searchToolDefs {
 		if includeTools {
 			availability := "deferred"
-			if def.AlwaysLoad {
-				availability = "loaded"
-			}
 			if _, ok := loadedTools[strings.ToLower(strings.TrimSpace(def.Name))]; ok {
 				availability = "loaded"
 			}
@@ -780,7 +787,7 @@ func (t *ToolSearchTool) buildCapabilities(
 			}
 			callHint := strings.TrimSpace(doc.Invocation)
 			if callHint == "" {
-				callHint = fmt.Sprintf("blue %s", strings.TrimSpace(firstNonBlank(doc.ID, doc.Name)))
+				callHint = fmt.Sprintf("Read the skill instructions at %q, then run its documented command through exec.", doc.Location)
 			}
 			capabilities = append(capabilities, prepareToolSearchCapability(toolSearchCapability{
 				ID:             strings.TrimSpace(firstNonBlank(doc.ID, doc.Name)),
@@ -1357,12 +1364,6 @@ func (t *ToolSearchTool) applySelectedCapabilities(
 			if name == "" {
 				continue
 			}
-			if _, ok := loadedTools[strings.ToLower(name)]; ok {
-				activated.Skipped = append(activated.Skipped, ToolSearchActivationSkip{
-					ID: capability.ID, Name: capability.Name, Kind: capability.Kind, Reason: "already_loaded",
-				})
-				continue
-			}
 			if _, ok := searchToolNames[strings.ToLower(name)]; !ok {
 				activated.Skipped = append(activated.Skipped, ToolSearchActivationSkip{
 					ID: capability.ID, Name: capability.Name, Kind: capability.Kind, Reason: "tool_not_visible",
@@ -1370,6 +1371,13 @@ func (t *ToolSearchTool) applySelectedCapabilities(
 				continue
 			}
 			update.ActivatedTools = append(update.ActivatedTools, name)
+			if _, ok := loadedTools[strings.ToLower(name)]; ok {
+				activated.Skipped = append(activated.Skipped, ToolSearchActivationSkip{
+					ID: capability.ID, Name: capability.Name, Kind: capability.Kind, Reason: "already_loaded",
+				})
+				continue
+			}
+
 			activated.Tools = mergeToolSearchNames(activated.Tools, []string{name})
 		case "skill":
 			if strings.EqualFold(strings.TrimSpace(capability.Activation), "dormant") {

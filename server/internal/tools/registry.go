@@ -475,7 +475,7 @@ func applyFuzzyEnumCompat(schema map[string]interface{}, args map[string]interfa
 	normalized := args
 	cloned := false
 	for _, field := range keys {
-		rawValue := strings.TrimSpace(firstCompatStringDeep(args, compatEnumFieldAliases(field)...))
+		rawValue := strings.TrimSpace(firstCompatStringDeep(args, compatEnumFieldAliases(schema, field)...))
 		if rawValue == "" {
 			continue
 		}
@@ -499,8 +499,11 @@ func applyFuzzyEnumCompat(schema map[string]interface{}, args map[string]interfa
 	return normalized
 }
 
-func compatEnumFieldAliases(field string) []string {
+func compatEnumFieldAliases(schema map[string]interface{}, field string) []string {
 	if strings.EqualFold(strings.TrimSpace(field), "action") {
+		if props, ok := schema["properties"].(map[string]interface{}); ok && props["command"] != nil {
+			return []string{"action", "op", "operation"}
+		}
 		return []string{"action", "op", "operation", "command"}
 	}
 	return []string{field}

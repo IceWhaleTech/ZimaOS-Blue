@@ -432,6 +432,8 @@ func (t *ExecTool) Definition() ToolDefinition {
 			"type":        "string",
 			"description": "Session ID used with action=poll, log, or kill.",
 		},
+		"offset": map[string]interface{}{"type": "integer", "minimum": 0, "description": "With action=log: UTF-8 byte offset, default 0. Follow next_offset while has_more is true."},
+		"limit":  map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 16384, "description": "With action=log: page size in UTF-8 bytes, default 4096. Logs retain capped output for 30 minutes; truncated means earlier output was lost."},
 		"command": map[string]interface{}{
 			"type":        "string",
 			"description": "Shell command to execute",
@@ -725,8 +727,8 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// When AllowedDirs is configured and no explicit workdir was given,
 	// default to the first allowed directory instead of os.Getwd().
-	if workdirArg == "" && len(t.config.AllowedDirs) > 0 {
-		workdir = t.config.AllowedDirs[0]
+	if allowedDirs := t.allowedDirsForContext(ctx); workdirArg == "" && len(allowedDirs) > 0 {
+		workdir = allowedDirs[0]
 	}
 
 	// Enforce allowed directories.
@@ -2253,12 +2255,12 @@ func (t *ExecTool) validateWorkdir(ctx context.Context, workdir string) error {
 	if err := enforceExecWorkdirGuard(ctx, absWorkdir); err != nil {
 		return err
 	}
-	if len(t.config.AllowedDirs) == 0 {
+	if len(t.allowedDirsForContext(ctx)) == 0 {
 		return nil
 	}
 
 	// 1. Check static AllowedDirs.
-	for _, dir := range t.config.AllowedDirs {
+	for _, dir := range t.allowedDirsForContext(ctx) {
 		absDir, err := filepath.Abs(dir)
 		if err != nil {
 			continue
@@ -2833,12 +2835,12 @@ func (t *ExecTool) validateCommandPaths(ctx context.Context, command, workdir st
 			return err
 		}
 	}
-	if len(t.config.AllowedDirs) == 0 {
+	if len(t.allowedDirsForContext(ctx)) == 0 {
 		return nil // unrestricted
 	}
 
 	for _, dir := range dirs {
-		if t.isDirAllowed(dir) {
+		if t.isDirAllowed(ctx, dir) {
 			continue
 		}
 
@@ -2890,15 +2892,23 @@ func (t *ExecTool) validateCommandPaths(ctx context.Context, command, workdir st
 	return nil
 }
 
-// isDirAllowed checks if a directory is within the static AllowedDirs list.
-func (t *ExecTool) isDirAllowed(dir string) bool {
+// A run workspace replaces configured roots just as it does for file tools.
+func (t *ExecTool) allowedDirsForContext(ctx context.Context) []string {
+	if scope, ok := getFSScopeContext(ctx); ok && scope.replaceRoots && len(scope.roots) > 0 {
+		return scope.roots
+	}
+	return t.config.AllowedDirs
+}
+
+// isDirAllowed checks if a directory is within the active allowed roots.
+func (t *ExecTool) isDirAllowed(ctx context.Context, dir string) bool {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return false
 	}
 	absDir = filepath.Clean(absDir)
 
-	for _, allowed := range t.config.AllowedDirs {
+	for _, allowed := range t.allowedDirsForContext(ctx) {
 		absAllowed, err := filepath.Abs(allowed)
 		if err != nil {
 			continue

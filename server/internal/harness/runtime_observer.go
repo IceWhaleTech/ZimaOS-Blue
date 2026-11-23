@@ -48,6 +48,13 @@ func (o *RuntimeObserver) OnToolRequested(event tools.ToolRuntimeEvent) {
 }
 
 func (o *RuntimeObserver) OnToolFinished(event tools.ToolRuntimeEvent) {
+	result := event.Result
+	if raw, ok := result.(string); ok {
+		var decoded interface{}
+		if json.Unmarshal([]byte(raw), &decoded) == nil {
+			result = decoded
+		}
+	}
 	message := strings.TrimSpace(event.ToolName)
 	if strings.TrimSpace(event.Error) != "" {
 		message = strings.TrimSpace(event.Error)
@@ -65,7 +72,7 @@ func (o *RuntimeObserver) OnToolFinished(event tools.ToolRuntimeEvent) {
 			"capability_kind": strings.TrimSpace(event.CapabilityKind),
 			"session_id":      strings.TrimSpace(event.SessionID),
 			"route_kind":      string(event.RouteKind),
-			"result":          tools.SafeToolPayloadValue(event.Result, maxRuntimeObserverPayloadStringBytes),
+			"result":          tools.SafeToolPayloadValue(result, maxRuntimeObserverPayloadStringBytes),
 			"error":           strings.TrimSpace(event.Error),
 		}),
 		CreatedAt: timeutil.NowTime(),

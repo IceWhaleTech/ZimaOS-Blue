@@ -709,15 +709,20 @@ func classifyProviderInfraFailure(run *Run, events []RunEvent) string {
 
 func providerFailureCorpus(run *Run, events []RunEvent) string {
 	parts := make([]string, 0, len(events)*4+4)
+	completed := run != nil && run.Status == RunStatusCompleted
 	if run != nil {
 		if value := strings.TrimSpace(run.Error); value != "" {
 			parts = append(parts, value)
 		}
-		if value := strings.TrimSpace(run.Result); value != "" {
+		if value := strings.TrimSpace(run.Result); value != "" && !completed {
 			parts = append(parts, value)
 		}
 	}
 	for _, event := range events {
+		// Successful source text can document errors without reporting a runtime failure.
+		if completed && !strings.Contains(event.Type, "failed") && !strings.Contains(event.Type, "error") && !toolFinishedErrored(event) {
+			continue
+		}
 		if value := strings.TrimSpace(event.Type); value != "" {
 			parts = append(parts, value)
 		}

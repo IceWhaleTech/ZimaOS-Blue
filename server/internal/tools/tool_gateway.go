@@ -332,7 +332,14 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 	}
 
 	result.ExecutionResult = normalizedResult
-	result.AuditPayload = sanitizeToolPayload(normalizedResult, maxToolGatewayAuditStringBytes)
+	auditResult := normalizedResult
+	if raw, ok := auditResult.(string); ok {
+		var decoded interface{}
+		if json.Unmarshal([]byte(raw), &decoded) == nil {
+			auditResult = decoded
+		}
+	}
+	result.AuditPayload = sanitizeToolPayload(auditResult, maxToolGatewayAuditStringBytes)
 	result.AuditContent = serializeToolPayload(result.AuditPayload)
 	result.CompactLLMPayload = compactToolPayloadForLLM(ctx, req, resolvedName, normalizedResult, result.AuditContent)
 	result.CompactLLMContent = serializeToolPayload(result.CompactLLMPayload)
@@ -548,6 +555,15 @@ func normalizeGatewayToolResult(raw interface{}) interface{} {
 }
 
 func compactToolPayloadForLLM(ctx context.Context, req ToolGatewayRequest, toolName string, raw interface{}, auditContent string) interface{} {
+	if normalizeCompatToolName(toolName) == "exec" {
+		payload, _ := raw.(map[string]interface{})
+		if value, ok := raw.(string); ok {
+			_ = json.Unmarshal([]byte(value), &payload)
+		}
+		if payload != nil {
+			return CompactExecOutputForLLM(payload, maxToolGatewayLLMStringBytes)
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(toolName), "pdf") {
 		preCompacted := sanitizeToolPayload(raw, maxToolGatewayPDFPreCompactBytes)
 		return sanitizeToolPayload(compactPDFPayloadForLLM(preCompacted), maxToolGatewayLLMStringBytes)

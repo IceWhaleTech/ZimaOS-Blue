@@ -3,10 +3,23 @@ package harness
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 )
+
+func TestBatch1ExecutionAnalysisUsesAvailableSource(t *testing.T) {
+	for _, item := range Batch1ExecutionDatasetManifest().Items {
+		if metadataString(item.Metadata, "primary_route") != "analyze" {
+			continue
+		}
+		query := metadataString(item.Input, "query")
+		if strings.Contains(query, "https://example.com/blog") || !strings.Contains(query, "https://example.com/") {
+			t.Errorf("%s: successful summarization requires the existing page: %s", item.ID, query)
+		}
+	}
+}
 
 func TestBatch1ExecutionDatasetManifest_DecodesAndCountsCases(t *testing.T) {
 	manifest := Batch1ExecutionDatasetManifest()

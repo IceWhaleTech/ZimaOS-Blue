@@ -175,7 +175,7 @@ func buildSkillDoc(se SkillEntry, raw []byte) SkillDoc {
 		ID:              strings.TrimSpace(firstNonBlank(se.ID, se.Name)),
 		Name:            strings.TrimSpace(se.Name),
 		Description:     strings.TrimSpace(se.Description),
-		Tags:            append([]string(nil), se.Tags...),
+		Tags:            append(append([]string(nil), se.Tags...), se.CapabilityTags...),
 		Paths:           append([]string(nil), se.Paths...),
 		UserInvocable:   se.UserInvocable,
 		ModelInvocable:  se.ModelInvocable,

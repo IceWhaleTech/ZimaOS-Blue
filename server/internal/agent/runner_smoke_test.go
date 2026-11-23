@@ -43,6 +43,7 @@ func TestRunnerSmoke_ClarifyTimeoutDefault_Completes(t *testing.T) {
 		MaxConcurrent:    2,
 	})
 	runner.minAskTimeout = time.Millisecond
+	withCompletedGroundedWork(t, runner)
 	t.Cleanup(func() { runner.Shutdown() })
 
 	task, err := runner.Submit(context.Background(), "u1", "TBD: build feature", "", "")

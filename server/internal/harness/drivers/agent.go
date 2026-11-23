@@ -58,6 +58,9 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 	metadata["harness_silent_mode"] = true
 	metadata["non_interactive"] = true
 	metadata["skip_hil"] = true
+	if run.MaxDuration > 0 {
+		metadata["max_duration_ns"] = int64(run.MaxDuration)
+	}
 	if approvalMode := strings.TrimSpace(string(run.ApprovalMode)); approvalMode != "" {
 		metadata["approval_mode"] = approvalMode
 	}

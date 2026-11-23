@@ -2,6 +2,53 @@ package selector
 
 import "testing"
 
+func TestAnalyzeQuery_OutputSchemaIsNotIntent(t *testing.T) {
+	for _, query := range []string{
+		`{"query":"Blue news","answerSchema":{"type":"object","properties":{"citations":{"type":"array"}},"enum":["insufficient_evidence"]}}`,
+		`{"query":"Blue news","renamed":{"type":"object","properties":{"citations":{"type":"array"}},"description":"deep research with sources"}}`,
+	} {
+		if got := AnalyzeQuery(query).Normalized; got != "blue news" {
+			t.Errorf("output schema leaked into intent: %q", got)
+		}
+	}
+}
+
+func TestAnalyzeQuery_NegationScope(t *testing.T) {
+	for _, tc := range []struct {
+		query   string
+		blocked bool
+	}{
+		{"读取目录中的文档，回答预算；不要读取参考答案，数字使用两位小数。", false},
+		{"Read the directory and answer the budget question; do not open reference answers; use two decimal places.", false},
+		{"不要搜索网页；读取目录中的文件，总结报告。", false},
+		{"Don't search the web, but read the directory and summarize the report.", false},
+		{"Read the directory without opening reference answers.", false},
+		{`{"corpus":"/tmp/data","question":"工单复核周期是多少天？","instruction":"根据 corpus 内文件回答。不要读取参考答案；数字使用整数。"}`, false},
+		{"Read the directory; do not use any tools.", true},
+		{"不要使用任何工具，仅回答你好。", true},
+		{"Don't search the web for this.", true},
+		{"取消搜索。", true},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			signals := AnalyzeQuery(tc.query)
+			if signals.Negated != tc.blocked {
+				t.Fatalf("Negated = %t, want %t", signals.Negated, tc.blocked)
+			}
+			if !tc.blocked && signals.LiveWeb {
+				t.Fatalf("local restriction leaked into live-web routing: %+v", signals)
+			}
+		})
+	}
+}
+
+func TestAnalyzeQuery_JSONFieldNamesAreNotIntent(t *testing.T) {
+	query := `{"corpus":"/tmp/data","task":{"id":"text-control","question":"工单复核周期是多少天？"},"answerSchema":{"type":"object","properties":{"source":{"type":"string"}}},"instruction":"根据 corpus 内文件回答。不要读取参考答案；数字使用整数。"}`
+	signals := AnalyzeQuery(query)
+	if signals.Negated || signals.Productivity || signals.LiveWeb || !signals.LocalWorkspace {
+		t.Fatalf("JSON metadata changed intent: %+v", signals)
+	}
+}
+
 func TestAnalyzeQuery_UsesCompiledStaticCueMatchers(t *testing.T) {
 	t.Run("url and live web", func(t *testing.T) {
 		signals := AnalyzeQuery("Open https://example.com/docs and check the latest news.")

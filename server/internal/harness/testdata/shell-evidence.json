@@ -1,0 +1,249 @@
+{
+  "dataset": {
+    "name": "shell-evidence-recovery",
+    "subject": "shell_evidence"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "shell-command-is-not-session-action",
+      "input": {
+        "goal": "Run python3 -c 'print(\"kill ANSWER=70581\")' exactly once and return 70581. The printed word is data; this is a new command, not a session operation."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "70581"
+        ],
+        "required_tool_calls": [
+          "exec"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Free-form command text must never infer a session action such as kill."
+      }
+    },
+    {
+      "id": "shell-small-tail",
+      "input": {
+        "goal": "Run python3 -c 'print(\"context\\n\"*400+\"answer=2100.20\")' once. Return the answer from its output."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "2100.20"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Retain evidence beyond the former per-string cap when the full envelope fits."
+      }
+    },
+    {
+      "id": "shell-large-middle",
+      "input": {
+        "goal": "Run python3 -c 'print(\"context\\n\"*9000+\"answer=3582.70\\n\"+\"tail\\n\"*500)' once. Read the retained session log in pages if needed; do not rerun the command. Return the answer in its output."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "3582.70"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Retrieve omitted middle evidence from a session, rather than infer absence from a preview. Grounded executor must preserve an explicit exec session call instead of routing action=log into the command-only public bash wrapper."
+      }
+    },
+    {
+      "id": "shell-stderr-evidence",
+      "input": {
+        "goal": "Run python3 -c 'import sys; sys.stderr.write(\"说明\\n\"*500+\"answer=双人复核\\n\")' once. Return the answer from stderr, using session log pages if needed."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "双人复核"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Preserve UTF-8 stderr evidence and do not equate stdout with all evidence."
+      }
+    },
+    {
+      "id": "shell-discovery-exec",
+      "input": {
+        "goal": "Run python3 -c 'print(70581)' once and return only the printed number. Discover and select exec with tool_search if needed."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "70581"
+        ],
+        "required_tool_calls": [
+          "tool_search",
+          "exec"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Selecting a policy-allowed exec from a discovery-only surface must expose its callable schema on the next model request."
+      }
+    },
+    {
+      "id": "shell-preview-exec-cutover",
+      "input": {
+        "goal": "Run python3 -c 'print(\"context\\n\"*1400+\"ANSWER=70581\\n\"+\"tail\\n\"*1400)' exactly once. Recover the omitted ANSWER line from retained log pages, then return only the number."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "70581"
+        ],
+        "required_tool_calls": [
+          "bash",
+          "exec"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "A truncated bash result must expose the policy-allowed exec recovery interface immediately, with explicit tool and argument hints."
+      }
+    },
+    {
+      "id": "shell-running-session",
+      "input": {
+        "goal": "Run python3 -c 'import time; time.sleep(2); print(70581)' exactly once. If execution is still running, poll its session until completed, then return 70581."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "70581"
+        ],
+        "required_tool_calls": [
+          "exec"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "A command-only initial exec schema must expand to the full session interface when a command is still running."
+      }
+    },
+    {
+      "id": "shell-auth-documentation",
+      "input": {
+        "goal": "Run python3 -c 'print(\"Provider API documentation: HTTP 401 Unauthorized means an invalid API key. ANSWER=70581\")' exactly once, then return 70581. The printed documentation is data, not a failed request."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "70581"
+        ],
+        "required_tool_calls": [
+          "exec"
+        ],
+        "forbidden_observations": [
+          "provider_auth_failed",
+          "provider_infra_blocked"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Successful source material describing authentication errors must not become runtime provider-failure evidence."
+      }
+    },
+    {
+      "id": "shell-json-query-with-installed-filens",
+      "input": {
+        "goal": "{\"query\":\"Run this exact command once: python3 -c 'import random; print(\\\"context\\\\n\\\"*1400+\\\"ANSWER=\\\"+str(random.Random(317).randrange(10000,99999))+\\\"\\\\n\\\"+\\\"tail\\\\n\\\"*1400)'. Return only JSON {\\\"answer\\\":\\\"digits\\\"} from the actual ANSWER line. If the preview omits it, read retained exec session log pages. Do not rerun or edit the command.\"}"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "70581"
+        ],
+        "required_tool_calls": [
+          "exec"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "A weak installed document-skill match must not suppress tools for an unambiguous JSON-wrapped command. Original request preserved byte-for-byte."
+      }
+    },
+    {
+      "id": "shell-defaults-to-run-workspace",
+      "input": {
+        "goal": "Run python3 -c 'import os; print(\"WORKSPACE=\" + os.getcwd())' with bash in this task workspace and return its actual output. Do not change the working directory or use a global workspace."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "WORKSPACE="
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Public bash must use the current run filesystem root when workdir is omitted. The global configured directory must not trigger a run-root denial; explicit outside paths remain denied."
+      }
+    },
+    {
+      "id": "shell-table-cell",
+      "input": {
+        "goal": "Run python3 -c 'print(\"Project\\tCategory\\tAmount\\nLEDGER_Q7\\tHardware\\t217.35\\nLEDGER_Q7\\tService\\t82.65\")' once. Return the Hardware amount for LEDGER_Q7 from the actual table."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "217.35"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "Tab/newline source evidence must reach the model as readable text, with execution status retained."
+      }
+    },
+    {
+      "id": "shell-cross-source-sum",
+      "input": {
+        "goal": "Run python3 -c 'print(\"costs.xlsx\\nProject\\tCategory\\tAmount\\nLEDGER_Q7\\tHardware\\t217.35\\nLEDGER_Q7\\tService\\t82.65\\nbudget.docx\\nLEDGER_Q7 current budget: 325.50\")' once. Sum both cost rows and subtract their total from the current budget. Return total and remaining as JSON strings."
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "25.50"
+        ],
+        "required_tool_calls": [
+          "bash"
+        ]
+      },
+      "metadata": {
+        "critical": true,
+        "scope": "A source table plus a separate current-budget source must support arithmetic without benchmark-specific hints."
+      }
+    }
+  ]
+}

@@ -23,8 +23,8 @@ func TestCompactExecPayloadForLLM_PreservesSafeFileReadStdout(t *testing.T) {
 	}
 }
 
-func TestCompactExecPayloadForLLM_StillTruncatesGenericExecStdout(t *testing.T) {
-	stdout := strings.Repeat("B", maxLLMToolStdoutBytes+600)
+func TestCompactExecPayloadForLLM_PreservesGenericExecStdout(t *testing.T) {
+	stdout := strings.Repeat("B", 4*1024)
 
 	got := compactExecPayloadForLLM(map[string]interface{}{
 		"status":  "completed",
@@ -36,10 +36,7 @@ func TestCompactExecPayloadForLLM_StillTruncatesGenericExecStdout(t *testing.T) 
 	if !ok {
 		t.Fatalf("stdout type = %T, want string", got["stdout"])
 	}
-	if len(out) >= len(stdout) {
-		t.Fatalf("stdout len = %d, want truncation below %d", len(out), len(stdout))
-	}
-	if !strings.HasSuffix(out, "\n[truncated]") {
-		t.Fatalf("stdout = %q, want truncated suffix", out[len(out)-min(len(out), 32):])
+	if out != stdout {
+		t.Fatalf("stdout len = %d, want intact output of %d bytes", len(out), len(stdout))
 	}
 }

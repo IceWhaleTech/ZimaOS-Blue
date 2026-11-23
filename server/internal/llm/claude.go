@@ -895,7 +895,7 @@ func (p *ClaudeProvider) convertRequest(req ChatRequest) claudeRequest {
 				{
 					Type:      "tool_result",
 					ToolUseID: msg.ToolCallID,
-					Content:   msg.Content,
+					Content:   msg.ProviderContent(),
 				},
 			}
 		} else if len(msg.ToolCalls) > 0 {

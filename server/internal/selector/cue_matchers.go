@@ -194,7 +194,10 @@ func (m *lazyCueMatchers) liveWebTermList() []string {
 func (m *lazyCueMatchers) liveWebStrongTermList() []string {
 	return m.liveWebStrongTerms.get(func() []string {
 		webQueryTerms := routingcue.SkillTerms("web_query")
-		return appendMergedTerms(liveWebBaseTerms, append(webQueryTerms.Objects, webQueryTerms.Context...))
+		return appendMergedTerms([]string{
+			"latest", "news", "search the web", "web", "website", "web page", "webpage", "browser", "url", "internet", "online",
+			"最新", "新闻", "网页", "网站", "浏览器", "网址", "联网", "在线",
+		}, webQueryTerms.Context)
 	})
 }
 

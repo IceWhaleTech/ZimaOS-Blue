@@ -1177,8 +1177,8 @@ func TestSelectChatToolSurfacesForRequest_WebQueryUsesExecCutover(t *testing.T) 
 	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
 		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
+		t.Fatalf("NativeDefs = %v, want [exec]", got)
 	}
 	if selection.SurfaceMode != chatToolSurfaceModeSkillExec {
 		t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeSkillExec)
@@ -1224,7 +1224,7 @@ func TestSelectChatToolSurfacesForRequest_DefaultSettingsUseDiscoverFirstCutover
 	}
 }
 
-func TestSelectChatToolsForRequest_SmartSkillClarifyKeepsFallbackToolSearch(t *testing.T) {
+func TestSelectChatToolsForRequest_SmartSkillClarifyWaitsForUser(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewToolSearchTool(registry))
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
@@ -1253,8 +1253,8 @@ func TestSelectChatToolsForRequest_SmartSkillClarifyKeepsFallbackToolSearch(t *t
 		nil,
 	)
 
-	if names := selectedToolNames(got); len(names) != 1 || names[0] != "tool_search" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [tool_search] while clarifying", names)
+	if names := selectedToolNames(got); len(names) != 0 {
+		t.Fatalf("selectChatToolsForRequest() = %v, want no tools while clarifying", names)
 	}
 }
 
@@ -1350,8 +1350,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			if selection.NativeMode != tc.wantNativeMode {
 				t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, tc.wantNativeMode)
 			}
-			if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-				t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+			if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
+				t.Fatalf("NativeDefs = %v, want [exec]", got)
 			}
 			if selection.SurfaceMode != chatToolSurfaceModeSkillExec {
 				t.Fatalf("SurfaceMode = %q, want %q", selection.SurfaceMode, chatToolSurfaceModeSkillExec)
@@ -1390,8 +1390,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNo
 	if clarifySelection.NativeMode != chatNativeToolSurfaceModeClarifyNone {
 		t.Fatalf("clarify NativeMode = %q, want %q", clarifySelection.NativeMode, chatNativeToolSurfaceModeClarifyNone)
 	}
-	if got := selectedToolNames(clarifySelection.NativeDefs); len(got) != 1 || got[0] != "tool_search" {
-		t.Fatalf("clarify NativeDefs = %v, want [tool_search]", got)
+	if got := selectedToolNames(clarifySelection.NativeDefs); len(got) != 0 {
+		t.Fatalf("clarify NativeDefs = %v, want no tools", got)
 	}
 	if clarifySelection.DiscoveryDecision == nil || !clarifySelection.DiscoveryDecision.NeedClarify {
 		t.Fatalf("clarify DiscoveryDecision = %#v, want clarify decision", clarifySelection.DiscoveryDecision)
@@ -1405,8 +1405,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNo
 	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeSkillExec {
 		t.Fatalf("legacy-flag NativeMode = %q, want %q", fallbackSelection.NativeMode, chatNativeToolSurfaceModeSkillExec)
 	}
-	if got := selectedToolNames(fallbackSelection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("legacy-flag NativeDefs = %v, want [exec tool_search]", got)
+	if got := selectedToolNames(fallbackSelection.NativeDefs); len(got) != 1 || got[0] != "exec" {
+		t.Fatalf("legacy-flag NativeDefs = %v, want [exec]", got)
 	}
 	if fallbackSelection.DiscoveryDecision == nil || fallbackSelection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
 		t.Fatalf("legacy-flag DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
@@ -1433,8 +1433,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstAdvisorKeepsAdvisorVisibl
 	if selection.SkillDecision.ResearchMode != "advisor" {
 		t.Fatalf("ResearchMode = %q, want %q", selection.SkillDecision.ResearchMode, "advisor")
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 3 || got[0] != "exec" || got[1] != "advisor" || got[2] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec advisor tool_search]", got)
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "advisor" {
+		t.Fatalf("NativeDefs = %v, want [exec advisor]", got)
 	}
 	if selection.DiscoveryDecision == nil || selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalResearch {
 		t.Fatalf("DiscoveryDecision = %#v, want canonical research", selection.DiscoveryDecision)
@@ -1497,7 +1497,7 @@ func TestSelectChatToolSurfacesForRequest_LocalWorkspaceArtifactKeepsNativeFileW
 	}
 }
 
-func TestSelectChatToolSurfacesForRequest_GeneralKnowledgeSynthesisDoesNotFallIntoClarifyNone(t *testing.T) {
+func TestSelectChatToolSurfacesForRequest_GeneralKnowledgeSynthesisCanDiscoverCapabilities(t *testing.T) {
 	handler := newDiscoverFirstSelectionHandler(t, true)
 
 	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "请围绕亚里士多德的公开著作、可信史料和核心思想，整理一套可对话的知识容器。提炼他的概念体系、价值判断、论证方式和常用追问框架，在回答我问题时尽量保持他的思考风格，同时明确区分原典观点、合理推断和现代延伸。", tools.ToolPolicyRequest{
@@ -1505,14 +1505,11 @@ func TestSelectChatToolSurfacesForRequest_GeneralKnowledgeSynthesisDoesNotFallIn
 		RouteKind: tools.ToolRouteKindChat,
 	}, nil, nil)
 
-	if selection.NativeMode == chatNativeToolSurfaceModeClarifyNone {
-		t.Fatalf("NativeMode = %q, want actionable surface for general knowledge synthesis", selection.NativeMode)
+	if names := selectedToolNames(selection.NativeDefs); len(names) != 1 || names[0] != "tool_search" {
+		t.Fatalf("general synthesis must keep capability discovery available, got %v", names)
 	}
-	if len(selection.NativeDefs) == 0 {
-		t.Fatalf("NativeDefs = %v, want non-empty actionable tool surface", selectedToolNames(selection.NativeDefs))
-	}
-	if selection.DiscoveryDecision != nil && selection.DiscoveryDecision.NeedClarify {
-		t.Fatalf("DiscoveryDecision = %#v, want no clarify gate for general knowledge synthesis", selection.DiscoveryDecision)
+	if selection.DiscoveryDecision == nil || selection.DiscoveryDecision.ClarifyReason != "ir_no_match" {
+		t.Fatalf("expected capability discovery rather than unresolved user intent: %+v", selection.DiscoveryDecision)
 	}
 }
 
@@ -1578,8 +1575,8 @@ func TestSelectChatToolSurfacesForRequest_ExecCollapsePersistsWhenDynamicExposur
 	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
 		t.Fatalf("NativeMode = %q, want %q while dynamic exposure is disabled", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
-		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
+		t.Fatalf("NativeDefs = %v, want [exec]", got)
 	}
 	if selection.DiscoveryDecision == nil {
 		t.Fatal("expected DiscoveryDecision")
@@ -1689,8 +1686,8 @@ func TestSelectChatToolsForRequest_ExecCutoverClearsPromptCacheSurface(t *testin
 		nil,
 	)
 
-	if gotNames := selectedToolNames(got); len(gotNames) != 2 || gotNames[0] != "exec" || gotNames[1] != "tool_search" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want [exec tool_search]", gotNames)
+	if gotNames := selectedToolNames(got); len(gotNames) != 1 || gotNames[0] != "exec" {
+		t.Fatalf("selectChatToolsForRequest() = %v, want [exec]", gotNames)
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-discover-cutover"); cached != nil {
 		t.Fatalf("prompt cache surface = %#v, want cleared after exec cutover", cached)

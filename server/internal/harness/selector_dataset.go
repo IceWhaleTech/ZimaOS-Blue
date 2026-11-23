@@ -12,7 +12,7 @@ const (
 	SelectorCuratedDatasetName        = "selector-curated"
 	SelectorCuratedDatasetDescription = "Curated selector dry-run routing regression dataset."
 	SelectorCuratedDatasetSubject     = "selector_dry_run"
-	SelectorCuratedDatasetVersion     = "selector-curated-v4"
+	SelectorCuratedDatasetVersion     = "selector-curated-v8"
 	SelectorCuratedEvalName           = "Selector Curated Dry Run"
 	selectorCuratedMaxConcurrency     = 8
 	selectorCuratedMaxAttempts        = 3
@@ -67,6 +67,7 @@ func SelectorCuratedDatasetManifest() DatasetManifest {
 				RetryBackoff:   selectorCuratedRetryBackoff,
 			},
 			RuntimePolicy: selectorDryRunRuntimePolicy(),
+			Scoring:       GroupScoringConfig{Mode: ScoringModeRule, PassThreshold: 1},
 		},
 		Items: items,
 	}
@@ -134,6 +135,7 @@ func SelectorCuratedEvalSpecSpec(datasetID, datasetVersionID, ownerUserID string
 			RetryBackoff:   selectorCuratedRetryBackoff,
 		},
 		RuntimePolicy: selectorDryRunRuntimePolicy(),
+		ScoringConfig: GroupScoringConfig{Mode: ScoringModeRule, PassThreshold: 1},
 		Metadata: map[string]interface{}{
 			"dataset_family": "builtin_selector_curated",
 			"gate_type":      "selection",
@@ -143,6 +145,46 @@ func SelectorCuratedEvalSpecSpec(datasetID, datasetVersionID, ownerUserID string
 
 func selectorCuratedCriticalCases() []DatasetManifestItem {
 	items := []DatasetManifestItem{
+		selectorCriticalSelectedCase(
+			"selected-embedded-research-screenshot-en-us", "ui_reviewer", "en-US",
+			"Review this screenshot and audit the UI and accessibility.",
+			"Screenshot review must use the embedded Research UI mode after legacy ui_reviewer assets were removed.", "research_ui_mode",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-release-json-zh-cn", "exec", "zh-CN",
+			`{"corpus":"/tmp/data","task":{"question":"RELEASE2041 发布前需要完成什么？"},"answerSchema":{"type":"object","properties":{"citations":{"type":"array"}},"enum":["insufficient_evidence"]},"instruction":"根据 corpus 内文件回答，输出 JSON 并引用证据。"}`,
+			"Output schemas and local release evidence must not turn local QA into public research.", "local_outcome_scope",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-release-citations-en-us", "exec", "en-US",
+			"Read release-notes.txt in the local directory and answer with citations from that file.",
+			"Citations from a local source must keep the local route.", "local_outcome_scope",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-corpus-question-zh-cn", "exec", "zh-CN",
+			`{"corpus":"/tmp/data","task":{"id":"text-control","question":"工单复核周期是多少天？"},"answerSchema":{"type":"object","properties":{"source":{"type":"string"}}},"instruction":"根据 corpus 内文件回答。不要读取参考答案；数字使用整数。"}`,
+			"Local document questions remain routable without action or skill names in paths.", "corpus_question_negation",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-with-evidence-restriction-zh-cn", "exec", "zh-CN",
+			"读取目录中的文件，回答预算；不要读取参考答案，数字使用两位小数。",
+			"A restriction on reference answers must not suppress the local task.", "local_negation_scope",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-with-evidence-restriction-en-us", "exec", "en-US",
+			"Read files in the directory and summarize the report; do not open reference answers; use two decimal places.",
+			"A local evidence restriction must not suppress skill selection.", "local_negation_scope",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-without-web-zh-cn", "exec", "zh-CN",
+			"不要搜索网页；读取目录中的文件，总结报告。",
+			"A web prohibition must leave the affirmative local task routable.", "local_negation_scope",
+		),
+		selectorCriticalSelectedCase(
+			"selected-local-without-web-en-us", "exec", "en-US",
+			"Do not search the web; read files in the directory and summarize the report.",
+			"Do not route a forbidden web capability instead of the local task.", "local_negation_scope",
+		),
 		selectorCriticalSelectedCase(
 			"selected-web-search-latest-docs-zh-cn",
 			"web_query",
@@ -302,11 +344,17 @@ func selectorDryRunInput(query, locale, goal string) map[string]interface{} {
 }
 
 func selectorSelectedExpected(skill string) map[string]interface{} {
-	return map[string]interface{}{
-		"canonical_skill_id":  strings.TrimSpace(skill),
-		"skill_route_outcome": "selected",
-		"skill_need_clarify":  false,
+	expected := map[string]interface{}{"canonical_skill_id": strings.TrimSpace(skill), "skill_route_outcome": "selected", "skill_need_clarify": false}
+	switch strings.TrimSpace(skill) {
+	case "analyze", "deep_research", "ui_reviewer":
+		expected["canonical_skill_id"] = "research"
+		mode := strings.TrimSpace(skill)
+		if mode == "ui_reviewer" {
+			mode = "ui_review"
+		}
+		expected["research_mode"] = mode
 	}
+	return expected
 }
 
 func selectorSelectedMetadata(skill, locale string) map[string]interface{} {

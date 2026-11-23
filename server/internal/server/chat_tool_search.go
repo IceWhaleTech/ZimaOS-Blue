@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -68,9 +70,9 @@ func (h *ChatHandler) applyToolSearchSurfaceSelection(policyReq tools.ToolPolicy
 	if h == nil {
 		return selection
 	}
-	selection.NativeDefs = h.ensureToolSearchVisible(policyReq, selection.NativeDefs)
-	if selection.NativeMode == chatNativeToolSurfaceModeClarifyNone {
-		return selection
+	unknownCapability := selection.SkillDecision != nil && selection.SkillDecision.Reason == "ir_no_match"
+	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec && (selection.NativeMode != chatNativeToolSurfaceModeClarifyNone || unknownCapability) {
+		selection.NativeDefs = h.ensureToolSearchVisible(policyReq, selection.NativeDefs)
 	}
 
 	sessionID := strings.TrimSpace(policyReq.SessionID)
@@ -151,7 +153,7 @@ func (h *ChatHandler) overlayDeferredToolExposure(policyReq tools.ToolPolicyRequ
 		}
 		merged = filtered
 		if execDef, ok := byName["exec"]; ok {
-			merged = mergeToolDefsByName(merged, []tools.ToolDefinition{execDef})
+			merged = mergeToolDefsByName(removeToolDefsByName(merged, "exec"), []tools.ToolDefinition{execDef})
 			if hasToolDefName(merged, "exec") {
 				h.recordToolSurfaceExecCutover("deferred_exposure")
 			}
@@ -252,9 +254,21 @@ func (h *ChatHandler) applyDeterministicActivationRecovery(policyReq tools.ToolP
 		return selection
 	}
 
+	searchReq := policyReq
+	searchReq.SkipDefaultChatDirectAllowlist = true
+	allowed := h.toolDefinitionsForPolicy(searchReq)
+	lookupAllowed := func(name string) (tools.ToolDefinition, bool) {
+		for _, def := range allowed {
+			if strings.EqualFold(def.Name, name) {
+				return def, true
+			}
+		}
+		return tools.ToolDefinition{}, false
+	}
+
 	switch strings.TrimSpace(selection.ActivationFailureReason) {
 	case "exec_missing":
-		if execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind); ok {
+		if execDef, ok := lookupAllowed("exec"); ok {
 			selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, []tools.ToolDefinition{execDef})
 			selection.NativeDefs = h.ensureToolSearchVisible(policyReq, selection.NativeDefs)
 			selection.NativeDefs = sortToolDefsByName(selection.NativeDefs)
@@ -267,7 +281,7 @@ func (h *ChatHandler) applyDeterministicActivationRecovery(policyReq tools.ToolP
 	case "tool_not_visible", "state_mismatch", "stamp_mismatch":
 		recovered := false
 		for _, name := range state.ActivatedTools {
-			if def, ok := h.lookupNativeToolDefinitionForRoute(name, policyReq.RouteKind); ok {
+			if def, ok := lookupAllowed(name); ok {
 				selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, []tools.ToolDefinition{def})
 				recovered = true
 			}
@@ -275,7 +289,7 @@ func (h *ChatHandler) applyDeterministicActivationRecovery(policyReq tools.ToolP
 		if !recovered {
 			for _, name := range state.ActivatedTools {
 				if strings.EqualFold(strings.TrimSpace(name), "web_query") {
-					if def, ok := h.lookupNativeToolDefinitionForRoute("web_query", policyReq.RouteKind); ok {
+					if def, ok := lookupAllowed("web_query"); ok {
 						selection.NativeDefs = mergeToolDefsByName(removeToolDefsByName(selection.NativeDefs, "exec"), []tools.ToolDefinition{def})
 						selection.RecoveryPath = "direct_web_rescue"
 						selection.SurfaceMode = chatToolSurfaceModeDirectPublicWeb
@@ -297,4 +311,51 @@ func (h *ChatHandler) applyDeterministicActivationRecovery(policyReq tools.ToolP
 
 func stringPtr(v string) *string {
 	return &v
+}
+
+// Expose selected tools and retained shell-log recovery before the next model round.
+func (h *ChatHandler) refreshDiscoveredTools(ctx context.Context, req llm.ChatRequest, calls []llm.ToolCall, results []llm.Message, convID string, webSearchEnabled, deepResearchEnabled *bool) llm.ChatRequest {
+	refresh := false
+	for _, call := range calls {
+		if strings.EqualFold(call.Name, "tool_search") {
+			refresh = true
+		}
+		if !strings.EqualFold(call.Name, "bash") && !strings.EqualFold(call.Name, "exec") {
+			continue
+		}
+		for _, result := range results {
+			if result.ToolCallID != call.ID {
+				continue
+			}
+			var payload map[string]interface{}
+			if json.Unmarshal([]byte(result.Content), &payload) != nil {
+				continue
+			}
+			_, needsLog := payload["output_retrieval"].(map[string]interface{})
+			sessionID, _ := payload["session_id"].(string)
+			if !needsLog && !(payload["status"] == "running" && strings.TrimSpace(sessionID) != "") {
+				continue
+			}
+			stamp := ""
+			if h.toolSearchSkillExposureStamp != nil {
+				stamp = h.toolSearchSkillExposureStamp()
+			}
+			h.deferredToolExposure.Apply(convID, tools.DeferredToolExposureUpdate{NeedExec: true, RegistryVersion: h.toolRegistry.Version(), PromptPolicyHash: h.resolvePromptPolicy().Hash, SkillExposureStamp: stamp})
+			refresh = true
+		}
+	}
+	if refresh {
+		state, ok := h.deferredToolExposure.Snapshot(convID)
+		if !ok || !deferredActivationRequested(state) {
+			return req
+		}
+		defs := make([]tools.ToolDefinition, 0, len(req.Tools))
+		for _, tool := range req.Tools {
+			defs = append(defs, tools.ToolDefinition{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters})
+		}
+		selection := h.applyToolSearchSurfaceSelection(tools.ToolPolicyRequest{Model: req.Model, SessionID: convID, RouteKind: tools.ToolRouteKindChat, DeepResearchEnabled: deepResearchEnabled}, webSearchEnabled, deepResearchEnabled, chatToolSurfaceSelection{NativeDefs: defs})
+		req.Tools = defsToLLMTools(selection.NativeDefs)
+		return req
+	}
+	return req
 }

@@ -400,7 +400,7 @@ func (p *OllamaProvider) convertRequest(req ChatRequest) ollamaRequest {
 	for i, msg := range req.Messages {
 		messages[i] = ollamaMessage{
 			Role:    string(msg.Role),
-			Content: msg.Content,
+			Content: msg.ProviderContent(),
 		}
 	}
 

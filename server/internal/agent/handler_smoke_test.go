@@ -73,6 +73,7 @@ func TestAgentHandlerSmoke_CreateAskAnswerComplete(t *testing.T) {
 		AskTimeoutAction: "error",
 		MaxConcurrent:    2,
 	})
+	withCompletedGroundedWork(t, runner)
 	t.Cleanup(func() { runner.Shutdown() })
 
 	handler := NewHandler(store, runner)

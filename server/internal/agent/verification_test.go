@@ -532,6 +532,7 @@ func TestRunner_ExternalVerificationRecoveryFlow(t *testing.T) {
 	store := testStore(t)
 	llmStub := &externalRecoveryFlowLLM{}
 	runner := NewRunner(store, llmStub, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	withCompletedGroundedWork(t, runner)
 	t.Cleanup(func() { runner.Shutdown() })
 
 	task := &Task{

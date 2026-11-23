@@ -273,3 +273,23 @@ func TestDeriveVerificationObservations_CapturesDesktopChatFailClosedSignals(t *
 		}
 	}
 }
+
+func TestProviderInfraClassificationRequiresFailureEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		run    Run
+		events []RunEvent
+		want   string
+	}{
+		{name: "successful source documentation", run: Run{Status: RunStatusCompleted, Result: "Provider API documentation: HTTP 401 Unauthorized means an invalid API key."}, events: []RunEvent{{Type: "tool_finished", ToolName: "exec", PayloadJSON: `{"provider_id":"bench-gpt","output":"HTTP 401 Unauthorized: invalid_api_key","exit_code":0}`}}},
+		{name: "explicit tool failure", run: Run{Status: RunStatusCompleted}, events: []RunEvent{{Type: "tool_finished", PayloadJSON: `{"error":"proxy returned 401: invalid_api_key"}`}}, want: "auth"},
+		{name: "failed step", run: Run{Status: RunStatusCompleted}, events: []RunEvent{{Type: "step_failed", Message: "proxy returned 401: invalid_api_key"}}, want: "auth"},
+		{name: "failed run reflection error", run: Run{Status: RunStatusFailed}, events: []RunEvent{{Type: "task_reflection_completed", PayloadJSON: `{"output":"Reflection error: proxy returned 401: invalid_api_key"}`}}, want: "auth"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := classifyProviderInfraFailure(&tc.run, tc.events); got != tc.want {
+				t.Fatalf("classification=%q, want %q", got, tc.want)
+			}
+		})
+	}
+}

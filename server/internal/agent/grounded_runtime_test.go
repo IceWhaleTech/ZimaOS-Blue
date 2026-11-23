@@ -610,7 +610,7 @@ func TestGroundedRuntimeCompletesExecutionContractAfterGroundedWebEvidence(t *te
 	execTool := tools.NewMockTool("exec", "mock exec")
 	execTool.SetResult(map[string]any{
 		"exit_code": 0,
-		"stdout":    "format: xml\nresult: <web_search><result>ok</result></web_search>",
+		"stdout":    "format: xml\nresult: <web_search><results><result><title>Responses | OpenAI API Reference</title><url>https://developers.openai.com/api/reference/resources/responses</url></result></results></web_search>",
 	})
 	web := tools.NewMockTool("web_query", "mock web query")
 	web.SetResult(map[string]any{
@@ -667,8 +667,8 @@ func TestGroundedRuntimeCompletesExecutionContractAfterGroundedWebEvidence(t *te
 	if err != nil {
 		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
 	}
-	if !strings.Contains(result.Output, `command excerpt="format: xml"`) {
-		t.Fatalf("output=%q, want canonical web_search command evidence", result.Output)
+	if !strings.Contains(result.Output, "Responses | OpenAI API Reference") {
+		t.Fatalf("output=%q, want actual canonical web_search source evidence", result.Output)
 	}
 	if len(task.GroundState.Calls) != 1 {
 		t.Fatalf("grounded call count = %d, want 1", len(task.GroundState.Calls))

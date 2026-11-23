@@ -419,6 +419,7 @@ func TestRunner_ConcurrencyWaitsForAvailableSlot(t *testing.T) {
 
 	m := &mockLLM{planJSON: `[{"description":"x"}]`}
 	runner := NewRunner(s, m, nil, nil, nil, RunnerConfig{MaxConcurrent: 1, TaskTimeout: 10 * time.Second})
+	withCompletedGroundedWork(t, runner)
 	t.Cleanup(func() { runner.Shutdown() })
 
 	go func() {
@@ -2107,6 +2108,7 @@ func TestRunner_AutoReflectCompletedTask(t *testing.T) {
 		MemoryWritten: 1,
 	}}
 	runner := NewRunner(s, m, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second, AutoReflect: true})
+	withCompletedGroundedWork(t, runner)
 	runner.SetReflector(reflector)
 	t.Cleanup(func() { runner.Shutdown() })
 

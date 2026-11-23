@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -55,6 +56,8 @@ type SkillCandidate struct {
 	Name        string  `json:"name"`
 	Score       float64 `json:"score"`
 	Description string  `json:"description,omitempty"`
+	Invocation  string  `json:"invocation,omitempty"`
+	SourcePath  string  `json:"source_path,omitempty"`
 }
 
 // Decision is the selector output.
@@ -134,6 +137,12 @@ func (d Decision) PromptHint(maxCandidates int) string {
 		if c.Description != "" {
 			sb.WriteString(" desc=")
 			sb.WriteString(fmt.Sprintf("%q", truncateForIndex(c.Description, 120)))
+		}
+		if c.SourcePath != "" {
+			sb.WriteString(fmt.Sprintf(" source_path=%q", xmlEscape(c.SourcePath)))
+		}
+		if c.Invocation != "" {
+			sb.WriteString(fmt.Sprintf(" invocation=%q", xmlEscape(c.Invocation)))
 		}
 		sb.WriteString(" />")
 	}
@@ -272,6 +281,21 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 	}
 
 	if rule := stage0RuleRoute(query); rule.SelectedSkill != "" && mode != SkillSelectorModeLLMOnly {
+		if rule.Reason == "rule_workspace_local_exec" {
+			builtins, err := skillmanifest.ListEmbeddedIDs()
+			if err != nil {
+				return Decision{}, err
+			}
+			var external []skillIndexEntry
+			for _, entry := range indexCache {
+				if entry.doc.Category == "external_cli" && !slices.Contains(builtins, entry.doc.ID) {
+					external = append(external, entry)
+				}
+			}
+			if candidate := s.stage1IR(query, external, thres); candidate.SelectedSkill != "" && !candidate.NeedClarify {
+				return s.finalizeDecision(cacheKey, candidate, docs, opts)
+			}
+		}
 		rule.Candidates = buildCandidatesFromNames(rule.SelectedSkill, docs)
 		return s.finalizeDecision(cacheKey, rule, docs, opts)
 	}
@@ -458,6 +482,8 @@ func (s *SkillSelector) stage1IR(query string, docs []skillIndexEntry, threshold
 			Name:        ranked[i].doc.Name,
 			Score:       ranked[i].score,
 			Description: ranked[i].doc.Description,
+			Invocation:  ranked[i].doc.Invocation,
+			SourcePath:  ranked[i].doc.SourcePath,
 		})
 	}
 	if scoreGap < 0.35 {
@@ -592,11 +618,11 @@ func applySkillBM25TieBreak(query string, ranked []skillRankedCandidate) {
 }
 
 func stage0RuleRoute(query string) Decision {
-	lower := strings.ToLower(strings.TrimSpace(query))
-	if lower == "" {
+	signals := sel.AnalyzeQuery(query)
+	lower := signals.Normalized
+	if lower == "" || signals.BlocksAutomaticSelection() {
 		return Decision{}
 	}
-	signals := sel.AnalyzeQuery(query)
 	selectSkill := func(name, reason string) Decision {
 		return Decision{
 			Query:            query,
@@ -633,6 +659,11 @@ func stage0RuleRoute(query string) Decision {
 		"点击", "输入", "选择", "切换", "消息", "滚动", "聚焦", "快照",
 	}) {
 		return selectSkill("computer_use", "rule_computer_use")
+	}
+	uiReview := routingcue.SkillTerms("ui_reviewer")
+	if !signals.URLPresent && hasSelectorTerm(lower, uiReview.Actions) &&
+		hasSelectorTerm(lower, append(uiReview.Objects, "ui", "ux", "interface", "layout", "accessibility", "界面", "布局", "无障碍")) {
+		return selectResearch("ui_review", "rule_ui_review")
 	}
 	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) &&
 		!shouldBypassURLBrowserRule(lower) &&

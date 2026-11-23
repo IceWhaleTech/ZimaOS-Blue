@@ -118,6 +118,7 @@ func scoreRunByRule(group *RunGroup, item *RunGroupItem, run *Run, threshold flo
 	structuredResult := structuredRunResult(run)
 	for _, key := range []string{
 		"canonical_skill_id",
+		"research_mode",
 		"skill_route_outcome",
 		"decision_stage",
 		"decision_reason",

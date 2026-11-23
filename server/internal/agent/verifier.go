@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"sort"
 	"strconv"
@@ -163,9 +164,6 @@ func deterministicWebEvidenceEnabled(call GroundedToolCall, result GroundedToolR
 	if !groundedResultHasUsefulEvidence(result) {
 		return false
 	}
-	if !deterministicWebResultReady(result.Result) {
-		return false
-	}
 	toolName := normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool))
 	if isGroundedWebToolFamily(toolName) {
 		return true
@@ -181,7 +179,7 @@ func deterministicWebEvidenceEnabled(call GroundedToolCall, result GroundedToolR
 }
 
 func deterministicWebResultReady(value any) bool {
-	payloads := deterministicStructuredPayloads(value)
+	payloads := deterministicWebPayloads(value)
 	if len(payloads) == 0 {
 		return false
 	}
@@ -197,7 +195,7 @@ func deterministicWebEvidenceFields(value any) (string, string, string) {
 	var title string
 	var url string
 	var snippet string
-	for _, payload := range deterministicStructuredPayloads(value) {
+	for _, payload := range deterministicWebPayloads(value) {
 		if !deterministicWebPayloadReady(payload) {
 			continue
 		}
@@ -213,7 +211,6 @@ func deterministicWebEvidenceFields(value any) (string, string, string) {
 				strings.TrimSpace(asString(extractField(payload, "final_url"))),
 				strings.TrimSpace(asString(extractField(payload, "target_url"))),
 				strings.TrimSpace(asString(extractField(payload, "url"))),
-				strings.TrimSpace(asString(extractField(payload, "input"))),
 				deterministicSourceURL(payload),
 			), 320)
 		}
@@ -221,7 +218,6 @@ func deterministicWebEvidenceFields(value any) (string, string, string) {
 			snippet = deterministicExcerpt(firstNonEmptyString(
 				strings.TrimSpace(asString(extractField(payload, "snippet"))),
 				strings.TrimSpace(asString(extractField(payload, "summary"))),
-				strings.TrimSpace(asString(extractField(payload, "message"))),
 				strings.TrimSpace(asString(extractField(payload, "content"))),
 				deterministicSourceSnippet(payload),
 			), 180)
@@ -243,15 +239,11 @@ func deterministicWebPayloadReady(payload map[string]any) bool {
 		return false
 	}
 	switch status {
-	case "ok", "partial":
-		return true
-	case "failed", "error", "needs_browser", "login_wall", "challenge":
+	case "", "ok", "partial", "completed", "success":
+	default:
 		return false
 	}
-	if status != "" {
-		return false
-	}
-	if groundedNeedsBrowser(payload) {
+	if status == "" && groundedNeedsBrowser(payload) {
 		return false
 	}
 	if deterministicHasNestedStructuredPayload(payload) {
@@ -278,20 +270,71 @@ func deterministicHasNestedStructuredPayload(payload map[string]any) bool {
 
 func deterministicPayloadHasWebEvidence(payload map[string]any) bool {
 	if firstNonEmptyString(
-		strings.TrimSpace(asString(extractField(payload, "title"))),
-		strings.TrimSpace(asString(extractField(payload, "page_title"))),
-		strings.TrimSpace(asString(extractField(payload, "final_url"))),
-		strings.TrimSpace(asString(extractField(payload, "target_url"))),
-		strings.TrimSpace(asString(extractField(payload, "url"))),
-		strings.TrimSpace(asString(extractField(payload, "input"))),
 		strings.TrimSpace(asString(extractField(payload, "snippet"))),
 		strings.TrimSpace(asString(extractField(payload, "summary"))),
-		strings.TrimSpace(asString(extractField(payload, "message"))),
 		strings.TrimSpace(asString(extractField(payload, "content"))),
 	) != "" {
 		return true
 	}
-	return deterministicSourceUsable(payload)
+	return deterministicSelectedSource(payload) != nil
+}
+
+func deterministicWebPayloads(value any) []map[string]any {
+	payloads := deterministicStructuredPayloads(value)
+	if len(payloads) == 0 {
+		payloads = []map[string]any{{"result": value}}
+	}
+	for _, payload := range payloads {
+		if deterministicHasNestedStructuredPayload(payload) {
+			continue
+		}
+		stdout := strings.TrimSpace(asString(extractField(payload, "stdout")))
+		if stdout == "" {
+			continue
+		}
+		if nested := parseGroundedNestedPayload(stdout); nested != nil {
+			payloads = append(payloads, deterministicStructuredPayloads(nested)...)
+			continue
+		}
+		// Older CLI responses expose structured fields only as key: value lines.
+		fields := make(map[string]any)
+		var field string
+		for _, line := range strings.Split(stdout, "\n") {
+			key, text, found := strings.Cut(line, ":")
+			if found && !strings.ContainsAny(key, " \t") {
+				field = strings.TrimSpace(key)
+				fields[field] = strings.TrimSpace(text)
+			} else if field == "content" || field == "snippet" || field == "summary" {
+				fields[field] = asString(fields[field]) + "\n" + line
+			}
+		}
+		payloads = append(payloads, fields)
+	}
+	for _, payload := range payloads {
+		var search struct {
+			XMLName xml.Name `xml:"web_search"`
+			Results []struct {
+				Title       string `xml:"title"`
+				URL         string `xml:"url"`
+				Description string `xml:"description"`
+			} `xml:"results>result"`
+		}
+		if raw := asString(extractField(payload, "result")); strings.HasPrefix(raw, "<") && xml.Unmarshal([]byte(raw), &search) == nil {
+			sources := make([]any, 0, len(search.Results))
+			for _, result := range search.Results {
+				sources = append(sources, map[string]any{"title": result.Title, "url": result.URL, "snippet": result.Description})
+			}
+			payloads = append(payloads, map[string]any{"sources": sources})
+		}
+	}
+	for _, payload := range payloads {
+		switch strings.ToLower(asString(extractField(payload, "status"))) {
+		case "", "ok", "partial", "completed", "success":
+		default:
+			return nil
+		}
+	}
+	return payloads
 }
 
 func deterministicAnalyzeGroundedResponse(toolCallID string, call GroundedToolCall, result GroundedToolResult) *GroundedResponse {
@@ -325,15 +368,22 @@ func deterministicAnalyzeEvidenceEnabled(call GroundedToolCall, result GroundedT
 }
 
 func deterministicAnalyzeEvidenceFields(value any) (string, string, string) {
-	for _, payload := range deterministicStructuredPayloads(value) {
-		if !deterministicAnalyzeResultReady(payload) {
-			continue
+	payloads := deterministicStructuredPayloads(value)
+	for _, payload := range payloads {
+		switch strings.ToLower(strings.TrimSpace(asString(extractField(payload, "status")))) {
+		case "failed", "error", "running", "pending":
+			return "", "", ""
 		}
-		answer := deterministicExcerpt(firstNonEmptyString(
+	}
+	for _, payload := range payloads {
+		answer := firstNonEmptyString(
 			strings.TrimSpace(asString(extractField(payload, "answer"))),
 			strings.TrimSpace(asString(extractField(payload, "summary"))),
 			strings.TrimSpace(asString(extractField(payload, "content"))),
-		), 220)
+		)
+		if answer == "" {
+			continue
+		}
 		topic := deterministicExcerpt(strings.TrimSpace(asString(extractField(payload, "topic"))), 160)
 		message := deterministicExcerpt(strings.TrimSpace(asString(extractField(payload, "message"))), 180)
 		if answer != "" || topic != "" || message != "" {
@@ -341,19 +391,6 @@ func deterministicAnalyzeEvidenceFields(value any) (string, string, string) {
 		}
 	}
 	return "", "", ""
-}
-
-func deterministicAnalyzeResultReady(value any) bool {
-	status := strings.ToLower(strings.TrimSpace(asString(extractField(value, "status"))))
-	if status == "failed" || status == "error" {
-		return false
-	}
-	return firstNonEmptyString(
-		strings.TrimSpace(asString(extractField(value, "answer"))),
-		strings.TrimSpace(asString(extractField(value, "summary"))),
-		strings.TrimSpace(asString(extractField(value, "message"))),
-		strings.TrimSpace(asString(extractField(value, "topic"))),
-	) != ""
 }
 
 func deterministicAnalyzeSummary(answer, topic string) string {
@@ -522,11 +559,20 @@ func deterministicSourceSnippet(payload map[string]any) string {
 	if len(source) == 0 {
 		return ""
 	}
-	return strings.TrimSpace(asString(extractField(source, "snippet")))
+	return firstNonEmptyString(asString(extractField(source, "snippet")), asString(extractField(source, "description")))
 }
 
 func deterministicSelectedSource(payload map[string]any) map[string]any {
-	rawSources, ok := extractField(payload, "sources").([]any)
+	sources := extractField(payload, "sources")
+	if sources == nil {
+		sources = extractField(payload, "results")
+	}
+	if raw, ok := sources.(string); ok {
+		if json.Unmarshal([]byte(raw), &sources) != nil {
+			return nil
+		}
+	}
+	rawSources, ok := sources.([]any)
 	if !ok {
 		return nil
 	}
@@ -806,7 +852,7 @@ func (v *GroundedVerifier) verifyFileExcerptClaim(state *GroundTruthState, prefi
 		if !supportingPathEvidence([]GroundedToolResult{result}, claim.Path) {
 			continue
 		}
-		if strings.Contains(serializedResult(result.Result), claim.Excerpt) {
+		if groundedResultContainsExcerpt(result.Result, claim.Excerpt) {
 			supported = true
 			break
 		}
@@ -830,7 +876,7 @@ func (v *GroundedVerifier) verifyCommandExcerptClaim(state *GroundTruthState, pr
 		if normalizeGroundToolName(result.Tool) != "bash" {
 			continue
 		}
-		if strings.Contains(serializedResult(result.Result), claim.Excerpt) {
+		if groundedResultContainsExcerpt(result.Result, claim.Excerpt) {
 			supported = true
 			break
 		}
@@ -851,7 +897,7 @@ func (v *GroundedVerifier) verifyToolOutputClaim(state *GroundTruthState, prefix
 	}
 	supported := false
 	for _, result := range results.results {
-		if strings.Contains(serializedResult(result.Result), claim.Excerpt) {
+		if groundedResultContainsExcerpt(result.Result, claim.Excerpt) {
 			supported = true
 			break
 		}
@@ -967,4 +1013,27 @@ func renderGroundedClaim(claim ResponseClaim) string {
 func serializedResult(result any) string {
 	b, _ := json.Marshal(result)
 	return string(b)
+}
+
+func groundedResultContainsExcerpt(result any, excerpt string) bool {
+	// Compare JSON-escaped text so quotes and newlines need no lossy clipping.
+	encoded := serializedResult(excerpt)
+	needle := encoded[1 : len(encoded)-1]
+	if strings.Contains(serializedResult(result), needle) {
+		return true
+	}
+	for _, payload := range deterministicStructuredPayloads(result) {
+		if strings.Contains(serializedResult(payload), needle) {
+			return true
+		}
+	}
+	// Compare decoded protocol fields too, including XML entity escapes.
+	for _, payload := range deterministicWebPayloads(result) {
+		for _, field := range []string{deterministicSourceTitle(payload), deterministicSourceURL(payload), deterministicSourceSnippet(payload)} {
+			if strings.Contains(field, excerpt) {
+				return true
+			}
+		}
+	}
+	return false
 }

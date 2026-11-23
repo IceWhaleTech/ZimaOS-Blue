@@ -79,6 +79,42 @@ func TestComposeConversationContext(t *testing.T) {
 	}
 }
 
+func TestAgentDriverHonorsRunDuration(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		budget, timeout time.Duration
+	}{
+		{"run-budget", 40 * time.Millisecond, 5 * time.Second},
+		{"runner-cap", 5 * time.Second, 40 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testAgentDriverStore(t)
+			runner := agentpkg.NewRunner(store, &blockingAgentDriverLLM{}, nil, nil, nil, agentpkg.RunnerConfig{TaskTimeout: tc.timeout})
+			t.Cleanup(runner.Shutdown)
+			driver := NewAgentDriver(harness.RunKindAgentTask, runner, store, nil)
+			run := &harness.Run{ID: "duration-test", UserID: "u1", Goal: "wait for slow provider", MaxDuration: tc.budget}
+			if err := driver.Start(context.Background(), run, harness.RunEnv{}); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(time.Second)
+			for time.Now().Before(deadline) {
+				task, err := store.Get(context.Background(), run.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if task.Status == agentpkg.TaskStatusFailed {
+					return
+				}
+				if task.Status == agentpkg.TaskStatusCompleted {
+					t.Fatal("timed-out task must not complete successfully")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			t.Fatal("task ignored duration budget")
+		})
+	}
+}
+
 func TestRunConversationID_FallsBackToSessionID(t *testing.T) {
 	run := &harness.Run{SessionID: "session-1"}
 

@@ -867,7 +867,7 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 			oaiMsg.Content = contentParts
 		} else {
 			// Simple text content
-			oaiMsg.Content = msg.Content
+			oaiMsg.Content = msg.ProviderContent()
 		}
 
 		if len(msg.ToolCalls) > 0 {

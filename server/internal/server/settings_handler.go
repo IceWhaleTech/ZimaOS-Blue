@@ -539,6 +539,9 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 			}
 		}
 	}
+	if selectedDecision != nil {
+		response["research_mode"] = selectedDecision.ResearchMode
+	}
 	if chatHandler.skillSelector != nil {
 		if debugState, err := chatHandler.skillSelector.DebugState(); err == nil {
 			response["active_skill_count"] = debugState.ActiveSkillCount

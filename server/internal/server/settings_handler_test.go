@@ -1823,3 +1823,11 @@ func TestSmallModelDownloadEndpoints_NoManager(t *testing.T) {
 		t.Fatalf("cancel status = %d, want 400", cancelRec.Code)
 	}
 }
+
+func TestSelectorDryRunExposesResearchMode(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+	response := runSelectorDryRun(t, h, "Review this screenshot and audit the UI and accessibility.")
+	if response["canonical_skill_id"] != "research" || response["research_mode"] != "ui_review" {
+		t.Fatalf("dry run must preserve Research routing mode: canonical=%v mode=%v", response["canonical_skill_id"], response["research_mode"])
+	}
+}

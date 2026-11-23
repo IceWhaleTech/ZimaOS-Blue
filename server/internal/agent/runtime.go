@@ -1697,22 +1697,12 @@ func groundedResultCarriesReminderEvidence(call GroundedToolCall, result Grounde
 }
 
 func groundedResultHasUsefulEvidence(result GroundedToolResult) bool {
-	if groundedResultTitle(result.Result) != "" {
-		return true
-	}
-	if groundedResultURL(result.Result) != "" {
-		return true
-	}
-	return strings.TrimSpace(groundedResultSnippet(result)) != ""
+	return result.OK && result.ExitCode == 0 && deterministicWebResultReady(result.Result)
 }
 
 func groundedResultHasAnalyzeEvidence(value any) bool {
-	for _, payload := range deterministicStructuredPayloads(value) {
-		if deterministicAnalyzeResultReady(payload) {
-			return true
-		}
-	}
-	return false
+	answer, _, _ := deterministicAnalyzeEvidenceFields(value)
+	return answer != ""
 }
 
 func groundedReminderResultReady(value any) bool {
@@ -1847,9 +1837,10 @@ func (r *GroundedRuntime) VerifyTask(task *Task) (*VerificationResult, string, e
 		result.Summary = "Task is missing."
 		return result, formatVerificationOutput(verificationCtx, result, nil, verificationCtx.SuccessCriteria), fmt.Errorf("task is missing")
 	}
-	if task.GroundingStatus == GroundingStatusRejected {
+	blocking := groundedVerificationHasBlockingPlanState(task) || task.GroundingStatus == GroundingStatusRejected || !groundedVerificationHasCompletionEvidence(task)
+	if blocking {
 		result.Status = "fail"
-		result.Summary = "Grounded runtime rejected at least one unverified claim or failed assertion."
+		result.Summary = groundedVerificationFailureEvidence(task)
 	}
 	for _, criterion := range effectiveSuccessCriteria(task.SuccessCriteria) {
 		item := CriterionResult{
@@ -1857,7 +1848,7 @@ func (r *GroundedRuntime) VerifyTask(task *Task) (*VerificationResult, string, e
 			Status:    "pass",
 			Evidence:  groundedEvidenceForTask(task),
 		}
-		if groundedVerificationHasBlockingPlanState(task) || task.GroundingStatus == GroundingStatusRejected {
+		if blocking {
 			item.Status = "fail"
 			item.Evidence = groundedVerificationFailureEvidence(task)
 		}
@@ -2072,6 +2063,37 @@ func groundedEvidenceForTask(task *Task) string {
 	}
 }
 
+func groundedVerificationHasCompletionEvidence(task *Task) bool {
+	if task == nil || task.GroundState == nil {
+		return false
+	}
+	if groundedShouldCompleteExecutionContract(task) {
+		return true
+	}
+	successfulWork := false
+	for _, result := range task.GroundState.Results {
+		if result.OK && result.ExitCode == 0 && normalizeGroundToolName(result.Tool) != "tool_search" {
+			successfulWork = true
+			break
+		}
+	}
+	if !successfulWork {
+		return false
+	}
+	for _, step := range task.Plan {
+		output := strings.TrimSpace(step.Output)
+		if step.Status != StepStatusCompleted || isRuntimeMetaStep(step.Description) {
+			continue
+		}
+		for _, word := range strings.Fields(output) {
+			if !strings.EqualFold(word, "unknown") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func groundedVerificationHasBlockingPlanState(task *Task) bool {
 	failed, skipped := groundedPlanFailureFlags(task)
 	if failed {
@@ -2096,6 +2118,8 @@ func groundedVerificationFailureEvidence(task *Task) string {
 		return "Task skipped only post-evidence expansion work after satisfying the execution contract."
 	case skipped:
 		return "Task contains skipped work that blocks completion."
+	case !groundedVerificationHasCompletionEvidence(task):
+		return "Task lacks successful execution evidence and a delivered result; unknown or tool discovery alone cannot satisfy completion."
 	default:
 		return "Task did not satisfy grounded verification checks."
 	}
@@ -2171,7 +2195,7 @@ func buildGroundedTaskReport(task *Task) string {
 		if output == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("%d. %s\n", step.Index+1, truncate(output, 500)))
+		sb.WriteString(fmt.Sprintf("%d. %s\n", step.Index+1, output))
 		wrote = true
 	}
 	if !wrote {

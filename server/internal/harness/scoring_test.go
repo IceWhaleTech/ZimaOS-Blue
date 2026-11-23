@@ -104,3 +104,12 @@ func TestScoreGroupRun_VerificationSuccessCanPromoteRulePassWithDeterministicEvi
 		t.Fatalf("verification_passed = %#v, want true", breakdown["verification_passed"])
 	}
 }
+
+func TestSelectorModeMismatchFailsStrictContract(t *testing.T) {
+	item := &RunGroupItem{Expected: map[string]interface{}{"canonical_skill_id": "research", "research_mode": "ui_review", "skill_route_outcome": "selected", "skill_need_clarify": false}}
+	run := &Run{Status: RunStatusCompleted, Result: `{"canonical_skill_id":"research","research_mode":"deep_research","skill_route_outcome":"selected","skill_need_clarify":false}`}
+	attempt := scoreRunByRule(&RunGroup{}, item, run, 1)
+	if attempt.card.Verdict == ScoreVerdictPass {
+		t.Fatalf("wrong Research mode must fail, got %s", attempt.card.Verdict)
+	}
+}

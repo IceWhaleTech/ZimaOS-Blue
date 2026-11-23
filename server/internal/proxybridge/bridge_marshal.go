@@ -231,7 +231,7 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 			// Keep tool-result content as a string for chat-completions payloads.
 			// Some OpenAI-compatible relays reject object-typed tool content with
 			// 400 "Improperly formed request".
-			bm.Content = m.Content
+			bm.Content = m.ProviderContent()
 		} else if m.Content != "" {
 			bm.Content = m.Content
 		}
@@ -341,7 +341,7 @@ func MarshalResponsesRequest(req llm.ChatRequest) ([]byte, error) {
 			input = append(input, bridgeResponsesFunctionCallOutput{
 				Type:   "function_call_output",
 				CallID: strings.TrimSpace(m.ToolCallID),
-				Output: m.Content,
+				Output: m.ProviderContent(),
 			})
 		default:
 			parts := make([]bridgeResponsesContentPart, 0, len(m.ContentParts)+1)
