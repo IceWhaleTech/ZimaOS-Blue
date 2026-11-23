@@ -11,18 +11,20 @@ NOTARIZE = ROOT / '.github/scripts/notarize-apple-artifact.sh'
 
 
 class AppleCertificateTest(unittest.TestCase):
-    def run_install(self, identity, team='TESTTEAM01', certificate='ZmFrZQ==', password='fixture-only'):
+    def run_install(self, identity, team='TESTTEAM01', certificate='ZmFrZQ==', password='fixture-only', legacy=False):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / 'security').write_text('#!/bin/bash\nif [[ "$1" == find-identity ]]; then printf \'%s\\n\' "$MOCK_IDENTITY"; fi\n')
-            (base / 'openssl').write_text('#!/bin/sh\nexit 0\n')
+            (base / 'openssl').write_text('#!/bin/bash\n'
+                'if [[ "$MOCK_LEGACY" == 1 && " $* " != *" -legacy "* ]]; then exit 1; fi\nexit 0\n')
             for name in ['security', 'openssl']:
                 (base / name).chmod(0o755)
             env = {**os.environ, 'PATH': str(base) + os.pathsep + os.environ['PATH'],
                    'RUNNER_TEMP': tmp, 'GITHUB_ENV': str(base / 'github.env'),
                    'CERTIFICATE_BASE64': certificate, 'CERTIFICATE_PASSWORD': password,
                    'APPLE_SIGNING_IDENTITY': '', 'APPLE_TEAM_ID': team,
-                   'MOCK_IDENTITY': f'  1) HASH "{identity}"\n     1 valid identities found'}
+                   'MOCK_IDENTITY': f'  1) HASH "{identity}"\n     1 valid identities found',
+                   'MOCK_LEGACY': '1' if legacy else '0'}
             result = subprocess.run(['bash', str(INSTALL)], env=env, text=True, capture_output=True)
             exported = (base / 'github.env').read_text() if (base / 'github.env').exists() else ''
             return result, exported
@@ -36,6 +38,11 @@ class AppleCertificateTest(unittest.TestCase):
         result, exported = self.run_install('Apple Development: Example (TESTTEAM01)')
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertNotIn('APPLE_SIGNING_IDENTITY=', exported)
+
+    def test_legacy_macos_pkcs12_bundle_is_accepted(self):
+        result, exported = self.run_install('Developer ID Application: Example (TESTTEAM01)', legacy=True)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn('APPLE_SIGNING_IDENTITY=', exported)
 
     def test_mismatched_team_is_rejected(self):
         result, exported = self.run_install('Developer ID Application: Example (OTHERTEAM1)')

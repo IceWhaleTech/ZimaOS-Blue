@@ -27,7 +27,9 @@ if [[ ! -s "$cert_file" ]]; then
   exit 1
 fi
 
-if ! openssl pkcs12 -in "$cert_file" -passin "pass:${CERTIFICATE_PASSWORD}" -info -noout >/dev/null 2>&1; then
+# Keychain Access can export RC2-encrypted bundles that need OpenSSL 3's legacy provider.
+if ! openssl pkcs12 -in "$cert_file" -passin "pass:${CERTIFICATE_PASSWORD}" -info -noout >/dev/null 2>&1 &&
+   ! openssl pkcs12 -legacy -in "$cert_file" -passin "pass:${CERTIFICATE_PASSWORD}" -info -noout >/dev/null 2>&1; then
   echo "::error::MACOS_CERTIFICATE must be a base64-encoded PKCS#12 (.p12/.pfx) bundle and MACOS_CERTIFICATE_PASSWORD must match it."
   exit 1
 fi
