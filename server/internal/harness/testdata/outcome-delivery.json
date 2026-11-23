@@ -149,7 +149,7 @@
         "critical": true,
         "runtime_path": "chat",
         "initial_rejected_tool": "web_query",
-        "scope": "macOS0.11.0 emitted web_query on an exec-only surface. Rejection must give the model bounded corrective feedback, execute the supported skill entry point and deliver a source-backed report, or expose an explicit error. Empty done is not success."
+        "scope": "macOS0.11.0 emitted web_query on an exec-only surface. Native-name rejection must not imply that the corresponding skill capability is disabled. Feedback must show the exec command carrier, execute the supported skill entry point and deliver a source-backed report, or expose an explicit error. Empty done is not success."
       }
     },
     {

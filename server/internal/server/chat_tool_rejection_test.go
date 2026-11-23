@@ -183,7 +183,7 @@ func TestChatRejectedNativeToolCall(t *testing.T) {
 				}
 				assertLLMRequestToolNames(t, second.Tools, "exec")
 				feedback := second.Messages[len(second.Messages)-1].Content
-				for _, term := range []string{"web_query", "exec", "not executed"} {
+				for _, term := range []string{"web_query", "exec", "not executed", "does not disable", `{"command":`} {
 					if !strings.Contains(feedback, term) {
 						t.Errorf("corrective feedback lacks %q: %s", term, feedback)
 					}
