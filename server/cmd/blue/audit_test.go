@@ -81,7 +81,7 @@ func TestRunAuditTailPrintsRecentEntriesForConversation(t *testing.T) {
 	dataDir := resetAuditCLIState(t)
 	store := newAuditTestStore(t, dataDir)
 
-	base := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-time.Minute)
 	recordAuditTestEntry(t, store, sessionaudit.Entry{
 		ConversationID: "conv-a",
 		EventType:      "user_message",
@@ -129,20 +129,21 @@ func TestRunAuditTailJSONOutputFiltersByQuery(t *testing.T) {
 
 	jsonOutput = true
 	auditQuery = "rollback"
+	base := time.Now().UTC().Add(-time.Minute)
 
 	recordAuditTestEntry(t, store, sessionaudit.Entry{
 		ConversationID: "conv-a",
 		EventType:      "assistant_message",
 		Role:           "assistant",
 		Payload:        "rollback plan is ready",
-		CreatedAt:      time.Date(2026, 4, 5, 11, 0, 0, 0, time.UTC),
+		CreatedAt:      base,
 	})
 	recordAuditTestEntry(t, store, sessionaudit.Entry{
 		ConversationID: "conv-b",
 		EventType:      "assistant_message",
 		Role:           "assistant",
 		Payload:        "kitchen sink output",
-		CreatedAt:      time.Date(2026, 4, 5, 11, 0, 1, 0, time.UTC),
+		CreatedAt:      base.Add(time.Second),
 	})
 
 	out := captureStdout(t, func() {

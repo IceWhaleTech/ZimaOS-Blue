@@ -15,12 +15,12 @@ import (
 const (
 	darwinPDFNativeFormFillUnsupportedMessage = "macOS native PDF form filling currently supports text fields, combo boxes, list boxes, checkboxes, and radio buttons only"
 
-	darwinPDFAnnotationKeyWidgetFieldType   = "widgetFieldType"
+	darwinPDFAnnotationKeyWidgetFieldType   = "/FT"
 	darwinPDFAnnotationKeyWidgetControlType = "widgetControlType"
-	darwinPDFAnnotationKeyWidgetTextLabel   = "widgetTextLabelUI"
-	darwinPDFAnnotationKeyWidgetFieldFlags  = "widgetFieldFlags"
-	darwinPDFAnnotationKeyWidgetValue       = "widgetValue"
-	darwinPDFAnnotationKeyWidgetOptions     = "widgetOptions"
+	darwinPDFAnnotationKeyWidgetTextLabel   = "/TU"
+	darwinPDFAnnotationKeyWidgetFieldFlags  = "/Ff"
+	darwinPDFAnnotationKeyWidgetValue       = "/V"
+	darwinPDFAnnotationKeyWidgetOptions     = "/Opt"
 
 	darwinPDFFormFlagReadOnly = 1 << 0
 	darwinPDFFormFlagRequired = 1 << 1

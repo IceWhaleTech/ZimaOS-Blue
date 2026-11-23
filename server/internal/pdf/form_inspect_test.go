@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -39,8 +40,12 @@ func TestServiceInspectFormReturnsTextFieldMetadata(t *testing.T) {
 	if len(result.Fields) != 1 {
 		t.Fatalf("len(fields) = %d, want 1", len(result.Fields))
 	}
-	if result.Document.Engine != engineName {
-		t.Fatalf("document.engine = %q, want %q", result.Document.Engine, engineName)
+	wantEngine := engineName
+	if runtime.GOOS == "darwin" {
+		wantEngine = "pdfkit/native"
+	}
+	if result.Document.Engine != wantEngine {
+		t.Fatalf("document.engine = %q, want %q", result.Document.Engine, wantEngine)
 	}
 
 	field := result.Fields[0]
@@ -93,8 +98,12 @@ func TestServiceFillFormUpdatesTextFieldValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FillForm returned error: %v", err)
 	}
-	if result.Document.Engine != engineName {
-		t.Fatalf("document.engine = %q, want %q", result.Document.Engine, engineName)
+	wantEngine := engineName
+	if runtime.GOOS == "darwin" {
+		wantEngine = "pdfkit/native"
+	}
+	if result.Document.Engine != wantEngine {
+		t.Fatalf("document.engine = %q, want %q", result.Document.Engine, wantEngine)
 	}
 	if !reflect.DeepEqual(result.UpdatedFields, []string{"full_name"}) {
 		t.Fatalf("updated_fields = %#v, want [full_name]", result.UpdatedFields)

@@ -8,13 +8,13 @@ import (
 )
 
 func classifyNativePDFWidgetType(rawType string, isListChoice bool) string {
-	raw := strings.ToLower(strings.TrimSpace(rawType))
+	raw := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(rawType)), "/")
 	switch {
 	case raw == "":
 		return "unknown"
-	case strings.Contains(raw, "text"):
+	case raw == "tx" || strings.Contains(raw, "text"):
 		return "text"
-	case strings.Contains(raw, "choice"):
+	case raw == "ch" || strings.Contains(raw, "choice"):
 		if isListChoice {
 			return "list"
 		}
@@ -23,9 +23,9 @@ func classifyNativePDFWidgetType(rawType string, isListChoice bool) string {
 		return "checkbox"
 	case strings.Contains(raw, "radio"):
 		return "radio"
-	case strings.Contains(raw, "button"):
+	case raw == "btn" || strings.Contains(raw, "button"):
 		return "button"
-	case strings.Contains(raw, "signature"):
+	case raw == "sig" || strings.Contains(raw, "signature"):
 		return "signature"
 	default:
 		return "unknown"
