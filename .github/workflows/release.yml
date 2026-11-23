@@ -310,7 +310,9 @@ jobs:
         run: |
           arch="${{ matrix.goarch }}"
           [[ "$arch" != amd64 ]] || arch=x86_64
-          lipo -verify_arch "$arch" blue bluecli
+          for binary in blue bluecli; do
+            lipo "$binary" -verify_arch "$arch"
+          done
 
           # Sign the final launcher binary too
           codesign --force --options runtime \
@@ -440,7 +442,7 @@ jobs:
 
           arch="${{ matrix.arch }}"
           [[ "$arch" != amd64 ]] || arch=x86_64
-          lipo -verify_arch "$arch" "$APP_DIR/$APP_NAME.app/Contents/MacOS/blue"
+          lipo "$APP_DIR/$APP_NAME.app/Contents/MacOS/blue" -verify_arch "$arch"
 
           # Copy web dist into .app Resources
           RESOURCES_DIR="$APP_DIR/$APP_NAME.app/Contents/Resources/dist"

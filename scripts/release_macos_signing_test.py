@@ -103,8 +103,9 @@ class ReleaseWorkflowSigningTest(unittest.TestCase):
         text = (ROOT / '.github/workflows/release.yml').read_text()
         self.assertEqual(text.count('runner: macos-15-intel'), 2)
         self.assertEqual(text.count('runner: macos-15\n'), 2)
-        self.assertIn('lipo -verify_arch "$arch" blue bluecli', text)
-        self.assertIn('lipo -verify_arch "$arch" "$APP_DIR/$APP_NAME.app/Contents/MacOS/blue"', text)
+        self.assertIn('for binary in blue bluecli; do', text)
+        self.assertIn('lipo "$binary" -verify_arch "$arch"', text)
+        self.assertIn('lipo "$APP_DIR/$APP_NAME.app/Contents/MacOS/blue" -verify_arch "$arch"', text)
 
     def test_ci_runs_release_regressions_without_apple_credentials(self):
         text = (ROOT / '.github/workflows/ci.yml').read_text()
