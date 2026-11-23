@@ -24,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
@@ -10297,7 +10298,16 @@ func TestChatHandlerSendMessage_PDFFollowUpCarriesCreatedMarkdownArtifact(t *tes
 	if len(data) < 5 || string(data[:5]) != "%PDF-" {
 		t.Fatalf("unexpected PDF header: %q", string(data))
 	}
-	text := string(data)
+	// PDF text may be compressed or encoded, so check extracted content.
+	pdfService := pdfextract.NewService(nil, nil)
+	t.Cleanup(func() { _ = pdfService.Close() })
+	extracted, err := pdfService.Extract(context.Background(), pdfextract.ExtractRequest{
+		Path: pdfPath, DisableOCR: true, DisableVision: true,
+	})
+	if err != nil {
+		t.Fatalf("extract generated pdf text: %v", err)
+	}
+	text := strings.Join(strings.Fields(extracted.Text), " ")
 	for _, needle := range []string{
 		"Weekly Brief",
 		"Highlights",
@@ -10306,7 +10316,7 @@ func TestChatHandlerSendMessage_PDFFollowUpCarriesCreatedMarkdownArtifact(t *tes
 		"Prepared for chat e2e.",
 	} {
 		if !strings.Contains(text, needle) {
-			t.Fatalf("expected generated pdf bytes to contain %q", needle)
+			t.Fatalf("expected generated pdf text to contain %q, got %q", needle, text)
 		}
 	}
 
