@@ -67,31 +67,31 @@ function nodeClass(node: KnowledgeGraphNode): string {
   const tier = nodeDistanceTier(node)
   if (tier === 'ambient') {
     return node.status === 'conflicted'
-      ? 'border-transparent bg-transparent text-rose-900 shadow-none opacity-38'
-      : 'border-transparent bg-transparent text-slate-800 shadow-none opacity-36'
+      ? 'border-transparent bg-transparent text-rose-900 dark:text-rose-200 shadow-none opacity-38'
+      : 'border-transparent bg-transparent text-slate-800 dark:text-slate-200 shadow-none opacity-36'
   }
   if (tier === 'selected') {
-    return 'border-amber-300 bg-amber-100/90 text-amber-950 shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_18px_45px_rgba(245,158,11,0.28)] scale-[1.03] opacity-100'
+    return 'border-amber-300 dark:border-amber-800/70 bg-amber-100/90 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_18px_45px_rgba(245,158,11,0.28)] scale-[1.03] opacity-100'
   }
   if (tier === 'near') {
     if (node.status === 'conflicted') {
-      return 'border-rose-300 bg-rose-100/88 text-rose-950 shadow-[0_18px_44px_rgba(244,63,94,0.24)] opacity-100'
+      return 'border-rose-300 dark:border-rose-800/70 bg-rose-100/88 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 shadow-[0_18px_44px_rgba(244,63,94,0.24)] opacity-100'
     }
     if (node.status === 'superseded') {
-      return 'border-slate-300 bg-slate-100/88 text-slate-900 shadow-[0_18px_44px_rgba(15,23,42,0.18)] opacity-100'
+      return 'border-slate-300 dark:border-slate-600 bg-slate-100/88 dark:bg-slate-800/88 text-slate-900 dark:text-slate-100 shadow-[0_18px_44px_rgba(15,23,42,0.18)] opacity-100'
     }
-    return 'border-sky-300 bg-white/95 text-slate-900 shadow-[0_20px_46px_rgba(14,165,233,0.2)] opacity-100'
+    return 'border-sky-300 dark:border-sky-800/70 bg-white/95 dark:bg-slate-900/95 text-slate-900 dark:text-slate-100 shadow-[0_20px_46px_rgba(14,165,233,0.2)] opacity-100'
   }
   if (tier === 'mid') {
-    return 'border-transparent bg-transparent text-slate-900 shadow-none opacity-26 saturate-75'
+    return 'border-transparent bg-transparent text-slate-900 dark:text-slate-100 shadow-none opacity-26 saturate-75'
   }
   if (tier === 'far') {
-    return 'border-transparent bg-transparent text-slate-900 shadow-none opacity-14 saturate-50'
+    return 'border-transparent bg-transparent text-slate-900 dark:text-slate-100 shadow-none opacity-14 saturate-50'
   }
   if (tier === 'stacked') {
-    return 'border-transparent bg-transparent text-slate-900 shadow-none opacity-[0.09] saturate-50'
+    return 'border-transparent bg-transparent text-slate-900 dark:text-slate-100 shadow-none opacity-[0.09] saturate-50'
   }
-  return 'border-transparent bg-transparent text-slate-900 shadow-none opacity-[0.06] saturate-50'
+  return 'border-transparent bg-transparent text-slate-900 dark:text-slate-100 shadow-none opacity-[0.06] saturate-50'
 }
 
 function edgeClass(edge: KnowledgeGraphEdge): string {
@@ -834,7 +834,7 @@ watch(
       <div class="flex flex-wrap gap-2">
         <span
           data-testid="knowledge-graph-node-count"
-          class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+          class="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs text-slate-700 dark:text-slate-200"
         >
           {{
             tr('knowledge.graphNodeCount', '{count} nodes', {
@@ -844,7 +844,7 @@ watch(
         </span>
         <span
           data-testid="knowledge-graph-edge-count"
-          class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+          class="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs text-slate-700 dark:text-slate-200"
         >
           {{
             tr('knowledge.graphEdgeCount', '{count} links', {
@@ -856,12 +856,12 @@ watch(
 
       <div
         v-if="legend.length"
-        class="flex flex-wrap items-center justify-end gap-2 text-[11px] uppercase tracking-[0.16em] text-slate-500"
+        class="flex flex-wrap items-center justify-end gap-2 text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
       >
         <span
           v-for="item in legend"
           :key="item.relation"
-          class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1"
+          class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 px-3 py-1"
         >
           <span
             class="h-2.5 w-2.5 rounded-full"
@@ -880,15 +880,15 @@ watch(
     </div>
 
     <div
-      class="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),radial-gradient(circle_at_bottom_left,_rgba(56,189,248,0.18),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,0.94),_rgba(226,232,240,0.72))]"
+      class="relative overflow-hidden rounded-[28px] border border-slate-200 dark:border-slate-700 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),radial-gradient(circle_at_bottom_left,_rgba(56,189,248,0.18),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,0.94),_rgba(226,232,240,0.72))] dark:bg-none dark:bg-surface-base"
     >
       <div
-        class="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-white/55 to-transparent"
+        class="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-white/55 dark:from-slate-800/40 to-transparent"
       />
 
       <div
         v-if="!graph.nodes.length"
-        class="flex min-h-[24rem] items-center justify-center px-6 text-center text-sm text-slate-500"
+        class="flex min-h-[24rem] items-center justify-center px-6 text-center text-sm text-slate-500 dark:text-slate-400"
       >
         {{
           tr(
@@ -977,7 +977,7 @@ watch(
                 :data-label-visible="shouldShowNodeLabel(node) ? 'true' : 'false'"
                 :data-distance-tier="nodeDistanceTier(node)"
                 type="button"
-                class="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-3xl px-2 pb-2 pt-1.5 text-center transition-[left,top,transform,opacity,background-color,border-color,box-shadow] duration-500 ease-out hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-amber-300"
+                class="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-3xl px-2 pb-2 pt-1.5 text-center transition-[left,top,transform,opacity,background-color,border-color,box-shadow] duration-500 ease-out hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-amber-300 dark:focus:ring-amber-800/70"
                 :class="nodeClass(node)"
                 :style="nodeStyle(node)"
                 :title="`${pageTypeLabel(node.pageType)} · ${statusLabel(node.status)}`"
@@ -1006,7 +1006,7 @@ watch(
             <button
               data-testid="knowledge-graph-zoom-in"
               type="button"
-              class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/85 text-base font-semibold text-slate-900 shadow-sm backdrop-blur transition hover:bg-white"
+              class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/85 text-base font-semibold text-slate-900 dark:text-slate-100 shadow-sm backdrop-blur transition hover:bg-white dark:hover:bg-slate-900"
               :aria-label="tr('knowledge.graphZoomIn', 'Zoom in')"
               @click.stop="zoomIn"
             >
@@ -1015,7 +1015,7 @@ watch(
             <button
               data-testid="knowledge-graph-zoom-out"
               type="button"
-              class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/85 text-base font-semibold text-slate-900 shadow-sm backdrop-blur transition hover:bg-white"
+              class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/85 text-base font-semibold text-slate-900 dark:text-slate-100 shadow-sm backdrop-blur transition hover:bg-white dark:hover:bg-slate-900"
               :aria-label="tr('knowledge.graphZoomOut', 'Zoom out')"
               @click.stop="zoomOut"
             >
@@ -1024,7 +1024,7 @@ watch(
             <button
               data-testid="knowledge-graph-reset"
               type="button"
-              class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-white/70 bg-white/85 px-3 text-xs font-medium text-slate-700 shadow-sm backdrop-blur transition hover:bg-white"
+              class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/85 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 shadow-sm backdrop-blur transition hover:bg-white dark:hover:bg-slate-900"
               @click.stop="resetView"
             >
               {{ tr('knowledge.graphReset', 'Reset') }}
@@ -1033,11 +1033,11 @@ watch(
 
           <div
             data-testid="knowledge-graph-layer-indicator"
-            class="pointer-events-none absolute bottom-3 right-3 max-w-[16rem] rounded-2xl border border-white/70 bg-white/88 px-3 py-2 text-xs text-slate-500 shadow-sm backdrop-blur"
+            class="pointer-events-none absolute bottom-3 right-3 max-w-[16rem] rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/88 dark:bg-slate-900/88 px-3 py-2 text-xs text-slate-500 dark:text-slate-400 shadow-sm backdrop-blur"
           >
             <div
               v-if="layerIndicator.level"
-              class="font-semibold tracking-[0.08em] text-slate-700"
+              class="font-semibold tracking-[0.08em] text-slate-700 dark:text-slate-200"
             >
               {{ layerIndicator.level }}
             </div>
@@ -1053,12 +1053,12 @@ watch(
         <div
           v-if="revealedNode"
           data-testid="knowledge-graph-focus-card"
-          class="pointer-events-none absolute bottom-3 left-3 rounded-2xl border border-white/70 bg-white/85 px-3 py-2 text-xs text-slate-600 shadow-sm backdrop-blur"
+          class="pointer-events-none absolute bottom-3 left-3 rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/85 px-3 py-2 text-xs text-slate-600 dark:text-slate-300 shadow-sm backdrop-blur"
         >
           <div class="uppercase tracking-[0.16em] text-slate-400">
             {{ tr('knowledge.graphFocus', 'Focus') }}
           </div>
-          <div class="mt-1 font-semibold text-slate-900">
+          <div class="mt-1 font-semibold text-slate-900 dark:text-slate-100">
             {{ revealedNode.title }}
           </div>
           <div class="mt-0.5">

@@ -773,11 +773,11 @@ function emptyEvolutionOverview(skillID = ''): EvolutionOverviewSummary {
 function decisionHistoryEvidenceClasses(tone: DecisionHistoryEvidenceSummary['tone']): string {
   switch (tone) {
     case 'positive':
-      return 'border-emerald-200 bg-emerald-50/70'
+      return 'border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/70 dark:bg-emerald-950/40'
     case 'negative':
-      return 'border-rose-200 bg-rose-50/70'
+      return 'border-rose-200 dark:border-rose-800/70 bg-rose-50/70 dark:bg-rose-950/40'
     default:
-      return 'border-slate-200 bg-slate-50'
+      return 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'
   }
 }
 
@@ -847,95 +847,95 @@ function patchSummaryEntries(summary: PatchSummary): PatchSummaryEntry[] {
 function revisionBadgeClasses(tone: RevisionBadge['tone']): string {
   switch (tone) {
     case 'sky':
-      return 'bg-sky-100 text-sky-700'
+      return 'bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
     case 'emerald':
-      return 'bg-emerald-100 text-emerald-700'
+      return 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
     case 'amber':
-      return 'bg-amber-100 text-amber-800'
+      return 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200'
     default:
-      return 'bg-slate-100 text-slate-600'
+      return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
   }
 }
 
 function evidenceSummaryClasses(tone: EvidenceSummaryEntry['tone']): string {
   switch (tone) {
     case 'sky':
-      return 'border-sky-200 bg-sky-50/70'
+      return 'border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40'
     case 'emerald':
-      return 'border-emerald-200 bg-emerald-50/70'
+      return 'border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/70 dark:bg-emerald-950/40'
     case 'rose':
-      return 'border-rose-200 bg-rose-50/70'
+      return 'border-rose-200 dark:border-rose-800/70 bg-rose-50/70 dark:bg-rose-950/40'
     case 'amber':
-      return 'border-amber-200 bg-amber-50/70'
+      return 'border-amber-200 dark:border-amber-800/70 bg-amber-50/70 dark:bg-amber-950/40'
     default:
-      return 'border-slate-200 bg-slate-50'
+      return 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'
   }
 }
 
 function evidenceSummaryValueClasses(tone: EvidenceSummaryEntry['tone']): string {
   switch (tone) {
     case 'sky':
-      return 'text-sky-700'
+      return 'text-sky-700 dark:text-sky-300'
     case 'emerald':
-      return 'text-emerald-700'
+      return 'text-emerald-700 dark:text-emerald-300'
     case 'rose':
-      return 'text-rose-700'
+      return 'text-rose-700 dark:text-rose-300'
     case 'amber':
-      return 'text-amber-800'
+      return 'text-amber-800 dark:text-amber-200'
     default:
-      return 'text-slate-950'
+      return 'text-slate-950 dark:text-slate-100'
   }
 }
 
 function decisionSummaryCardClasses(tone: DecisionSummaryCard['tone']): string {
   switch (tone) {
     case 'sky':
-      return 'border-sky-200 bg-sky-50/70'
+      return 'border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40'
     case 'emerald':
-      return 'border-emerald-200 bg-emerald-50/70'
+      return 'border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/70 dark:bg-emerald-950/40'
     case 'amber':
-      return 'border-amber-200 bg-amber-50/70'
+      return 'border-amber-200 dark:border-amber-800/70 bg-amber-50/70 dark:bg-amber-950/40'
     case 'rose':
-      return 'border-rose-200 bg-rose-50/70'
+      return 'border-rose-200 dark:border-rose-800/70 bg-rose-50/70 dark:bg-rose-950/40'
     default:
-      return 'border-slate-200 bg-slate-50'
+      return 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'
   }
 }
 
 function decisionSummaryValueClasses(tone: DecisionSummaryCard['tone']): string {
   switch (tone) {
     case 'sky':
-      return 'text-sky-700'
+      return 'text-sky-700 dark:text-sky-300'
     case 'emerald':
-      return 'text-emerald-700'
+      return 'text-emerald-700 dark:text-emerald-300'
     case 'amber':
-      return 'text-amber-800'
+      return 'text-amber-800 dark:text-amber-200'
     case 'rose':
-      return 'text-rose-700'
+      return 'text-rose-700 dark:text-rose-300'
     default:
-      return 'text-slate-950'
+      return 'text-slate-950 dark:text-slate-100'
   }
 }
 
 function decisionTimelineMarkerClasses(tone: DecisionSummaryCard['tone']): string {
   switch (tone) {
     case 'sky':
-      return 'border-sky-400 bg-sky-100'
+      return 'border-sky-400 dark:border-sky-800/70 bg-sky-100 dark:bg-sky-950/40'
     case 'emerald':
-      return 'border-emerald-400 bg-emerald-100'
+      return 'border-emerald-400 dark:border-emerald-800/70 bg-emerald-100 dark:bg-emerald-950/40'
     case 'amber':
-      return 'border-amber-400 bg-amber-100'
+      return 'border-amber-400 dark:border-amber-800/70 bg-amber-100 dark:bg-amber-950/40'
     case 'rose':
-      return 'border-rose-400 bg-rose-100'
+      return 'border-rose-400 dark:border-rose-800/70 bg-rose-100 dark:bg-rose-950/40'
     default:
-      return 'border-slate-300 bg-slate-100'
+      return 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800'
   }
 }
 
 function skillDetailSectionClasses(section: SkillDetailSectionKey): string {
   return focusedSkillDetailSection.value === section
-    ? 'border-sky-300 ring-2 ring-sky-100'
-    : 'border-slate-200'
+    ? 'border-sky-300 dark:border-sky-800/70 ring-2 ring-sky-100 dark:ring-sky-800/70'
+    : 'border-slate-200 dark:border-slate-700'
 }
 
 function scorecardToneForPercent(value: unknown): SkillScorecardCard['tone'] {
@@ -989,37 +989,37 @@ async function openDecisionHistoryComparison(pair: DecisionHistoryComparisonPair
 function caseTimelineMarkerClasses(state: CaseTimelineEntry['state']): string {
   switch (state) {
     case 'completed':
-      return 'border-emerald-300 bg-emerald-500'
+      return 'border-emerald-300 dark:border-emerald-800/70 bg-emerald-500'
     case 'current':
-      return 'border-sky-300 bg-sky-500'
+      return 'border-sky-300 dark:border-sky-800/70 bg-sky-500'
     default:
-      return 'border-slate-300 bg-white'
+      return 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
   }
 }
 
 function caseTimelineCardClasses(state: CaseTimelineEntry['state']): string {
   switch (state) {
     case 'completed':
-      return 'border-emerald-200 bg-emerald-50/70'
+      return 'border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/70 dark:bg-emerald-950/40'
     case 'current':
-      return 'border-sky-200 bg-sky-50/70'
+      return 'border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40'
     default:
-      return 'border-slate-200 bg-slate-50'
+      return 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'
   }
 }
 
 function caseStatusSummaryClasses(tone: CaseStatusSummary['tone']): string {
   switch (tone) {
     case 'emerald':
-      return 'bg-emerald-100 text-emerald-700'
+      return 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
     case 'sky':
-      return 'bg-sky-100 text-sky-700'
+      return 'bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
     case 'amber':
-      return 'bg-amber-100 text-amber-800'
+      return 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200'
     case 'rose':
-      return 'bg-rose-100 text-rose-700'
+      return 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
     default:
-      return 'bg-slate-100 text-slate-600'
+      return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
   }
 }
 
@@ -4792,29 +4792,29 @@ async function reviewSelectedProposal(action: ProposalAction) {
       <AutomationTabs class="automation-tab-strip" />
 
       <section
-        class="overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_38%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.96))] shadow-sm"
+        class="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_38%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.96))] shadow-sm dark:bg-none dark:bg-surface-elevated"
       >
-        <div class="flex flex-col gap-3 border-b border-slate-200/80 px-4 py-4 sm:px-5">
+        <div class="flex flex-col gap-3 border-b border-slate-200/80 dark:border-slate-700/80 px-4 py-4 sm:px-5">
           <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
             <div class="space-y-2">
               <div class="flex flex-wrap items-center gap-2">
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
                   {{ tr('automation.tabs.evolution', 'Evolution') }}
                 </p>
                 <span
                   data-testid="evolution-beta-badge"
-                  class="inline-flex items-center rounded-full border border-sky-200 bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700"
+                  class="inline-flex items-center rounded-full border border-sky-200 dark:border-sky-800/70 bg-sky-100 dark:bg-sky-950/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300"
                 >
                   Beta
                 </span>
               </div>
               <h1
                 data-testid="evolution-page-title"
-                class="text-lg font-semibold tracking-tight text-slate-950 sm:text-xl"
+                class="text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-100 sm:text-xl"
               >
                 {{ tr('evolution.title', 'Evolution Workspace') }}
               </h1>
-              <p class="max-w-2xl text-sm leading-5 text-slate-600">
+              <p class="max-w-2xl text-sm leading-5 text-slate-600 dark:text-slate-300">
                 {{
                   tr(
                     'evolution.subtitle',
@@ -4836,8 +4836,8 @@ async function reviewSelectedProposal(action: ProposalAction) {
               class="min-w-[15rem] shrink-0 rounded-2xl border px-3 py-3 text-left transition xl:min-w-0"
               :class="
                 activePane === lane.pane
-                  ? 'border-sky-300 bg-sky-50/80 shadow-sm'
-                  : 'border-slate-200 bg-white/90 hover:border-slate-300 hover:bg-slate-50'
+                  ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/80 dark:bg-sky-950/40 shadow-sm'
+                  : 'border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
               "
               @click="activePane = lane.pane"
             >
@@ -4846,20 +4846,20 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div class="flex flex-wrap items-center gap-2">
                     <span
                       class="text-sm font-semibold"
-                      :class="activePane === lane.pane ? 'text-sky-950' : 'text-slate-950'"
+                      :class="activePane === lane.pane ? 'text-sky-950 dark:text-sky-200' : 'text-slate-950 dark:text-slate-100'"
                     >
                       {{ lane.title }}
                     </span>
                     <span
                       v-if="activePane === lane.pane"
-                      class="inline-flex items-center rounded-full border border-sky-200 bg-white px-2 py-0.5 text-[11px] font-medium text-sky-700"
+                      class="inline-flex items-center rounded-full border border-sky-200 dark:border-sky-800/70 bg-white dark:bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-300"
                     >
                       {{ tr('common.active', 'Active') }}
                     </span>
                   </div>
                   <p
                     :data-testid="`evolution-lane-description-${lane.pane}`"
-                    class="mt-1.5 line-clamp-2 text-xs leading-4 text-slate-600"
+                    class="mt-1.5 line-clamp-2 text-xs leading-4 text-slate-600 dark:text-slate-300"
                   >
                     {{ lane.description }}
                   </p>
@@ -4867,13 +4867,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <div class="shrink-0 space-y-1 text-right">
                   <div
                     :data-testid="`evolution-lane-metric-${lane.pane}`"
-                    class="inline-flex min-w-[3rem] justify-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900 shadow-sm"
+                    class="inline-flex min-w-[3rem] justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 shadow-sm"
                   >
                     {{ lane.metric }}
                   </div>
                   <div
                     :data-testid="`evolution-lane-supporting-${lane.pane}`"
-                    class="text-[11px] leading-4 text-slate-500"
+                    class="text-[11px] leading-4 text-slate-500 dark:text-slate-400"
                   >
                     {{ lane.supporting }}
                   </div>
@@ -4896,14 +4896,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
         >
           <section class="sticky top-3 z-20 xl:top-6">
             <div
-              class="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
+              class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
             >
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <h2 class="text-sm font-semibold text-slate-950">
+                  <h2 class="text-sm font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.catalog', 'Canonical Skills') }}
                   </h2>
-                  <p class="mt-1 text-xs leading-4 text-slate-500">
+                  <p class="mt-1 text-xs leading-4 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.catalogHint',
@@ -4914,7 +4914,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </div>
                 <button
                   type="button"
-                  class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   :disabled="skillsRefreshing"
                   @click="void refreshSkillDetails()"
                 >
@@ -4928,19 +4928,19 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div
                 v-if="skillsLoading"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{ tr('common.loading', 'Loading') }}
               </div>
               <div
                 v-else-if="skillsError"
-                class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700"
+                class="mt-4 rounded-2xl border border-red-200 dark:border-red-800/70 bg-red-50 dark:bg-red-950/40 px-3 py-4 text-sm text-red-700 dark:text-red-300"
               >
                 {{ skillsError }}
               </div>
               <div
                 v-else-if="availableSkills.length === 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -4957,7 +4957,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   v-model="skillSearch"
                   data-testid="evolution-skill-search-mobile"
                   type="search"
-                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                  class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                   :placeholder="
                     tr(
                       'evolution.skills.searchPlaceholder',
@@ -4965,7 +4965,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     )
                   "
                 >
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     trp('evolution.skills.searchCount', '{visible} of {total} skills shown', {
                       visible: filteredAvailableSkills.length,
@@ -4978,7 +4978,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <div
                 v-if="selectedSkillHiddenByFilters"
                 data-testid="evolution-skill-hidden-selection-mobile"
-                class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900"
+                class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-3 text-xs text-amber-900 dark:text-amber-200"
               >
                 <div class="text-sm font-semibold">
                   {{
@@ -4998,7 +4998,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </p>
                 <button
                   type="button"
-                  class="mt-3 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-400"
+                  class="mt-3 rounded-full border border-amber-300 dark:border-amber-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-400 dark:hover:border-amber-800/70"
                   @click="revealSelectedSkill"
                 >
                   {{ tr('evolution.skills.hiddenSelectionAction', 'Show selected skill') }}
@@ -5017,8 +5017,8 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   :data-testid="`evolution-skill-item-mobile-${skill.id}`"
                   :class="
                     selectedSkillID === skill.id
-                      ? 'border-sky-300 bg-sky-50/70 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 shadow-sm'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                   "
                   @click="selectedSkillID = skill.id"
                 >
@@ -5026,23 +5026,23 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div class="min-w-0">
                       <div
                         :data-testid="`evolution-skill-item-mobile-title-${skill.id}`"
-                        class="truncate text-xs font-semibold text-slate-950"
+                        class="truncate text-xs font-semibold text-slate-950 dark:text-slate-100"
                       >
                         {{ localizedSkillName(skill) }}
                       </div>
-                      <div class="mt-1 truncate text-[11px] leading-4 text-slate-500">
+                      <div class="mt-1 truncate text-[11px] leading-4 text-slate-500 dark:text-slate-400">
                         {{ skill.id }}
                       </div>
                     </div>
                     <span
-                      class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                      class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                     >
                       {{ skill.version }}
                     </span>
                   </div>
                   <p
                     :data-testid="`evolution-skill-item-mobile-description-${skill.id}`"
-                    class="mt-1.5 line-clamp-1 text-[11px] leading-4 text-slate-600"
+                    class="mt-1.5 line-clamp-1 text-[11px] leading-4 text-slate-600 dark:text-slate-300"
                   >
                     {{ localizedSkillDescription(skill) }}
                   </p>
@@ -5051,7 +5051,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div
                 v-else-if="availableSkills.length > 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr('evolution.skills.searchEmpty', 'No writable skills match the current search.')
@@ -5061,13 +5061,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </section>
 
           <aside class="hidden">
-            <div class="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-3 shadow-sm sm:p-4">
               <div class="flex items-center justify-between gap-2">
                 <div>
-                  <h2 class="text-sm font-semibold text-slate-950">
+                  <h2 class="text-sm font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.catalog', 'Canonical Skills') }}
                   </h2>
-                  <p class="mt-1 text-xs leading-5 text-slate-500">
+                  <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.catalogHint',
@@ -5078,7 +5078,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </div>
                 <button
                   type="button"
-                  class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   :disabled="skillsRefreshing"
                   @click="void refreshSkillDetails()"
                 >
@@ -5092,19 +5092,19 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div
                 v-if="skillsLoading"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{ tr('common.loading', 'Loading') }}
               </div>
               <div
                 v-else-if="skillsError"
-                class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700"
+                class="mt-4 rounded-2xl border border-red-200 dark:border-red-800/70 bg-red-50 dark:bg-red-950/40 px-3 py-4 text-sm text-red-700 dark:text-red-300"
               >
                 {{ skillsError }}
               </div>
               <div
                 v-else-if="availableSkills.length === 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -5121,7 +5121,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   v-model="skillSearch"
                   data-testid="evolution-skill-search"
                   type="search"
-                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                  class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                   :placeholder="
                     tr(
                       'evolution.skills.searchPlaceholder',
@@ -5129,7 +5129,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     )
                   "
                 >
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     trp('evolution.skills.searchCount', '{visible} of {total} skills shown', {
                       visible: filteredAvailableSkills.length,
@@ -5140,7 +5140,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               </div>
               <div
                 v-if="availableSkills.length > 0 && filteredAvailableSkills.length === 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -5152,7 +5152,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <div
                 v-if="selectedSkillHiddenByFilters"
                 data-testid="evolution-skill-hidden-selection"
-                class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900"
+                class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-3 text-xs text-amber-900 dark:text-amber-200"
               >
                 <div class="text-sm font-semibold">
                   {{
@@ -5176,7 +5176,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <button
                   type="button"
                   data-testid="evolution-skill-hidden-selection-reveal"
-                  class="mt-3 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-400"
+                  class="mt-3 rounded-full border border-amber-300 dark:border-amber-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-400 dark:hover:border-amber-800/70"
                   @click="revealSelectedSkill"
                 >
                   {{ tr('evolution.skills.hiddenSelectionAction', 'Show selected skill') }}
@@ -5194,8 +5194,8 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   :data-testid="`evolution-skill-item-${skill.id}`"
                   :class="
                     selectedSkillID === skill.id
-                      ? 'border-sky-300 bg-sky-50/70 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 shadow-sm'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                   "
                   @click="selectedSkillID = skill.id"
                 >
@@ -5203,23 +5203,23 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div>
                       <div
                         :data-testid="`evolution-skill-item-title-${skill.id}`"
-                        class="text-xs font-semibold text-slate-950"
+                        class="text-xs font-semibold text-slate-950 dark:text-slate-100"
                       >
                         {{ localizedSkillName(skill) }}
                       </div>
-                      <div class="mt-1 text-[11px] leading-4 text-slate-500">
+                      <div class="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
                         {{ skill.id }}
                       </div>
                     </div>
                     <span
-                      class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                      class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                     >
                       {{ skill.version }}
                     </span>
                   </div>
                   <p
                     :data-testid="`evolution-skill-item-description-${skill.id}`"
-                    class="mt-1.5 line-clamp-1 text-[11px] leading-4 text-slate-600"
+                    class="mt-1.5 line-clamp-1 text-[11px] leading-4 text-slate-600 dark:text-slate-300"
                   >
                     {{ localizedSkillDescription(skill) }}
                   </p>
@@ -5228,7 +5228,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
             </div>
 
             <div
-              class="rounded-3xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 shadow-sm"
+              class="rounded-3xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 p-3 text-xs text-amber-900 dark:text-amber-200 shadow-sm"
             >
               <div class="text-sm font-semibold">
                 {{ tr('evolution.skills.rollbackTitle', 'Safe rollback') }}
@@ -5248,15 +5248,15 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </aside>
 
           <section class="space-y-5">
-            <div class="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+            <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
               <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ tr('evolution.skills.selected', 'Selected Skill') }}
                   </div>
                   <h2
                     data-testid="evolution-skill-selected-title"
-                    class="mt-1.5 text-lg font-semibold text-slate-950"
+                    class="mt-1.5 text-lg font-semibold text-slate-950 dark:text-slate-100"
                   >
                     {{
                       selectedSkill
@@ -5266,7 +5266,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </h2>
                   <p
                     data-testid="evolution-skill-selected-description"
-                    class="mt-1.5 max-w-3xl text-xs leading-5 text-slate-600"
+                    class="mt-1.5 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300"
                   >
                     {{
                       (selectedSkill ? localizedSkillDescription(selectedSkill) : '') ||
@@ -5277,9 +5277,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                 <div
                   v-if="selectedRevision"
-                  class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600"
+                  class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300"
                 >
-                  <div class="font-semibold text-slate-950">
+                  <div class="font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.currentVersion', 'Revision decision') }}
                   </div>
                   <div class="mt-1.5">
@@ -5299,17 +5299,17 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       {{ badge.label }}
                     </span>
                   </div>
-                  <div class="mt-1 text-xs text-slate-500">
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {{ formatDate(selectedRevision.created_at) }}
                   </div>
-                  <div class="mt-1.5 text-[11px] leading-4 text-slate-600">
+                  <div class="mt-1.5 text-[11px] leading-4 text-slate-600 dark:text-slate-300">
                     {{ revisionStatusSummary(selectedRevision.status) }}
                   </div>
                   <button
                     v-if="selectedRevisionCanOptimize"
                     type="button"
                     data-testid="evolution-skill-optimize"
-                    class="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="mt-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="optimizeLoadingRevisionID === selectedRevision.id"
                     @click="optimizeSelectedRevision"
                   >
@@ -5321,7 +5321,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </button>
                   <div
                     v-if="selectedRevision.eval_run_id"
-                    class="mt-1.5 text-[11px] leading-4 text-slate-500"
+                    class="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -5334,7 +5334,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     v-if="selectedRevision.eval_run_id"
                     type="button"
                     data-testid="evolution-skill-open-eval-run"
-                    class="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                    class="mt-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                     @click="void openSelectedRevisionEvalRun()"
                   >
                     {{ tr('evolution.skills.openEvalRun', 'Open linked eval run') }}
@@ -5343,7 +5343,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     v-if="selectedRevision.status === 'backup'"
                     type="button"
                     data-testid="evolution-skill-rollback"
-                    class="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="mt-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="rollbackLoadingRevisionID === selectedRevision.id"
                     @click="rollbackSelectedRevision"
                   >
@@ -5355,7 +5355,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </button>
                   <div
                     v-if="selectedRevision.followup_gate"
-                    class="mt-1.5 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-600"
+                    class="mt-1.5 rounded-full bg-white dark:bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                   >
                     {{ humanizeEnum(selectedRevision.followup_gate) }}
                   </div>
@@ -5375,7 +5375,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 class="rounded-3xl border px-4 py-4 shadow-sm"
                 :class="decisionSummaryCardClasses(card.tone)"
               >
-                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                   {{ card.label }}
                 </div>
                 <div
@@ -5384,14 +5384,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 >
                   {{ card.value }}
                 </div>
-                <div class="mt-2 text-sm leading-6 text-slate-700">
+                <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                   {{ card.details }}
                 </div>
                 <button
                   v-if="card.action && card.actionLabel"
                   type="button"
                   :data-testid="`evolution-skill-decision-${card.key}-action`"
-                  class="mt-3 rounded-full border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-current/40 hover:text-slate-950"
+                  class="mt-3 rounded-full border border-current/20 bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-current/40 hover:text-slate-950 dark:hover:text-slate-100"
                   @click="void card.action()"
                 >
                   {{ card.actionLabel }}
@@ -5402,16 +5402,16 @@ async function reviewSelectedProposal(action: ProposalAction) {
             <div
               v-if="selectedRevisionPromoteReadinessCards.length > 0"
               data-testid="evolution-skill-promote-readiness"
-              class="rounded-3xl border border-emerald-200 bg-emerald-50/50 p-5 shadow-sm"
+              class="rounded-3xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/50 dark:bg-emerald-950/40 p-5 shadow-sm"
             >
               <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{
                       tr('evolution.skills.promoteChecklist.title', 'Promote readiness checklist')
                     }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">
+                  <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{
                       tr(
                         'evolution.skills.promoteChecklist.subtitle',
@@ -5420,7 +5420,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     tr(
                       'evolution.skills.promoteChecklist.explicit',
@@ -5438,7 +5438,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="rounded-2xl border px-4 py-4"
                   :class="decisionSummaryCardClasses(card.tone)"
                 >
-                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ card.label }}
                   </div>
                   <div
@@ -5447,7 +5447,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{ card.value }}
                   </div>
-                  <div class="mt-2 text-sm leading-6 text-slate-700">
+                  <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                     {{ card.details }}
                   </div>
                 </div>
@@ -5457,14 +5457,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
             <div
               v-if="selectedRevisionRollbackImpactCards.length > 0"
               data-testid="evolution-skill-rollback-impact"
-              class="rounded-3xl border border-amber-200 bg-amber-50/50 p-5 shadow-sm"
+              class="rounded-3xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/50 dark:bg-amber-950/40 p-5 shadow-sm"
             >
               <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.rollbackSummary.title', 'Rollback impact summary') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">
+                  <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{
                       tr(
                         'evolution.skills.rollbackSummary.subtitle',
@@ -5473,7 +5473,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     tr(
                       'evolution.skills.rollbackSummary.explicit',
@@ -5491,7 +5491,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="rounded-2xl border px-4 py-4"
                   :class="decisionSummaryCardClasses(card.tone)"
                 >
-                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ card.label }}
                   </div>
                   <div
@@ -5500,7 +5500,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{ card.value }}
                   </div>
-                  <div class="mt-2 text-sm leading-6 text-slate-700">
+                  <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                     {{ card.details }}
                   </div>
                 </div>
@@ -5510,14 +5510,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
             <div
               v-if="selectedRevisionSwitchPreviewCards.length > 0"
               data-testid="evolution-skill-switch-preview"
-              class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm"
+              class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm"
             >
               <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.switchPreview.title', 'Switch preview') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">
+                  <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{
                       selectedRevision?.status === 'accepted'
                         ? tr(
@@ -5531,7 +5531,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     selectedRevision?.status === 'accepted'
                       ? tr(
@@ -5557,7 +5557,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="rounded-2xl border px-4 py-4"
                   :class="decisionSummaryCardClasses(card.tone)"
                 >
-                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ card.label }}
                   </div>
                   <div
@@ -5566,7 +5566,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{ card.value }}
                   </div>
-                  <div class="mt-2 text-sm leading-6 text-slate-700">
+                  <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                     {{ card.details }}
                   </div>
                 </div>
@@ -5576,14 +5576,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
             <div
               v-if="selectedRevision"
               data-testid="evolution-skill-review-note"
-              class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm"
+              class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm"
             >
               <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.reviewNoteTitle', 'Operator rationale') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">
+                  <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{
                       tr(
                         'evolution.skills.reviewNoteSubtitle',
@@ -5592,7 +5592,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     tr(
                       'evolution.skills.reviewNoteLocalOnly',
@@ -5611,7 +5611,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   :key="suggestion"
                   type="button"
                   :data-testid="`evolution-skill-review-note-suggestion-${index}`"
-                  class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-950"
+                  class="rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900 hover:text-slate-950 dark:hover:text-slate-100"
                   @click="selectedRevisionReviewNote = suggestion"
                 >
                   {{ suggestion }}
@@ -5622,7 +5622,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 v-model="selectedRevisionReviewNote"
                 data-testid="evolution-skill-review-note-input"
                 rows="4"
-                class="mt-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                class="mt-4 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                 :placeholder="
                   tr(
                     'evolution.skills.reviewNotePlaceholder',
@@ -5630,7 +5630,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   )
                 "
               />
-              <div class="mt-2 text-xs text-slate-500">
+              <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 {{
                   selectedRevisionReviewNoteTrimmed
                     ? tr(
@@ -5648,14 +5648,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
             <div
               v-if="selectedRevisionSignOffCards.length > 0"
               data-testid="evolution-skill-signoff"
-              class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm"
+              class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm"
             >
               <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.signoff.title', 'Operator sign-off') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">
+                  <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{
                       tr(
                         'evolution.skills.signoff.subtitle',
@@ -5664,7 +5664,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     tr(
                       'evolution.skills.signoff.explicit',
@@ -5682,7 +5682,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="rounded-2xl border px-4 py-4"
                   :class="decisionSummaryCardClasses(card.tone)"
                 >
-                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ card.label }}
                   </div>
                   <div
@@ -5691,19 +5691,19 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{ card.value }}
                   </div>
-                  <div class="mt-2 text-sm leading-6 text-slate-700">
+                  <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                     {{ card.details }}
                   </div>
                 </div>
               </div>
 
-              <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <div class="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-4">
                 <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       {{ tr('evolution.skills.signoff.log.title', 'Decision log preview') }}
                     </div>
-                    <p class="mt-1 text-sm leading-6 text-slate-600">
+                    <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                       {{
                         tr(
                           'evolution.skills.signoff.log.subtitle',
@@ -5712,7 +5712,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       }}
                     </p>
                   </div>
-                  <div class="text-xs text-slate-500">
+                  <div class="text-xs text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.signoff.log.hint',
@@ -5731,7 +5731,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     :class="decisionSummaryCardClasses(entry.tone)"
                   >
                     <div
-                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                     >
                       {{ entry.label }}
                     </div>
@@ -5747,15 +5747,15 @@ async function reviewSelectedProposal(action: ProposalAction) {
             </div>
 
             <div
-              class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm"
+              class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm"
               data-testid="evolution-skill-scorecard"
             >
               <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.scorecard', 'Evaluation Scorecard') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.scorecardHint',
@@ -5764,7 +5764,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     tr(
                       'evolution.skills.scorecardSubtle',
@@ -5782,7 +5782,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="rounded-2xl border px-4 py-4"
                   :class="decisionSummaryCardClasses(card.tone)"
                 >
-                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ card.label }}
                   </div>
                   <div
@@ -5791,13 +5791,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{ card.value }}
                   </div>
-                  <div class="mt-2 text-sm leading-6 text-slate-700">
+                  <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                     {{ card.details }}
                   </div>
                   <button
                     type="button"
                     :data-testid="`evolution-skill-scorecard-${card.key}-action`"
-                    class="mt-3 rounded-full border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-current/40 hover:text-slate-950"
+                    class="mt-3 rounded-full border border-current/20 bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-current/40 hover:text-slate-950 dark:hover:text-slate-100"
                     @click="void card.action()"
                   >
                     {{ card.actionLabel }}
@@ -5808,13 +5808,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
             <div class="grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
               <div class="space-y-5">
-                <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+                <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
                   <div class="flex items-center justify-between gap-3">
                     <div>
-                      <h3 class="text-base font-semibold text-slate-950">
+                      <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                         {{ tr('evolution.skills.cases', 'Evolution Cases') }}
                       </h3>
-                      <p class="mt-1 text-sm leading-6 text-slate-500">
+                      <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                         {{
                           tr(
                             'evolution.skills.casesHint',
@@ -5829,7 +5829,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-model="caseSearch"
                       data-testid="evolution-skill-case-search"
                       type="search"
-                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                      class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                       :placeholder="
                         tr(
                           'evolution.skills.caseSearchPlaceholder',
@@ -5840,7 +5840,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <select
                       v-model="caseModeFilter"
                       data-testid="evolution-skill-case-mode-filter"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                     >
                       <option value="all">
                         {{ tr('evolution.skills.caseModeAll', 'All modes') }}
@@ -5855,7 +5855,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <select
                       v-model="caseStatusFilter"
                       data-testid="evolution-skill-case-status-filter"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                     >
                       <option value="all">
                         {{ tr('evolution.skills.caseStatusAll', 'All statuses') }}
@@ -5880,7 +5880,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       </option>
                     </select>
                   </div>
-                  <div class="mt-3 text-xs text-slate-500">
+                  <div class="mt-3 text-xs text-slate-500 dark:text-slate-400">
                     {{
                       trp('evolution.skills.caseFilterCount', '{visible} of {total} cases shown', {
                         visible: filteredSelectedSkillCases.length,
@@ -5891,7 +5891,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="selectedSkillCases.length === 0"
                     data-testid="evolution-skill-case-empty-actions"
-                    class="mt-4 rounded-2xl border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-900"
+                    class="mt-4 rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 px-3 py-3 text-xs text-sky-900 dark:text-sky-200"
                   >
                     <div class="text-sm font-semibold">
                       {{ tr('evolution.skills.caseEmptyActionTitle', 'No cases yet') }}
@@ -5907,7 +5907,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <button
                       type="button"
                       data-testid="evolution-skill-case-empty-open-harness"
-                      class="mt-3 rounded-full border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-400"
+                      class="mt-3 rounded-full border border-sky-300 dark:border-sky-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-400 dark:hover:border-sky-800/70"
                       @click="void openHarnessGroups()"
                     >
                       {{ tr('evolution.skills.caseEmptyAction', 'Open Harness evals') }}
@@ -5916,7 +5916,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="selectedSkillCaseHiddenByFilters"
                     data-testid="evolution-skill-case-hidden-selection"
-                    class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900"
+                    class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-3 text-xs text-amber-900 dark:text-amber-200"
                   >
                     <div class="text-sm font-semibold">
                       {{
@@ -5940,7 +5940,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <button
                       type="button"
                       data-testid="evolution-skill-case-hidden-selection-reveal"
-                      class="mt-3 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-400"
+                      class="mt-3 rounded-full border border-amber-300 dark:border-amber-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-400 dark:hover:border-amber-800/70"
                       @click="revealSelectedCase"
                     >
                       {{ tr('evolution.skills.caseHiddenSelectionAction', 'Show selected case') }}
@@ -5949,7 +5949,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                   <div
                     v-if="selectedSkillCases.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -5960,7 +5960,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                   <div
                     v-else-if="filteredSelectedSkillCases.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -5980,23 +5980,23 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       class="rounded-2xl border px-3 py-2.5"
                       :class="
                         selectedSkillCase?.id === skillCase.id
-                          ? 'border-sky-300 bg-sky-50/60'
-                          : 'border-slate-200 bg-white'
+                          ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/60 dark:bg-sky-950/40'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
                       "
                     >
                       <div class="flex flex-wrap items-center gap-2">
                         <span
-                          class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600"
+                          class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300"
                         >
                           {{ humanizeEnum(skillCase.mode) }}
                         </span>
                         <span
-                          class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                          class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                         >
                           {{ humanizeEnum(skillCase.reason) }}
                         </span>
                         <span
-                          class="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500"
+                          class="rounded-full bg-white dark:bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400"
                         >
                           {{ humanizeEnum(skillCase.status) }}
                         </span>
@@ -6016,21 +6016,21 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           v-for="entry in caseReferenceChips(skillCase)"
                           :key="entry.key"
                           :data-testid="`evolution-skill-case-chip-${skillCase.id}-${entry.key}`"
-                          class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
+                          class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                         >
                           {{ entry.label }}: {{ entry.value }}
                         </span>
                       </div>
                       <p
                         :data-testid="`evolution-skill-case-summary-${skillCase.id}`"
-                        class="mt-2 line-clamp-2 text-[11px] leading-4 text-slate-700"
+                        class="mt-2 line-clamp-2 text-[11px] leading-4 text-slate-700 dark:text-slate-200"
                       >
                         {{ skillCase.summary || tr('common.notAvailable', 'Not available') }}
                       </p>
                       <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
                         <div
                           :data-testid="`evolution-skill-case-updated-${skillCase.id}`"
-                          class="text-[11px] leading-4 text-slate-500"
+                          class="text-[11px] leading-4 text-slate-500 dark:text-slate-400"
                         >
                           {{ formatDate(skillCase.updated_at) }}
                         </div>
@@ -6039,7 +6039,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             v-if="normalizeText(skillCase.revision_id)"
                             type="button"
                             :data-testid="`evolution-skill-case-open-revision-${skillCase.id}`"
-                            class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                            class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                             @click="openCaseRevision(skillCase)"
                           >
                             {{ tr('evolution.skills.caseOpenRevision', 'Open linked revision') }}
@@ -6051,7 +6051,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             "
                             type="button"
                             :data-testid="`evolution-skill-case-open-source-${skillCase.id}`"
-                            class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                            class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                             @click="void openCaseSource(skillCase)"
                           >
                             {{ tr('evolution.skills.caseOpenSource', 'Open source eval run') }}
@@ -6062,13 +6062,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                 </div>
 
-                <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+                <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
                   <div class="flex items-center justify-between gap-3">
                     <div>
-                      <h3 class="text-base font-semibold text-slate-950">
+                      <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                         {{ tr('evolution.skills.revisions', 'Revision Lineage') }}
                       </h3>
-                      <p class="mt-1 text-sm leading-6 text-slate-500">
+                      <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                         {{
                           tr(
                             'evolution.skills.revisionsHint',
@@ -6098,7 +6098,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-model="revisionSearch"
                       data-testid="evolution-skill-revision-search"
                       type="search"
-                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                      class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                       :placeholder="
                         tr(
                           'evolution.skills.revisionSearchPlaceholder',
@@ -6109,7 +6109,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <select
                       v-model="revisionStatusFilter"
                       data-testid="evolution-skill-revision-status-filter"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                     >
                       <option value="all">
                         {{ tr('evolution.skills.revisionStatusAll', 'All statuses') }}
@@ -6131,7 +6131,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       </option>
                     </select>
                   </div>
-                  <div class="mt-3 text-xs text-slate-500">
+                  <div class="mt-3 text-xs text-slate-500 dark:text-slate-400">
                     {{
                       trp(
                         'evolution.skills.revisionFilterCount',
@@ -6146,7 +6146,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="!hasAcceptedRevision"
                     data-testid="evolution-skill-no-accepted-revision"
-                    class="mt-4 rounded-2xl border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-900"
+                    class="mt-4 rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 px-3 py-3 text-xs text-sky-900 dark:text-sky-200"
                   >
                     <div class="text-sm font-semibold">
                       {{
@@ -6170,7 +6170,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-if="latestCandidateRevision"
                       type="button"
                       data-testid="evolution-skill-no-accepted-review-candidate"
-                      class="mt-3 rounded-full border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-400"
+                      class="mt-3 rounded-full border border-sky-300 dark:border-sky-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-400 dark:hover:border-sky-800/70"
                       @click="reviewLatestCandidateRevision"
                     >
                       {{
@@ -6184,7 +6184,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-else
                       type="button"
                       data-testid="evolution-skill-no-accepted-open-harness"
-                      class="mt-3 rounded-full border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-400"
+                      class="mt-3 rounded-full border border-sky-300 dark:border-sky-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-400 dark:hover:border-sky-800/70"
                       @click="void openHarnessGroups()"
                     >
                       {{
@@ -6195,7 +6195,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="selectedRevisionHiddenByFilters"
                     data-testid="evolution-skill-revision-hidden-selection"
-                    class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900"
+                    class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-3 text-xs text-amber-900 dark:text-amber-200"
                   >
                     <div class="text-sm font-semibold">
                       {{
@@ -6219,7 +6219,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <button
                       type="button"
                       data-testid="evolution-skill-revision-hidden-selection-reveal"
-                      class="mt-3 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-400"
+                      class="mt-3 rounded-full border border-amber-300 dark:border-amber-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-400 dark:hover:border-amber-800/70"
                       @click="revealSelectedRevision"
                     >
                       {{
@@ -6233,7 +6233,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                   <div
                     v-if="selectedSkillRevisions.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -6244,7 +6244,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                   <div
                     v-else-if="filteredSelectedSkillRevisions.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -6266,14 +6266,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       class="w-full rounded-2xl border px-3 py-2.5 text-left transition"
                       :class="
                         selectedRevisionID === revision.id
-                          ? 'border-sky-300 bg-sky-50/60'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                          ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/60 dark:bg-sky-950/40'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                       "
                       @click="selectedRevisionID = revision.id"
                     >
                       <div class="flex flex-wrap items-center gap-2">
                         <span
-                          class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600"
+                          class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300"
                         >
                           {{ humanizeEnum(revision.status) }}
                         </span>
@@ -6288,20 +6288,20 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         </span>
                         <span
                           v-if="revision.optimization_surface"
-                          class="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500"
+                          class="rounded-full bg-white dark:bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400"
                         >
                           {{ humanizeEnum(revision.optimization_surface) }}
                         </span>
                       </div>
                       <div
                         :data-testid="`evolution-skill-revision-title-${revision.id}`"
-                        class="mt-2 text-[11px] font-medium leading-4 text-slate-950"
+                        class="mt-2 text-[11px] font-medium leading-4 text-slate-950 dark:text-slate-100"
                       >
                         {{ revision.id }}
                       </div>
                       <div
                         :data-testid="`evolution-skill-revision-created-${revision.id}`"
-                        class="mt-1 text-[11px] leading-4 text-slate-500"
+                        class="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400"
                       >
                         {{ formatDate(revision.created_at) }}
                       </div>
@@ -6310,12 +6310,12 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                   <div
                     v-if="backupRevisions.length > 0"
-                    class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                    class="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4"
                   >
-                    <div class="text-sm font-semibold text-slate-950">
+                    <div class="text-sm font-semibold text-slate-950 dark:text-slate-100">
                       {{ tr('evolution.skills.backups', 'Backup revisions') }}
                     </div>
-                    <div class="mt-2 text-sm leading-6 text-slate-600">
+                    <div class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
                       {{
                         tr(
                           'evolution.skills.backupsHint',
@@ -6327,7 +6327,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </div>
 
                 <div
-                  class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900"
+                  class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-200"
                 >
                   <div class="font-semibold">
                     {{ tr('evolution.skills.rollbackTitle', 'Safe rollback') }}
@@ -6344,11 +6344,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
               </div>
 
               <div class="space-y-5">
-                <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
-                  <h3 class="text-base font-semibold text-slate-950">
+                <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.timeline', 'Case Lifecycle') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.timelineHint',
@@ -6358,7 +6358,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </p>
                   <div
                     v-if="selectedSkillCaseTimeline.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -6386,11 +6386,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       <div class="min-w-0">
                         <div
                           :data-testid="`evolution-skill-case-timeline-label-${entry.key}`"
-                          class="text-xs font-semibold text-slate-950"
+                          class="text-xs font-semibold text-slate-950 dark:text-slate-100"
                         >
                           {{ entry.label }}
                         </div>
-                        <div class="mt-1 text-[11px] leading-4 text-slate-500">
+                        <div class="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
                           {{ entry.time }}
                         </div>
                       </div>
@@ -6402,13 +6402,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   ref="lineageSectionRef"
                   data-testid="evolution-skill-section-lineage"
                   :data-focused="focusedSkillDetailSection === 'lineage' ? 'true' : 'false'"
-                  class="rounded-3xl border bg-white/90 p-5 shadow-sm transition"
+                  class="rounded-3xl border bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm transition"
                   :class="skillDetailSectionClasses('lineage')"
                 >
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.lineage', 'Revision Lineage Summary') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.lineageHint',
@@ -6418,7 +6418,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </p>
                   <div
                     v-if="selectedRevisionLineage.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -6435,16 +6435,16 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-for="(entry, index) in selectedRevisionLineage"
                       :key="entry.label + entry.value"
                       :data-testid="`evolution-skill-lineage-entry-${index}`"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                     >
                       <div
-                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                       >
                         {{ entry.label }}
                       </div>
                       <div
                         :data-testid="`evolution-skill-lineage-value-${index}`"
-                        class="mt-1.5 break-all text-xs leading-5 text-slate-700"
+                        class="mt-1.5 break-all text-xs leading-5 text-slate-700 dark:text-slate-200"
                       >
                         {{ entry.value }}
                       </div>
@@ -6452,13 +6452,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                 </div>
 
-                <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+                <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
                   <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <h3 class="text-base font-semibold text-slate-950">
+                      <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                         {{ tr('evolution.skills.decisionHistory.section', 'Decision History') }}
                       </h3>
-                      <p class="mt-1 text-sm leading-6 text-slate-500">
+                      <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                         {{
                           tr(
                             'evolution.skills.decisionHistory.sectionHint',
@@ -6471,7 +6471,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-if="selectedSkillDecisionHistory.length > 0"
                       type="button"
                       data-testid="evolution-skill-decision-history-export"
-                      class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                       @click="void exportDecisionHistory()"
                     >
                       {{ tr('evolution.skills.decisionHistory.export', 'Export decision log') }}
@@ -6480,7 +6480,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="selectedSkillDecisionHistory.length === 0"
                     data-testid="evolution-skill-decision-history-empty"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -6496,12 +6496,12 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     <div
                       data-testid="evolution-skill-decision-timeline"
-                      class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 p-3"
                     >
-                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         {{ tr('evolution.skills.decisionHistory.timeline', 'Decision Timeline') }}
                       </div>
-                      <p class="mt-1 text-xs leading-5 text-slate-600">
+                      <p class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
                         {{
                           tr(
                             'evolution.skills.decisionHistory.timelineHint',
@@ -6523,27 +6523,27 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             />
                             <div
                               v-if="index < selectedSkillDecisionHistory.length - 1"
-                              class="mt-2 h-10 w-px bg-slate-200"
+                              class="mt-2 h-10 w-px bg-slate-200 dark:bg-slate-700"
                             />
                           </div>
                           <div
                             :data-testid="`evolution-skill-decision-timeline-card-${entry.revisionID}`"
-                            class="min-w-0 rounded-2xl border border-white/90 bg-white px-3 py-2.5 shadow-sm"
+                            class="min-w-0 rounded-2xl border border-white/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 px-3 py-2.5 shadow-sm"
                           >
                             <div
-                              class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                              class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                             >
                               {{ entry.reviewedAt }}
                             </div>
                             <div
                               :data-testid="`evolution-skill-decision-timeline-title-${entry.revisionID}`"
-                              class="mt-1.5 text-xs font-semibold text-slate-950"
+                              class="mt-1.5 text-xs font-semibold text-slate-950 dark:text-slate-100"
                             >
                               {{ entry.title }}
                             </div>
                             <div
                               :data-testid="`evolution-skill-decision-timeline-summary-${entry.revisionID}`"
-                              class="mt-1 text-xs leading-5 text-slate-700"
+                              class="mt-1 text-xs leading-5 text-slate-700 dark:text-slate-200"
                             >
                               {{ entry.summary }}
                             </div>
@@ -6556,7 +6556,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-for="entry in selectedSkillDecisionHistory"
                       :key="entry.key"
                       :data-testid="`evolution-skill-decision-history-entry-${entry.revisionID}`"
-                      class="rounded-3xl border border-slate-200 bg-slate-50/80 p-3"
+                      class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-3"
                     >
                       <div
                         class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
@@ -6576,27 +6576,27 @@ async function reviewSelectedProposal(action: ProposalAction) {
                               v-for="badge in entry.badges"
                               :key="badge.key"
                               :data-testid="`evolution-skill-decision-history-${entry.revisionID}-badge-${badge.key}`"
-                              class="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600"
+                              class="inline-flex rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-300"
                             >
                               {{ badge.label }}
                             </span>
                           </div>
                           <h4
                             :data-testid="`evolution-skill-decision-history-${entry.revisionID}-title`"
-                            class="mt-2.5 text-sm font-semibold text-slate-950"
+                            class="mt-2.5 text-sm font-semibold text-slate-950 dark:text-slate-100"
                           >
                             {{ entry.title }}
                           </h4>
                           <p
                             :data-testid="`evolution-skill-decision-history-${entry.revisionID}-summary`"
-                            class="mt-1 text-xs leading-5 text-slate-700"
+                            class="mt-1 text-xs leading-5 text-slate-700 dark:text-slate-200"
                           >
                             {{ entry.summary }}
                           </p>
                         </div>
                         <div
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-reviewed-at`"
-                          class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500"
+                          class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ entry.reviewedAt }}
                         </div>
@@ -6608,7 +6608,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           v-if="entry.links?.revisionID"
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-revision`"
-                          class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="selectedRevisionID = entry.links.revisionID"
                         >
                           {{
@@ -6622,7 +6622,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           v-if="entry.links?.evalRunID"
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-open-eval`"
-                          class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="
                             void router.push({
                               name: 'HarnessGroups',
@@ -6638,7 +6638,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           v-if="entry.links?.backupRevisionID"
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-backup`"
-                          class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="selectedRevisionID = entry.links.backupRevisionID"
                         >
                           {{
@@ -6649,7 +6649,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           v-if="decisionHistoryRollbackRevision(entry)"
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-quick-rollback`"
-                          class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-300"
+                          class="rounded-full border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-300 dark:hover:border-amber-800/70"
                           @click="void quickRollbackDecisionHistoryEntry(entry)"
                         >
                           {{
@@ -6666,7 +6666,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-source`"
-                          class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="selectedRevisionID = entry.links.sourceRevisionID"
                         >
                           {{
@@ -6680,7 +6680,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-target`"
-                          class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="selectedRevisionID = entry.links.targetRevisionID"
                         >
                           {{
@@ -6694,7 +6694,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-live`"
-                          class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="selectedRevisionID = entry.links.currentLiveRevisionID"
                         >
                           {{
@@ -6714,7 +6714,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-compare-source-target`"
-                          class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-300"
+                          class="rounded-full border border-sky-200 dark:border-sky-800/70 bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-300 dark:hover:border-sky-800/70"
                           @click="
                             void openDecisionHistoryComparison({
                               key: `${entry.revisionID}-source-target`,
@@ -6748,7 +6748,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-compare-backup-live`"
-                          class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-300"
+                          class="rounded-full border border-sky-200 dark:border-sky-800/70 bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-300 dark:hover:border-sky-800/70"
                           @click="
                             void openDecisionHistoryComparison({
                               key: `${entry.revisionID}-backup-live`,
@@ -6781,14 +6781,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                               decisionHistoryReportLoadingByEvalRunID[entry.links.evalRunID])
                         "
                         :data-testid="`evolution-skill-decision-history-${entry.revisionID}-evidence-panel`"
-                        class="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3"
+                        class="mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 p-3"
                       >
                         <div
                           class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"
                         >
                           <div>
                             <div
-                              class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
+                              class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                             >
                               {{
                                 tr(
@@ -6799,7 +6799,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             </div>
                             <p
                               :data-testid="`evolution-skill-decision-history-${entry.revisionID}-evidence-hint`"
-                              class="mt-1 text-xs leading-5 text-slate-600"
+                              class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300"
                             >
                               {{
                                 tr(
@@ -6811,7 +6811,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           </div>
                           <div
                             v-if="entry.links?.evalRunID"
-                            class="text-xs text-slate-500"
+                            class="text-xs text-slate-500 dark:text-slate-400"
                           >
                             {{ entry.links.evalRunID }}
                           </div>
@@ -6822,7 +6822,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             entry.links?.evalRunID &&
                               decisionHistoryReportLoadingByEvalRunID[entry.links.evalRunID]
                           "
-                          class="mt-3 text-sm text-slate-500"
+                          class="mt-3 text-sm text-slate-500 dark:text-slate-400"
                         >
                           {{
                             tr(
@@ -6843,11 +6843,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             :class="decisionHistoryEvidenceClasses(metric.tone)"
                           >
                             <div
-                              class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                              class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                             >
                               {{ metric.label }}
                             </div>
-                            <div class="mt-1.5 text-xs font-semibold text-slate-950">
+                            <div class="mt-1.5 text-xs font-semibold text-slate-950 dark:text-slate-100">
                               {{ metric.value }}
                             </div>
                           </div>
@@ -6859,14 +6859,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           v-for="detail in entry.details"
                           :key="detail.key"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-${detail.key}`"
-                          class="rounded-2xl border border-white/90 bg-white px-4 py-3 shadow-sm"
+                          class="rounded-2xl border border-white/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm"
                         >
                           <div
-                            class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                            class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                           >
                             {{ detail.label }}
                           </div>
-                          <div class="mt-2 break-all text-sm leading-6 text-slate-700">
+                          <div class="mt-2 break-all text-sm leading-6 text-slate-700 dark:text-slate-200">
                             {{ detail.value }}
                           </div>
                         </div>
@@ -6875,11 +6875,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                 </div>
 
-                <div class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                  <h3 class="text-base font-semibold text-slate-950">
+                <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.versionMeta', 'Version Metadata') }}
                   </h3>
-                  <p class="mt-1 text-xs leading-5 text-slate-500">
+                  <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.versionMetaHint',
@@ -6889,7 +6889,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </p>
                   <div
                     v-if="selectedRevisionMeta.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-xs leading-5 text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -6906,16 +6906,16 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-for="(entry, index) in selectedRevisionMeta"
                       :key="entry.label"
                       :data-testid="`evolution-skill-version-meta-entry-${index}`"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                     >
                       <div
-                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                       >
                         {{ entry.label }}
                       </div>
                       <div
                         :data-testid="`evolution-skill-version-meta-value-${index}`"
-                        class="mt-1.5 break-all text-xs leading-5 text-slate-700"
+                        class="mt-1.5 break-all text-xs leading-5 text-slate-700 dark:text-slate-200"
                       >
                         {{ entry.value }}
                       </div>
@@ -6927,13 +6927,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   ref="comparisonSectionRef"
                   data-testid="evolution-skill-section-comparison"
                   :data-focused="focusedSkillDetailSection === 'comparison' ? 'true' : 'false'"
-                  class="rounded-3xl border bg-white/90 p-5 shadow-sm transition"
+                  class="rounded-3xl border bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm transition"
                   :class="skillDetailSectionClasses('comparison')"
                 >
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.comparison', 'Version Comparison') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.comparisonHint',
@@ -6944,11 +6944,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="decisionHistoryComparisonPair"
                     data-testid="evolution-skill-history-comparison"
-                    class="mt-4 rounded-2xl border border-sky-200 bg-sky-50/60 p-4"
+                    class="mt-4 rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50/60 dark:bg-sky-950/40 p-4"
                   >
                     <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <div class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                        <div class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
                           {{
                             tr(
                               'evolution.skills.decisionHistory.historyComparison',
@@ -6956,17 +6956,17 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             )
                           }}
                         </div>
-                        <h4 class="mt-2 text-base font-semibold text-slate-950">
+                        <h4 class="mt-2 text-base font-semibold text-slate-950 dark:text-slate-100">
                           {{ decisionHistoryComparisonPair.label }}
                         </h4>
-                        <p class="mt-1 text-sm leading-6 text-slate-700">
+                        <p class="mt-1 text-sm leading-6 text-slate-700 dark:text-slate-200">
                           {{ decisionHistoryComparisonPair.summary }}
                         </p>
                       </div>
                       <button
                         type="button"
                         data-testid="evolution-skill-history-comparison-clear"
-                        class="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-300"
+                        class="rounded-full border border-sky-200 dark:border-sky-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-300 dark:hover:border-sky-800/70"
                         @click="decisionHistoryComparisonPair = null"
                       >
                         {{
@@ -6978,20 +6978,20 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div class="mt-4 grid gap-3 lg:grid-cols-2">
                       <div
                         data-testid="evolution-skill-history-comparison-left"
-                        class="rounded-2xl border border-white/90 bg-white px-4 py-3 shadow-sm"
+                        class="rounded-2xl border border-white/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ tr('evolution.skills.decisionHistory.leftRevision', 'Left revision') }}
                         </div>
-                        <div class="mt-2 break-all text-sm leading-6 text-slate-700">
+                        <div class="mt-2 break-all text-sm leading-6 text-slate-700 dark:text-slate-200">
                           {{ decisionHistoryComparisonPair.leftRevisionID }}
                         </div>
                         <button
                           type="button"
                           data-testid="evolution-skill-history-comparison-open-left"
-                          class="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="mt-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="selectedRevisionID = decisionHistoryComparisonPair.leftRevisionID"
                         >
                           {{
@@ -7004,22 +7004,22 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       </div>
                       <div
                         data-testid="evolution-skill-history-comparison-right"
-                        class="rounded-2xl border border-white/90 bg-white px-4 py-3 shadow-sm"
+                        class="rounded-2xl border border-white/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{
                             tr('evolution.skills.decisionHistory.rightRevision', 'Right revision')
                           }}
                         </div>
-                        <div class="mt-2 break-all text-sm leading-6 text-slate-700">
+                        <div class="mt-2 break-all text-sm leading-6 text-slate-700 dark:text-slate-200">
                           {{ decisionHistoryComparisonPair.rightRevisionID }}
                         </div>
                         <button
                           type="button"
                           data-testid="evolution-skill-history-comparison-open-right"
-                          class="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                          class="mt-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                           @click="
                             selectedRevisionID = decisionHistoryComparisonPair.rightRevisionID
                           "
@@ -7036,7 +7036,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                     <pre
                       data-testid="evolution-skill-history-comparison-diff"
-                      class="mt-4 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-sky-100 bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-100"
+                      class="mt-4 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-sky-100 dark:border-sky-800/70 bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-100"
                     >{{ decisionHistoryComparisonDiff }}</pre>
                   </div>
                   <div
@@ -7045,7 +7045,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         !selectedSkillComparison.baselineEvalRunID &&
                         selectedSkillComparison.deltas.length === 0
                     "
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -7062,18 +7062,18 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div
                       v-if="selectedSkillComparison.baselineEvalRunID"
                       data-testid="evolution-skill-baseline-id"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4"
                     >
-                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         {{ tr('harness.evalRun.baseline', 'Baseline run') }}
                       </div>
-                      <div class="mt-2 break-all text-sm leading-6 text-slate-700">
+                      <div class="mt-2 break-all text-sm leading-6 text-slate-700 dark:text-slate-200">
                         {{ selectedSkillComparison.baselineEvalRunID }}
                       </div>
                       <button
                         type="button"
                         data-testid="evolution-skill-open-baseline-eval-run"
-                        class="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                        class="mt-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                         @click="void openSelectedBaselineEvalRun()"
                       >
                         {{ tr('evolution.skills.openBaselineEvalRun', 'Open baseline eval run') }}
@@ -7090,14 +7090,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         class="rounded-2xl border px-4 py-4"
                         :class="
                           metric.tone === 'positive'
-                            ? 'border-emerald-200 bg-emerald-50/70'
+                            ? 'border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/70 dark:bg-emerald-950/40'
                             : metric.tone === 'negative'
-                              ? 'border-rose-200 bg-rose-50/70'
-                              : 'border-slate-200 bg-slate-50'
+                              ? 'border-rose-200 dark:border-rose-800/70 bg-rose-50/70 dark:bg-rose-950/40'
+                              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'
                         "
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ metric.label }}
                         </div>
@@ -7105,10 +7105,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           class="mt-1.5 text-base font-semibold"
                           :class="
                             metric.tone === 'positive'
-                              ? 'text-emerald-700'
+                              ? 'text-emerald-700 dark:text-emerald-300'
                               : metric.tone === 'negative'
-                                ? 'text-rose-700'
-                                : 'text-slate-950'
+                                ? 'text-rose-700 dark:text-rose-300'
+                                : 'text-slate-950 dark:text-slate-100'
                           "
                         >
                           {{ metric.value }}
@@ -7122,13 +7122,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   ref="metricsSectionRef"
                   data-testid="evolution-skill-section-metrics"
                   :data-focused="focusedSkillDetailSection === 'metrics' ? 'true' : 'false'"
-                  class="rounded-3xl border bg-white/90 p-5 shadow-sm transition"
+                  class="rounded-3xl border bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm transition"
                   :class="skillDetailSectionClasses('metrics')"
                 >
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.metrics', 'Reported Metrics') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.metricsHint',
@@ -7139,19 +7139,19 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                   <div
                     v-if="revisionReportLoading"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{ tr('common.loading', 'Loading') }}
                   </div>
                   <div
                     v-else-if="revisionReportError"
-                    class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700"
+                    class="mt-4 rounded-2xl border border-red-200 dark:border-red-800/70 bg-red-50 dark:bg-red-950/40 px-3 py-4 text-sm text-red-700 dark:text-red-300"
                   >
                     {{ revisionReportError }}
                   </div>
                   <div
                     v-else-if="selectedSkillMetrics.length === 0"
-                    class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                    class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
                   >
                     {{
                       tr(
@@ -7167,14 +7167,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div
                       v-for="metric in selectedSkillMetrics"
                       :key="metric.key"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                     >
                       <div
-                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                       >
                         {{ metric.label }}
                       </div>
-                      <div class="mt-1.5 text-base font-semibold text-slate-950">
+                      <div class="mt-1.5 text-base font-semibold text-slate-950 dark:text-slate-100">
                         {{ metric.value }}
                       </div>
                     </div>
@@ -7185,13 +7185,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   ref="evidenceSectionRef"
                   data-testid="evolution-skill-section-evidence"
                   :data-focused="focusedSkillDetailSection === 'evidence' ? 'true' : 'false'"
-                  class="rounded-3xl border bg-white/90 p-5 shadow-sm transition"
+                  class="rounded-3xl border bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm transition"
                   :class="skillDetailSectionClasses('evidence')"
                 >
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.evidence', 'Case Evidence') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       selectedSkillCase?.mode === 'capture'
                         ? tr(
@@ -7212,7 +7212,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       class="rounded-2xl border px-4 py-4"
                       :class="decisionSummaryCardClasses(card.tone)"
                     >
-                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         {{ card.label }}
                       </div>
                       <div
@@ -7221,7 +7221,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       >
                         {{ card.value }}
                       </div>
-                      <div class="mt-2 text-sm leading-6 text-slate-700">
+                      <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                         {{ card.details }}
                       </div>
                     </div>
@@ -7238,7 +7238,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       :class="evidenceSummaryClasses(entry.tone)"
                     >
                       <div
-                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                       >
                         {{ entry.label }}
                       </div>
@@ -7263,7 +7263,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-if="normalizeText(selectedCaseRevision?.id)"
                       type="button"
                       data-testid="evolution-skill-selected-case-open-revision"
-                      class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                       @click="openSelectedCaseRevision"
                     >
                       {{ tr('evolution.skills.caseOpenRevision', 'Open linked revision') }}
@@ -7272,7 +7272,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-if="selectedSkillCaseSourceEvalRunID"
                       type="button"
                       data-testid="evolution-skill-selected-case-open-source"
-                      class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                       @click="void openSelectedCaseSource()"
                     >
                       {{ tr('evolution.skills.caseOpenSource', 'Open source eval run') }}
@@ -7281,7 +7281,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-if="selectedSkillCaseLinkedEvalRunID"
                       type="button"
                       data-testid="evolution-skill-selected-case-open-linked-eval"
-                      class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                       @click="void openSelectedCaseLinkedEvalRun()"
                     >
                       {{ tr('evolution.skills.openEvalRun', 'Open linked eval run') }}
@@ -7290,7 +7290,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="selectedCaseMeta.length > 0"
                     data-testid="evolution-skill-case-meta-compact"
-                    class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                    class="mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4"
                   >
                     <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                       <div
@@ -7299,11 +7299,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         class="space-y-1"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ entry.label }}
                         </div>
-                        <div class="break-all text-sm leading-5 text-slate-700">
+                        <div class="break-all text-sm leading-5 text-slate-700 dark:text-slate-200">
                           {{ entry.value }}
                         </div>
                       </div>
@@ -7311,7 +7311,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                   <pre
                     data-testid="evolution-skill-case-evidence"
-                    class="mt-4 max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
+                    class="mt-4 max-h-80 overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
                   >{{ selectedSkillEvidence }}</pre>
                 </div>
 
@@ -7319,13 +7319,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   ref="diffSectionRef"
                   data-testid="evolution-skill-section-diff"
                   :data-focused="focusedSkillDetailSection === 'diff' ? 'true' : 'false'"
-                  class="rounded-3xl border bg-white/90 p-5 shadow-sm transition"
+                  class="rounded-3xl border bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm transition"
                   :class="skillDetailSectionClasses('diff')"
                 >
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.skills.diff', 'Candidate Diff Patch') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.skills.diffHint',
@@ -7341,7 +7341,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       class="rounded-2xl border px-4 py-4"
                       :class="decisionSummaryCardClasses(card.tone)"
                     >
-                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         {{ card.label }}
                       </div>
                       <div
@@ -7350,7 +7350,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       >
                         {{ card.value }}
                       </div>
-                      <div class="mt-2 text-sm leading-6 text-slate-700">
+                      <div class="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                         {{ card.details }}
                       </div>
                     </div>
@@ -7360,16 +7360,16 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       v-for="entry in selectedSkillDiffSummary"
                       :key="entry.key"
                       :data-testid="`evolution-skill-diff-summary-${entry.key}`"
-                      class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                     >
                       <div
-                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                       >
                         {{ entry.label }}
                       </div>
                       <div
                         :data-testid="`evolution-skill-diff-summary-value-${entry.key}`"
-                        class="mt-1.5 text-base font-semibold text-slate-950"
+                        class="mt-1.5 text-base font-semibold text-slate-950 dark:text-slate-100"
                       >
                         {{ entry.value }}
                       </div>
@@ -7377,7 +7377,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   </div>
                   <pre
                     data-testid="evolution-skill-diff"
-                    class="mt-4 max-h-[520px] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
+                    class="mt-4 max-h-[520px] overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
                   >{{ selectedSkillDiff }}</pre>
                 </div>
               </div>
@@ -7389,11 +7389,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
           v-else-if="activePane === 'runner'"
           class="space-y-4 p-4 sm:p-5"
         >
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-            <h2 class="text-base font-semibold text-slate-950 sm:text-lg">
+          <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+            <h2 class="text-base font-semibold text-slate-950 dark:text-slate-100 sm:text-lg">
               {{ tr('evolution.runner.title', 'Runner Evolution') }}
             </h2>
-            <p class="mt-2 max-w-2xl text-sm leading-5 text-slate-600">
+            <p class="mt-2 max-w-2xl text-sm leading-5 text-slate-600 dark:text-slate-300">
               {{
                 tr(
                   'evolution.runner.subtitle',
@@ -7403,7 +7403,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
             </p>
             <div
               v-if="!runnerOptimizationRecord && !agentcoreRunnerStatus"
-              class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-5 text-slate-500"
+              class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4 text-sm leading-5 text-slate-500 dark:text-slate-400"
             >
               {{
                 tr(
@@ -7416,11 +7416,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
               v-else
               class="mt-4 space-y-4"
             >
-              <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                <h3 class="text-base font-semibold text-slate-950">
+              <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+                <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                   {{ tr('evolution.runner.panelTitle', 'Runner Settings And Build Status') }}
                 </h3>
-                <p class="mt-1 text-sm leading-5 text-slate-500">
+                <p class="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
                   {{
                     tr(
                       'evolution.runner.panelSubtitle',
@@ -7446,7 +7446,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="min-w-[15rem] shrink-0 rounded-2xl border px-3 py-3 xl:min-w-0"
                   :class="decisionSummaryCardClasses(card.tone)"
                 >
-                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ card.label }}
                   </div>
                   <div
@@ -7455,7 +7455,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{ card.value }}
                   </div>
-                  <div class="mt-2 text-sm leading-5 text-slate-700">
+                  <div class="mt-2 text-sm leading-5 text-slate-700 dark:text-slate-200">
                     {{ card.details }}
                   </div>
                 </div>
@@ -7463,13 +7463,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                 <div class="space-y-4">
-                  <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                  <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 class="text-base font-semibold text-slate-950">
+                        <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                           {{ tr('evolution.runner.candidate.title', 'Runner Candidate Patch') }}
                         </h3>
-                        <p class="mt-1 text-sm leading-5 text-slate-500">
+                        <p class="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
                           {{
                             tr(
                               'evolution.runner.candidate.subtitle',
@@ -7480,7 +7480,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       </div>
                       <div
                         v-if="normalizeText(runnerOptimizationRecord?.runner_error)"
-                        class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700"
+                        class="rounded-full border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/40 px-3 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300"
                       >
                         {{ tr('evolution.runner.errorBadge', 'Runner error recorded') }}
                       </div>
@@ -7491,16 +7491,16 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         v-for="entry in runnerCandidateDiffSummary"
                         :key="entry.key"
                         :data-testid="`evolution-runner-diff-summary-${entry.key}`"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ entry.label }}
                         </div>
                         <div
                           :data-testid="`evolution-runner-diff-summary-value-${entry.key}`"
-                          class="mt-1.5 text-base font-semibold text-slate-950"
+                          class="mt-1.5 text-base font-semibold text-slate-950 dark:text-slate-100"
                         >
                           {{ entry.value }}
                         </div>
@@ -7509,15 +7509,15 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                     <pre
                       data-testid="evolution-runner-candidate-diff"
-                      class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-xs leading-5 text-slate-100"
+                      class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-950 px-4 py-3 text-xs leading-5 text-slate-100"
                     >{{ runnerCandidateDiff }}</pre>
                   </section>
 
-                  <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                    <h3 class="text-base font-semibold text-slate-950">
+                  <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                       {{ tr('evolution.runner.transcript.title', 'Runner Transcript') }}
                     </h3>
-                    <p class="mt-1 text-sm leading-5 text-slate-500">
+                    <p class="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
                       {{
                         tr(
                           'evolution.runner.transcript.subtitle',
@@ -7527,7 +7527,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     </p>
                     <div
                       v-if="runnerTranscriptEntries.length === 0"
-                      class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500"
+                      class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4 text-sm text-slate-500 dark:text-slate-400"
                     >
                       {{
                         tr(
@@ -7545,10 +7545,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         v-for="(entry, index) in runnerTranscriptEntries"
                         :key="entry.key"
                         :data-testid="`evolution-runner-transcript-entry-${index}`"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{
                             [
@@ -7561,7 +7561,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         </div>
                         <div
                           :data-testid="`evolution-runner-transcript-text-${index}`"
-                          class="mt-1.5 whitespace-pre-wrap break-words text-xs leading-5 text-slate-700"
+                          class="mt-1.5 whitespace-pre-wrap break-words text-xs leading-5 text-slate-700 dark:text-slate-200"
                         >
                           {{ entry.text }}
                         </div>
@@ -7571,11 +7571,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </div>
 
                 <div class="space-y-4">
-                  <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                    <h3 class="text-base font-semibold text-slate-950">
+                  <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                       {{ tr('evolution.runner.links.title', 'Linked Evidence And Outputs') }}
                     </h3>
-                    <p class="mt-1 text-xs leading-5 text-slate-500">
+                    <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                       {{
                         tr(
                           'evolution.runner.links.subtitle',
@@ -7587,20 +7587,20 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div class="mt-4 space-y-3">
                       <div
                         data-testid="evolution-runner-link-source-eval"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ tr('evolution.runner.links.sourceEval', 'Source eval run') }}
                         </div>
-                        <div class="mt-1.5 break-all text-xs leading-5 text-slate-700">
+                        <div class="mt-1.5 break-all text-xs leading-5 text-slate-700 dark:text-slate-200">
                           {{ runnerSourceEvalRunID || tr('common.notAvailable', 'Not available') }}
                         </div>
                         <button
                           type="button"
                           data-testid="evolution-runner-open-source-eval"
-                          class="mt-2.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                          class="mt-2.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                           :disabled="!runnerSourceEvalRunID"
                           @click="void openRunnerSourceEvalRun()"
                         >
@@ -7610,14 +7610,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                       <div
                         data-testid="evolution-runner-link-followup-eval"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ tr('evolution.runner.links.followupEval', 'Follow-up eval run') }}
                         </div>
-                        <div class="mt-1.5 break-all text-xs leading-5 text-slate-700">
+                        <div class="mt-1.5 break-all text-xs leading-5 text-slate-700 dark:text-slate-200">
                           {{
                             runnerFollowupEvalRunID || tr('common.notAvailable', 'Not available')
                           }}
@@ -7625,7 +7625,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           type="button"
                           data-testid="evolution-runner-open-followup-eval"
-                          class="mt-2.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                          class="mt-2.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                           :disabled="!runnerFollowupEvalRunID"
                           @click="void openRunnerFollowupEvalRun()"
                         >
@@ -7635,17 +7635,17 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
                       <div
                         data-testid="evolution-runner-link-linked-revision"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ tr('evolution.runner.links.linkedRevision', 'Linked skill revision') }}
                         </div>
-                        <div class="mt-1.5 break-all text-xs leading-5 text-slate-700">
+                        <div class="mt-1.5 break-all text-xs leading-5 text-slate-700 dark:text-slate-200">
                           {{ runnerLinkedRevisionID || tr('common.notAvailable', 'Not available') }}
                         </div>
-                        <div class="mt-1.5 text-[11px] leading-4 text-slate-500">
+                        <div class="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
                           {{
                             [runnerLinkedSkillID, runnerLinkedCase ? runnerLinkedCase.status : '']
                               .filter(Boolean)
@@ -7659,7 +7659,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           type="button"
                           data-testid="evolution-runner-open-linked-revision"
-                          class="mt-2.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                          class="mt-2.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                           :disabled="!runnerLinkedRevisionID"
                           @click="openRunnerLinkedRevision"
                         >
@@ -7669,11 +7669,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     </div>
                   </section>
 
-                  <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                    <h3 class="text-base font-semibold text-slate-950">
+                  <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                       {{ tr('evolution.runner.metrics.followupTitle', 'Follow-up Eval Snapshot') }}
                     </h3>
-                    <p class="mt-1 text-xs leading-5 text-slate-500">
+                    <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                       {{
                         tr(
                           'evolution.runner.metrics.followupSubtitle',
@@ -7686,13 +7686,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         runnerFollowupEvalRunID &&
                           runnerReportLoadingByEvalRunID[runnerFollowupEvalRunID]
                       "
-                      class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
+                      class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-xs leading-5 text-slate-500 dark:text-slate-400"
                     >
                       {{ tr('evolution.runner.metrics.loading', 'Loading eval snapshot...') }}
                     </div>
                     <div
                       v-else-if="runnerFollowupReportMetrics.length === 0"
-                      class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
+                      class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-xs leading-5 text-slate-500 dark:text-slate-400"
                     >
                       {{
                         tr(
@@ -7709,25 +7709,25 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         v-for="entry in runnerFollowupReportMetrics"
                         :key="entry.key"
                         :data-testid="`evolution-runner-report-followup-${entry.key}`"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ entry.label }}
                         </div>
-                        <div class="mt-1.5 text-sm font-semibold text-slate-950">
+                        <div class="mt-1.5 text-sm font-semibold text-slate-950 dark:text-slate-100">
                           {{ entry.value }}
                         </div>
                       </div>
                     </div>
                   </section>
 
-                  <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                    <h3 class="text-base font-semibold text-slate-950">
+                  <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
+                    <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                       {{ tr('evolution.runner.metrics.sourceTitle', 'Source Eval Snapshot') }}
                     </h3>
-                    <p class="mt-1 text-xs leading-5 text-slate-500">
+                    <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                       {{
                         tr(
                           'evolution.runner.metrics.sourceSubtitle',
@@ -7740,13 +7740,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         runnerSourceEvalRunID &&
                           runnerReportLoadingByEvalRunID[runnerSourceEvalRunID]
                       "
-                      class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
+                      class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-xs leading-5 text-slate-500 dark:text-slate-400"
                     >
                       {{ tr('evolution.runner.metrics.loading', 'Loading eval snapshot...') }}
                     </div>
                     <div
                       v-else-if="runnerSourceReportMetrics.length === 0"
-                      class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
+                      class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-xs leading-5 text-slate-500 dark:text-slate-400"
                     >
                       {{
                         tr(
@@ -7763,14 +7763,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         v-for="entry in runnerSourceReportMetrics"
                         :key="entry.key"
                         :data-testid="`evolution-runner-report-source-${entry.key}`"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                         >
                           {{ entry.label }}
                         </div>
-                        <div class="mt-1.5 text-sm font-semibold text-slate-950">
+                        <div class="mt-1.5 text-sm font-semibold text-slate-950 dark:text-slate-100">
                           {{ entry.value }}
                         </div>
                       </div>
@@ -7788,14 +7788,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
         >
           <section class="sticky top-3 z-20 xl:top-6">
             <div
-              class="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
+              class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
-                  <h2 class="text-sm font-semibold text-slate-950 sm:text-base">
+                  <h2 class="text-sm font-semibold text-slate-950 dark:text-slate-100 sm:text-base">
                     {{ tr('evolution.instructions.title', 'Instruction Review Queue') }}
                   </h2>
-                  <p class="mt-2 text-sm leading-5 text-slate-600">
+                  <p class="mt-2 text-sm leading-5 text-slate-600 dark:text-slate-300">
                     {{
                       tr(
                         'evolution.instructions.subtitle',
@@ -7806,7 +7806,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </div>
                 <button
                   type="button"
-                  class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   :disabled="instructionsLoading"
                   @click="void loadInstructionProposals()"
                 >
@@ -7820,19 +7820,19 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div
                 v-if="instructionsLoading"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{ tr('common.loading', 'Loading') }}
               </div>
               <div
                 v-else-if="instructionsError"
-                class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700"
+                class="mt-4 rounded-2xl border border-red-200 dark:border-red-800/70 bg-red-50 dark:bg-red-950/40 px-3 py-4 text-sm text-red-700 dark:text-red-300"
               >
                 {{ instructionsError }}
               </div>
               <div
                 v-else-if="instructionProposals.length === 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -7849,7 +7849,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   v-model="instructionSearch"
                   data-testid="evolution-instructions-search-mobile"
                   type="search"
-                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                  class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                   :placeholder="
                     tr(
                       'evolution.instructions.searchPlaceholder',
@@ -7860,7 +7860,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <select
                   v-model="instructionStatusFilter"
                   data-testid="evolution-instructions-status-filter-mobile"
-                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                  class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                 >
                   <option value="all">
                     {{ tr('evolution.instructions.statusAll', 'All statuses') }}
@@ -7875,7 +7875,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     {{ humanizeEnum('rejected') }}
                   </option>
                 </select>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     trp(
                       'evolution.instructions.searchCount',
@@ -7892,7 +7892,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <div
                 v-if="selectedProposalHiddenByFilters"
                 data-testid="evolution-instructions-hidden-selection-mobile"
-                class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-900"
+                class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 px-3 py-3 text-sm text-amber-900 dark:text-amber-200"
               >
                 <div class="font-semibold">
                   {{
@@ -7912,7 +7912,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </p>
                 <button
                   type="button"
-                  class="mt-3 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-400"
+                  class="mt-3 rounded-full border border-amber-300 dark:border-amber-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-400 dark:hover:border-amber-800/70"
                   @click="revealSelectedProposal"
                 >
                   {{ tr('evolution.instructions.hiddenSelectionAction', 'Show selected proposal') }}
@@ -7930,22 +7930,22 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="min-w-[15.25rem] shrink-0 snap-start rounded-2xl border px-3 py-3 text-left transition"
                   :class="
                     selectedProposalID === proposal.id
-                      ? 'border-sky-300 bg-sky-50/70 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 shadow-sm'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                   "
                   @click="void selectProposal(proposal.id)"
                 >
                   <div class="flex items-center justify-between gap-2">
-                    <div class="truncate text-sm font-semibold text-slate-950">
+                    <div class="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">
                       {{ proposal.target_file }}
                     </div>
                     <span
-                      class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                      class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                     >
                       {{ humanizeEnum(proposal.status) }}
                     </span>
                   </div>
-                  <p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">
+                  <p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-600 dark:text-slate-300">
                     {{ proposal.lesson }}
                   </p>
                 </button>
@@ -7953,7 +7953,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div
                 v-else-if="instructionProposals.length > 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -7966,13 +7966,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </section>
 
           <aside class="hidden">
-            <div class="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-3 shadow-sm sm:p-4">
               <div class="flex items-start justify-between gap-3">
                 <div>
-                  <h2 class="text-base font-semibold text-slate-950">
+                  <h2 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.instructions.title', 'Instruction Review Queue') }}
                   </h2>
-                  <p class="mt-2 text-sm leading-6 text-slate-600">
+                  <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{
                       tr(
                         'evolution.instructions.subtitle',
@@ -7983,7 +7983,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 </div>
                 <button
                   type="button"
-                  class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   :disabled="instructionsLoading"
                   @click="void loadInstructionProposals()"
                 >
@@ -7997,19 +7997,19 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <div
                 v-if="instructionsLoading"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{ tr('common.loading', 'Loading') }}
               </div>
               <div
                 v-else-if="instructionsError"
-                class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700"
+                class="mt-4 rounded-2xl border border-red-200 dark:border-red-800/70 bg-red-50 dark:bg-red-950/40 px-3 py-4 text-sm text-red-700 dark:text-red-300"
               >
                 {{ instructionsError }}
               </div>
               <div
                 v-else-if="instructionProposals.length === 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -8021,7 +8021,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <div
                 v-if="instructionProposals.length === 0"
                 data-testid="evolution-instructions-empty-actions"
-                class="mt-4 rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-4 text-sm text-sky-900"
+                class="mt-4 rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 px-4 py-4 text-sm text-sky-900 dark:text-sky-200"
               >
                 <div class="font-semibold">
                   {{ tr('evolution.instructions.emptyActionTitle', 'No proposals yet') }}
@@ -8037,7 +8037,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <button
                   type="button"
                   data-testid="evolution-instructions-empty-open-runner"
-                  class="mt-3 rounded-full border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 transition hover:border-sky-400"
+                  class="mt-3 rounded-full border border-sky-300 dark:border-sky-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-sky-900 dark:text-sky-200 transition hover:border-sky-400 dark:hover:border-sky-800/70"
                   @click="openRunnerEvolutionPane"
                 >
                   {{ tr('evolution.instructions.emptyAction', 'Open Runner Evolution') }}
@@ -8051,7 +8051,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   v-model="instructionSearch"
                   data-testid="evolution-instructions-search"
                   type="search"
-                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                  class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                   :placeholder="
                     tr(
                       'evolution.instructions.searchPlaceholder',
@@ -8062,7 +8062,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <select
                   v-model="instructionStatusFilter"
                   data-testid="evolution-instructions-status-filter"
-                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                  class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                 >
                   <option value="all">
                     {{ tr('evolution.instructions.statusAll', 'All statuses') }}
@@ -8077,7 +8077,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     {{ humanizeEnum('rejected') }}
                   </option>
                 </select>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
                   {{
                     trp(
                       'evolution.instructions.searchCount',
@@ -8092,7 +8092,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               </div>
               <div
                 v-if="instructionProposals.length > 0 && filteredInstructionProposals.length === 0"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{
                   tr(
@@ -8104,7 +8104,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <div
                 v-if="selectedProposalHiddenByFilters"
                 data-testid="evolution-instructions-hidden-selection"
-                class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900"
+                class="mt-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/80 dark:bg-amber-950/40 px-4 py-4 text-sm text-amber-900 dark:text-amber-200"
               >
                 <div class="font-semibold">
                   {{
@@ -8125,7 +8125,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <button
                   type="button"
                   data-testid="evolution-instructions-hidden-selection-reveal"
-                  class="mt-3 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:border-amber-400"
+                  class="mt-3 rounded-full border border-amber-300 dark:border-amber-800/70 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-200 transition hover:border-amber-400 dark:hover:border-amber-800/70"
                   @click="revealSelectedProposal"
                 >
                   {{ tr('evolution.instructions.hiddenSelectionAction', 'Show selected proposal') }}
@@ -8143,22 +8143,22 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   class="w-full rounded-2xl border px-3 py-3 text-left transition"
                   :class="
                     selectedProposalID === proposal.id
-                      ? 'border-sky-300 bg-sky-50/70 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-sky-300 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/40 shadow-sm'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                   "
                   @click="void selectProposal(proposal.id)"
                 >
                   <div class="flex items-center justify-between gap-2">
-                    <div class="text-sm font-semibold text-slate-950">
+                    <div class="text-sm font-semibold text-slate-950 dark:text-slate-100">
                       {{ proposal.target_file }}
                     </div>
                     <span
-                      class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                      class="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300"
                     >
                       {{ humanizeEnum(proposal.status) }}
                     </span>
                   </div>
-                  <p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">
+                  <p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-600 dark:text-slate-300">
                     {{ proposal.lesson }}
                   </p>
                 </button>
@@ -8167,21 +8167,21 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </aside>
 
           <section class="space-y-5">
-            <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+            <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
               <div class="flex flex-col gap-4">
                 <div>
-                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ tr('evolution.instructions.review', 'Review Proposal') }}
                   </div>
                   <h2
                     data-testid="evolution-instructions-review-title"
-                    class="mt-2 text-lg font-semibold text-slate-950 sm:text-xl"
+                    class="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-100 sm:text-xl"
                   >
                     {{
                       selectedProposal?.target_file || tr('common.notAvailable', 'Not available')
                     }}
                   </h2>
-                  <p class="mt-2 text-sm leading-5 text-slate-600">
+                  <p class="mt-2 text-sm leading-5 text-slate-600 dark:text-slate-300">
                     {{
                       selectedProposal?.lesson ||
                         tr(
@@ -8195,14 +8195,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 <div
                   v-if="selectedProposal"
                   data-testid="evolution-instructions-review-meta"
-                  class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600"
+                  class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-sm text-slate-600 dark:text-slate-300"
                 >
                   <div
-                    class="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700"
+                    class="inline-flex items-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200"
                   >
                     {{ humanizeEnum(selectedProposal.status) }}
                   </div>
-                  <div class="text-xs font-medium text-slate-500">
+                  <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
                     {{ formatDate(selectedProposal.updated_at) }}
                   </div>
                   <button
@@ -8212,7 +8212,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     "
                     type="button"
                     data-testid="evolution-instructions-open-source-group"
-                    class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                    class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                     @click="void openSelectedProposalSource()"
                   >
                     {{ tr('evolution.instructions.openSourceGroup', 'Open source harness group') }}
@@ -8224,7 +8224,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     "
                     type="button"
                     data-testid="evolution-instructions-open-source-eval-run"
-                    class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                    class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100"
                     @click="void openSelectedProposalSource()"
                   >
                     {{ tr('evolution.instructions.openSourceEvalRun', 'Open source eval run') }}
@@ -8233,43 +8233,43 @@ async function reviewSelectedProposal(action: ProposalAction) {
               </div>
             </div>
 
-            <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
-              <h3 class="text-base font-semibold text-slate-950">
+            <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
+              <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                 {{ tr('evolution.instructions.evidence', 'Proposal Evidence') }}
               </h3>
               <div
                 v-if="proposalDetailLoading"
-                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-4 text-sm text-slate-500 dark:text-slate-400"
               >
                 {{ tr('common.loading', 'Loading') }}
               </div>
               <div
                 v-else-if="selectedProposal"
                 data-testid="evolution-instructions-evidence-compact"
-                class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                class="mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4"
               >
                 <div class="grid gap-4 lg:grid-cols-2">
                   <div class="space-y-1.5">
                     <div
-                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                     >
                       {{ tr('evolution.instructions.whenToApply', 'When To Apply') }}
                     </div>
-                    <div class="text-sm leading-5 text-slate-700">
+                    <div class="text-sm leading-5 text-slate-700 dark:text-slate-200">
                       {{
                         selectedProposal.when_to_apply || tr('common.notAvailable', 'Not available')
                       }}
                     </div>
                   </div>
                   <div
-                    class="space-y-1.5 border-t border-slate-200 pt-4 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-0"
+                    class="space-y-1.5 border-t border-slate-200 dark:border-slate-700 pt-4 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-0"
                   >
                     <div
-                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                     >
                       {{ tr('evolution.instructions.evidenceText', 'Evidence') }}
                     </div>
-                    <div class="text-sm leading-5 text-slate-700">
+                    <div class="text-sm leading-5 text-slate-700 dark:text-slate-200">
                       {{ selectedProposal.evidence || tr('common.notAvailable', 'Not available') }}
                     </div>
                   </div>
@@ -8278,7 +8278,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <div
                 v-if="selectedProposalMeta.length > 0"
                 data-testid="evolution-instructions-meta-compact"
-                class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-4"
               >
                 <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                   <div
@@ -8287,11 +8287,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     class="space-y-1"
                   >
                     <div
-                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400"
                     >
                       {{ entry.label }}
                     </div>
-                    <div class="break-all text-sm leading-5 text-slate-700">
+                    <div class="break-all text-sm leading-5 text-slate-700 dark:text-slate-200">
                       {{ entry.value }}
                     </div>
                   </div>
@@ -8299,13 +8299,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
               </div>
             </div>
 
-            <div class="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+            <div class="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 shadow-sm">
               <div class="flex items-center justify-between gap-4">
                 <div>
-                  <h3 class="text-base font-semibold text-slate-950">
+                  <h3 class="text-base font-semibold text-slate-950 dark:text-slate-100">
                     {{ tr('evolution.instructions.patch', 'Patch Preview') }}
                   </h3>
-                  <p class="mt-1 text-sm leading-6 text-slate-500">
+                  <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                     {{
                       tr(
                         'evolution.instructions.patchHint',
@@ -8334,7 +8334,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <button
                     type="button"
                     data-testid="evolution-instructions-reject"
-                    class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-950 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="proposalActionLoading !== ''"
                     @click="reviewSelectedProposal('reject')"
                   >
@@ -8349,7 +8349,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <textarea
                 v-model="proposalReviewNote"
-                class="mt-4 min-h-[96px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                class="mt-4 min-h-[96px] w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 outline-none transition focus:border-slate-300 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900"
                 :placeholder="
                   tr(
                     'evolution.instructions.reviewNotePlaceholder',
@@ -8363,14 +8363,14 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   v-for="entry in selectedInstructionPatchSummary"
                   :key="entry.key"
                   :data-testid="`evolution-instructions-patch-summary-${entry.key}`"
-                  class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                  class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3"
                 >
-                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     {{ entry.label }}
                   </div>
                   <div
                     :data-testid="`evolution-instructions-patch-summary-value-${entry.key}`"
-                    class="mt-1.5 text-base font-semibold text-slate-950"
+                    class="mt-1.5 text-base font-semibold text-slate-950 dark:text-slate-100"
                   >
                     {{ entry.value }}
                   </div>
@@ -8379,7 +8379,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
 
               <pre
                 data-testid="evolution-instructions-patch"
-                class="mt-4 max-h-[520px] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
+                class="mt-4 max-h-[520px] overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
               >{{
                   selectedInstructionPatch ||
                   tr('evolution.instructions.noPatch', 'No patch preview available.')

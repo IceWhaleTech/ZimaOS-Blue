@@ -403,9 +403,9 @@ async function promoteToWiki() {
 }
 
 function issueChipClass(issue: KnowledgeLintIssue) {
-  if (issue.category === 'research_suggestions') return 'bg-sky-50 text-sky-700'
-  if (issue.category === 'auto_fixed') return 'bg-emerald-50 text-emerald-700'
-  return 'bg-rose-50 text-rose-700'
+  if (issue.category === 'research_suggestions') return 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
+  if (issue.category === 'auto_fixed') return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+  return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
 }
 
 function isGroupExpanded(groupName: string) {
@@ -450,7 +450,7 @@ onMounted(async () => {
   <div class="space-y-4">
     <div
       v-if="statusMessage"
-      class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+      class="rounded-2xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300"
     >
       {{ statusMessage }}
     </div>
@@ -458,11 +458,11 @@ onMounted(async () => {
     <div
       v-if="activeRepairJob"
       data-testid="knowledge-repair-progress"
-      class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900"
+      class="rounded-2xl border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/40 px-4 py-4 text-rose-900 dark:text-rose-200"
     >
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div class="text-[11px] uppercase tracking-[0.2em] text-rose-600">
+          <div class="text-[11px] uppercase tracking-[0.2em] text-rose-600 dark:text-rose-300">
             {{ tr('knowledge.repairConflictsProgress', 'Conflict repair in progress') }}
           </div>
           <div class="mt-2 text-sm font-semibold">
@@ -470,18 +470,18 @@ onMounted(async () => {
           </div>
           <p
             v-if="repairProgressDetail"
-            class="mt-1 text-sm text-rose-800"
+            class="mt-1 text-sm text-rose-800 dark:text-rose-200"
           >
             {{ tr('knowledge.repairConflictsCurrent', 'Currently processing') }}:
             {{ repairProgressDetail }}
           </p>
         </div>
-        <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
+        <span class="rounded-full bg-white dark:bg-slate-900 px-3 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 shadow-sm">
           {{ repairProgressPercent }}%
         </span>
       </div>
 
-      <div class="mt-3 h-2 overflow-hidden rounded-full bg-rose-100">
+      <div class="mt-3 h-2 overflow-hidden rounded-full bg-rose-100 dark:bg-rose-950/40">
         <div
           class="h-full rounded-full bg-rose-500 transition-[width] duration-300"
           :style="{ width: `${repairProgressPercent}%` }"
@@ -491,21 +491,21 @@ onMounted(async () => {
 
     <div
       v-if="errorMessage"
-      class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+      class="rounded-2xl border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/40 px-4 py-3 text-sm text-rose-700 dark:text-rose-300"
     >
       {{ errorMessage }}
     </div>
 
-    <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+    <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
       <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+          <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             {{ tr('knowledge.eyebrow', 'Knowledge Space') }}
           </div>
-          <h2 class="mt-2 text-[15px] font-semibold text-slate-950">
+          <h2 class="mt-2 text-[15px] font-semibold text-slate-950 dark:text-slate-100">
             {{ tr('knowledge.mapTitle', 'Knowledge map') }}
           </h2>
-          <p class="mt-1 text-[13px] leading-5 text-slate-600 sm:text-sm">
+          <p class="mt-1 text-[13px] leading-5 text-slate-600 dark:text-slate-300 sm:text-sm">
             {{
               tr(
                 'knowledge.mapHint',
@@ -528,7 +528,7 @@ onMounted(async () => {
           <button
             data-testid="knowledge-lint-button"
             type="button"
-            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:opacity-60"
+            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-slate-400 hover:text-slate-950 dark:hover:text-slate-100 disabled:opacity-60"
             :disabled="maintenanceJobs.isRunning.value"
             @click="startMaintenance('lint')"
           >
@@ -537,7 +537,7 @@ onMounted(async () => {
           <button
             data-testid="knowledge-repair-conflicts-button"
             type="button"
-            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/40 px-3.5 py-2 text-sm font-medium text-rose-700 dark:text-rose-300 transition hover:bg-rose-100 dark:hover:bg-rose-950/40 disabled:opacity-60"
             :disabled="maintenanceJobs.isRunning.value || conflictIssueCount === 0"
             @click="startMaintenance('repair_conflicts')"
           >
@@ -546,7 +546,7 @@ onMounted(async () => {
           <button
             data-testid="knowledge-maintenance-toggle"
             type="button"
-            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2 text-sm font-medium text-amber-900 dark:text-amber-200 transition hover:bg-amber-100 dark:hover:bg-amber-950/40"
             :aria-expanded="maintenanceExpanded ? 'true' : 'false'"
             @click="maintenanceExpanded = !maintenanceExpanded"
           >
@@ -556,7 +556,7 @@ onMounted(async () => {
       </div>
 
       <div class="mt-4 flex flex-wrap gap-2">
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+        <span class="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs text-slate-700 dark:text-slate-200">
           {{
             trp('knowledge.pageCount', '{count} pages', {
               count: knowledgeSummary.visiblePages,
@@ -565,7 +565,7 @@ onMounted(async () => {
         </span>
         <span
           v-if="knowledgeSummary.conflicts > 0"
-          class="rounded-full bg-rose-50 px-3 py-1 text-xs text-rose-700"
+          class="rounded-full bg-rose-50 dark:bg-rose-950/40 px-3 py-1 text-xs text-rose-700 dark:text-rose-300"
         >
           {{
             trp('knowledge.conflictCount', '{count} unresolved conflicts', {
@@ -575,7 +575,7 @@ onMounted(async () => {
         </span>
         <span
           v-if="knowledgeSummary.gaps > 0"
-          class="rounded-full bg-sky-50 px-3 py-1 text-xs text-sky-700"
+          class="rounded-full bg-sky-50 dark:bg-sky-950/40 px-3 py-1 text-xs text-sky-700 dark:text-sky-300"
         >
           {{
             trp('knowledge.gapCount', '{count} open gaps', {
@@ -589,12 +589,12 @@ onMounted(async () => {
         <input
           v-model="pageSearch"
           type="search"
-          class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+          class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none transition focus:border-amber-300 dark:focus:border-amber-800/70 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
           :placeholder="tr('knowledge.searchPlaceholder', 'Search titles, sources, keywords')"
         >
         <select
           v-model="pageTypeFilter"
-          class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+          class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none transition focus:border-amber-300 dark:focus:border-amber-800/70 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
         >
           <option
             v-for="pageType in allPageTypes"
@@ -606,7 +606,7 @@ onMounted(async () => {
         </select>
         <select
           v-model="statusFilter"
-          class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+          class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none transition focus:border-amber-300 dark:focus:border-amber-800/70 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
         >
           <option value="all">
             {{ tr('knowledge.allStatuses', 'all statuses') }}
@@ -625,7 +625,7 @@ onMounted(async () => {
 
       <div
         v-if="loading"
-        class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500"
+        class="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
       >
         {{ tr('common.loading', 'Loading...') }}
       </div>
@@ -646,23 +646,23 @@ onMounted(async () => {
           <div
             v-for="(groupPages, groupName) in groupedPages"
             :key="groupName"
-            class="rounded-[1.35rem] border border-slate-200 bg-slate-50/70 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+            class="rounded-[1.35rem] border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
           >
             <button
               :data-testid="`knowledge-group-toggle-${groupName}`"
               type="button"
-              class="flex min-h-11 w-full items-center justify-between gap-3 rounded-[1.1rem] px-3 py-2.5 text-left transition hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              class="flex min-h-11 w-full items-center justify-between gap-3 rounded-[1.1rem] px-3 py-2.5 text-left transition hover:bg-white/70 dark:hover:bg-slate-900/70 focus:outline-none focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
               :aria-controls="`knowledge-group-panel-${groupName}`"
               :aria-expanded="isGroupExpanded(groupName) ? 'true' : 'false'"
               :aria-label="`${isGroupExpanded(groupName) ? tr('common.collapse', 'Collapse') : tr('common.expand', 'Expand')} ${pageTypeLabel(groupName)}`"
               @click="toggleGroup(groupName)"
             >
-              <h3 class="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              <h3 class="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
                 {{ pageTypeLabel(groupName) }}
               </h3>
 
               <span class="flex items-center gap-2">
-                <span class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-500">
+                <span class="rounded-full bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-500 dark:text-slate-400">
                   {{ groupPages.length }}
                 </span>
                 <svg
@@ -696,8 +696,8 @@ onMounted(async () => {
                 class="w-full rounded-2xl border px-3 py-3 text-left transition"
                 :class="
                   page.slug === selectedSlug
-                    ? 'border-amber-300 bg-amber-50 text-amber-950 shadow-sm'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                    ? 'border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                 "
                 @click="loadPage(page.slug)"
               >
@@ -706,7 +706,7 @@ onMounted(async () => {
                     <div class="truncate text-sm font-semibold">
                       {{ page.title }}
                     </div>
-                    <div class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                    <div class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
                       {{ page.summary }}
                     </div>
                   </div>
@@ -714,10 +714,10 @@ onMounted(async () => {
                     class="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em]"
                     :class="
                       page.status === 'conflicted'
-                        ? 'bg-rose-100 text-rose-700'
+                        ? 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
                         : page.status === 'superseded'
-                          ? 'bg-slate-200 text-slate-700'
-                          : 'bg-emerald-100 text-emerald-700'
+                          ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                          : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
                     "
                   >
                     {{ statusLabel(page.status) }}
@@ -727,7 +727,7 @@ onMounted(async () => {
 
               <div
                 v-if="groupPages.length === 0"
-                class="text-sm text-slate-500"
+                class="text-sm text-slate-500 dark:text-slate-400"
               >
                 {{ tr('knowledge.emptyGroup', 'No pages in this group yet.') }}
               </div>
@@ -738,13 +738,13 @@ onMounted(async () => {
     </section>
 
     <div class="grid items-start gap-4">
-      <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+      <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 class="text-[15px] font-semibold text-slate-950">
+            <h2 class="text-[15px] font-semibold text-slate-950 dark:text-slate-100">
               {{ tr('knowledge.queryTitle', 'Query') }}
             </h2>
-            <p class="mt-1 text-[13px] leading-5 text-slate-600 sm:text-sm">
+            <p class="mt-1 text-[13px] leading-5 text-slate-600 dark:text-slate-300 sm:text-sm">
               {{
                 tr(
                   'knowledge.queryHint',
@@ -757,7 +757,7 @@ onMounted(async () => {
           <select
             v-model="queryScope"
             data-testid="knowledge-query-scope"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+            class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none transition focus:border-amber-300 dark:focus:border-amber-800/70 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
           >
             <option value="all">
               {{ tr('knowledge.scopeAll', 'all') }}
@@ -775,7 +775,7 @@ onMounted(async () => {
           v-model="queryText"
           data-testid="knowledge-query-input"
           rows="4"
-          class="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+          class="mt-4 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none transition focus:border-amber-300 dark:focus:border-amber-800/70 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
           :placeholder="
             tr(
               'knowledge.queryPlaceholder',
@@ -784,18 +784,18 @@ onMounted(async () => {
           "
         />
 
-        <label class="mt-4 flex items-center gap-3 text-sm text-slate-600">
+        <label class="mt-4 flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
           <input
             v-model="saveAnswer"
             type="checkbox"
-            class="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+            class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-amber-600 dark:text-amber-300 focus:ring-amber-500"
           >
           {{ tr('knowledge.saveAnswer', 'Save answer history') }}
         </label>
 
         <div
           v-if="answerError"
-          class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+          class="mt-4 rounded-2xl border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/40 px-4 py-3 text-sm text-rose-700 dark:text-rose-300"
         >
           {{ answerError }}
         </div>
@@ -813,7 +813,7 @@ onMounted(async () => {
           <button
             v-if="answerReport"
             type="button"
-            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2 text-sm font-medium text-amber-900 dark:text-amber-200 transition hover:bg-amber-100 dark:hover:bg-amber-950/40 disabled:opacity-60"
             :disabled="promoting"
             @click="promoteToWiki"
           >
@@ -823,18 +823,18 @@ onMounted(async () => {
 
         <div
           v-if="answerReport"
-          class="mt-5 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-4"
+          class="mt-5 rounded-2xl border border-amber-200/70 dark:border-amber-800/70 bg-amber-50/70 dark:bg-amber-950/40 p-4"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div class="text-[11px] uppercase tracking-[0.2em] text-amber-700">
+              <div class="text-[11px] uppercase tracking-[0.2em] text-amber-700 dark:text-amber-300">
                 {{ tr('knowledge.answerResult', 'Query result') }}
               </div>
-              <p class="mt-2 whitespace-pre-wrap text-[13px] leading-5 text-amber-950 sm:text-sm">
+              <p class="mt-2 whitespace-pre-wrap text-[13px] leading-5 text-amber-950 dark:text-amber-200 sm:text-sm">
                 {{ answerReport.answer }}
               </p>
             </div>
-            <span class="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-700">
+            <span class="rounded-full bg-white dark:bg-slate-900 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
               {{ answerReport.confidence || tr('knowledge.unknown', 'unknown') }}
             </span>
           </div>
@@ -846,7 +846,7 @@ onMounted(async () => {
             <span
               v-for="citation in answerReport.citations"
               :key="`${citation.page_slug}-${citation.title}`"
-              class="rounded-full bg-white px-3 py-1 text-xs text-amber-800 shadow-sm"
+              class="rounded-full bg-white dark:bg-slate-900 px-3 py-1 text-xs text-amber-800 dark:text-amber-200 shadow-sm"
             >
               {{ citation.title }}
             </span>
@@ -854,24 +854,24 @@ onMounted(async () => {
 
           <div
             v-if="answerReport.conflict_notes?.length"
-            class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700"
+            class="mt-4 rounded-2xl border border-rose-200 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-950/40 px-3 py-3 text-sm text-rose-700 dark:text-rose-300"
           >
             {{ answerReport.conflict_notes.join(' · ') }}
           </div>
 
           <div
             v-if="answerReport.open_questions?.length"
-            class="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-700"
+            class="mt-4 rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50 dark:bg-sky-950/40 px-3 py-3 text-sm text-sky-700 dark:text-sky-300"
           >
             {{ answerReport.open_questions.join(' · ') }}
           </div>
         </div>
       </section>
 
-      <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+      <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm">
         <div
           v-if="pageLoading"
-          class="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500"
+          class="rounded-2xl bg-slate-50 dark:bg-slate-800 px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
         >
           {{ tr('common.loading', 'Loading...') }}
         </div>
@@ -883,7 +883,7 @@ onMounted(async () => {
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div class="flex flex-wrap items-center gap-2">
-                <h2 class="text-lg font-semibold text-slate-950 sm:text-xl">
+                <h2 class="text-lg font-semibold text-slate-950 dark:text-slate-100 sm:text-xl">
                   {{ selectedPage.title }}
                 </h2>
                 <span
@@ -892,17 +892,17 @@ onMounted(async () => {
                   {{ selectedPage.page_type }}
                 </span>
               </div>
-              <p class="mt-2 max-w-2xl text-[13px] leading-5 text-slate-600 sm:text-sm">
+              <p class="mt-2 max-w-2xl text-[13px] leading-5 text-slate-600 dark:text-slate-300 sm:text-sm">
                 {{ selectedPage.summary }}
               </p>
               <div class="mt-3 flex flex-wrap gap-2">
-                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                <span class="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs text-slate-600 dark:text-slate-300">
                   {{ tr('common.updatedAt', 'Updated') }}: {{ formatDate(selectedPage.updated_at) }}
                 </span>
                 <span
                   v-for="keyword in selectedKeywords"
                   :key="keyword"
-                  class="rounded-full bg-white px-3 py-1 text-xs text-slate-500 shadow-sm"
+                  class="rounded-full bg-white dark:bg-slate-900 px-3 py-1 text-xs text-slate-500 dark:text-slate-400 shadow-sm"
                 >
                   {{ keyword }}
                 </span>
@@ -911,11 +911,11 @@ onMounted(async () => {
           </div>
 
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-3">
+              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 {{ tr('knowledge.evidenceState', 'Evidence & State') }}
               </div>
-              <div class="mt-3 space-y-2 text-[13px] text-slate-700 sm:text-sm">
+              <div class="mt-3 space-y-2 text-[13px] text-slate-700 dark:text-slate-200 sm:text-sm">
                 <div>
                   <strong>{{ tr('knowledge.evidence.status', 'status') }}:</strong>
                   {{ statusLabel(selectedPage.status) }}
@@ -943,8 +943,8 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-3">
+              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 {{ tr('knowledge.relatedPages', 'Related pages') }}
               </div>
               <div class="mt-3 flex max-h-32 flex-wrap content-start gap-2 overflow-y-auto pr-1">
@@ -952,40 +952,40 @@ onMounted(async () => {
                   v-for="slug in selectedPage.backlinks"
                   :key="slug"
                   type="button"
-                  class="rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm transition hover:bg-amber-50"
+                  class="rounded-full bg-white dark:bg-slate-900 px-3 py-1 text-xs text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-amber-50 dark:hover:bg-amber-950/40"
                   @click="loadPage(slug)"
                 >
                   {{ slug }}
                 </button>
                 <span
                   v-if="selectedPage.backlinks.length === 0"
-                  class="text-sm text-slate-500"
+                  class="text-sm text-slate-500 dark:text-slate-400"
                 >
                   {{ tr('knowledge.noRelatedPages', 'No related pages linked yet.') }}
                 </span>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-3">
+              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 {{ tr('knowledge.archivedAnswers', 'Saved answers') }}
               </div>
               <div class="mt-3 space-y-2">
                 <div
                   v-for="answer in selectedAnswers"
                   :key="answer.path"
-                  class="rounded-2xl bg-white px-3 py-2 text-[13px] text-slate-700 shadow-sm sm:text-sm"
+                  class="rounded-2xl bg-white dark:bg-slate-900 px-3 py-2 text-[13px] text-slate-700 dark:text-slate-200 shadow-sm sm:text-sm"
                 >
                   <div class="font-medium">
                     {{ answer.query }}
                   </div>
-                  <div class="mt-1 text-xs text-slate-500">
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {{ answer.summary }}
                   </div>
                 </div>
                 <div
                   v-if="selectedAnswers.length === 0"
-                  class="text-sm text-slate-500"
+                  class="text-sm text-slate-500 dark:text-slate-400"
                 >
                   {{
                     tr('knowledge.noArchivedAnswers', 'No saved answers linked to this page yet.')
@@ -994,8 +994,8 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-3">
+              <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 {{ tr('knowledge.lintHealth', 'Lint health') }}
               </div>
               <div
@@ -1011,7 +1011,7 @@ onMounted(async () => {
                 </span>
                 <span
                   v-if="!latestLint?.issues?.length"
-                  class="text-sm text-slate-500"
+                  class="text-sm text-slate-500 dark:text-slate-400"
                 >
                   {{ tr('knowledge.lintHealthy', 'Latest lint found no open issues.') }}
                 </span>
@@ -1019,7 +1019,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-slate-200 bg-slate-950 p-4 shadow-inner">
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-950 p-4 shadow-inner">
             <div class="text-[11px] uppercase tracking-[0.2em] text-slate-400">
               {{ tr('knowledge.pageBody', 'Compiled markdown') }}
             </div>
@@ -1031,7 +1031,7 @@ onMounted(async () => {
 
         <div
           v-else
-          class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500"
+          class="rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
         >
           {{ tr('knowledge.selectPage', 'Select a page to inspect its detail view.') }}
         </div>
@@ -1041,18 +1041,18 @@ onMounted(async () => {
     <section
       v-if="maintenanceExpanded"
       data-testid="knowledge-maintenance-panel"
-      class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm"
+      class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-4 shadow-sm"
     >
       <div class="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
         <aside class="space-y-4">
-          <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+          <section class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 p-4">
+            <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               {{ tr('knowledge.controlEyebrow', 'Knowledge Control') }}
             </div>
-            <h2 class="mt-2 text-[15px] font-semibold text-slate-950">
+            <h2 class="mt-2 text-[15px] font-semibold text-slate-950 dark:text-slate-100">
               {{ tr('knowledge.controlTitle', 'Ingest and maintain Blue knowledge') }}
             </h2>
-            <p class="mt-1 text-[13px] leading-5 text-slate-600 sm:text-sm">
+            <p class="mt-1 text-[13px] leading-5 text-slate-600 dark:text-slate-300 sm:text-sm">
               {{
                 tr(
                   'knowledge.controlDescription',
@@ -1064,14 +1064,14 @@ onMounted(async () => {
             <div class="mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2 text-sm font-medium text-amber-900 dark:text-amber-200 transition hover:bg-amber-100 dark:hover:bg-amber-950/40"
                 @click="scrollToPanel('schema')"
               >
                 {{ tr('knowledge.openSchema', 'Open Schema') }}
               </button>
               <button
                 type="button"
-                class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 px-3.5 py-2 text-sm font-medium text-sky-900 transition hover:bg-sky-100"
+                class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50 dark:bg-sky-950/40 px-3.5 py-2 text-sm font-medium text-sky-900 dark:text-sky-200 transition hover:bg-sky-100 dark:hover:bg-sky-950/40"
                 @click="scrollToPanel('log')"
               >
                 {{ tr('knowledge.openLog', 'Open Log') }}
@@ -1080,9 +1080,9 @@ onMounted(async () => {
 
             <div
               v-if="latestIngest"
-              class="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3 text-xs text-slate-600"
+              class="mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 p-3 text-xs text-slate-600 dark:text-slate-300"
             >
-              <div class="font-semibold text-slate-900">
+              <div class="font-semibold text-slate-900 dark:text-slate-100">
                 {{ tr('knowledge.latestIngestDelta', 'Latest ingest delta') }}
               </div>
               <div class="mt-2">
@@ -1097,9 +1097,9 @@ onMounted(async () => {
 
             <div
               v-else-if="latestIngestEntry"
-              class="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3 text-xs text-slate-600"
+              class="mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 p-3 text-xs text-slate-600 dark:text-slate-300"
             >
-              <div class="font-semibold text-slate-900">
+              <div class="font-semibold text-slate-900 dark:text-slate-100">
                 {{ tr('knowledge.latestIngestDelta', 'Latest ingest delta') }}
               </div>
               <div class="mt-2 space-y-1">
@@ -1125,14 +1125,14 @@ onMounted(async () => {
 
           <section
             id="knowledge-panel-schema"
-            class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm"
           >
             <div class="flex items-center justify-between gap-3">
               <div>
-                <h2 class="text-[15px] font-semibold text-slate-950">
+                <h2 class="text-[15px] font-semibold text-slate-950 dark:text-slate-100">
                   {{ tr('knowledge.schemaTitle', 'Schema') }}
                 </h2>
-                <p class="mt-1 text-[13px] text-slate-600 sm:text-sm">
+                <p class="mt-1 text-[13px] text-slate-600 dark:text-slate-300 sm:text-sm">
                   {{ tr('knowledge.schemaHint', 'Define how the wiki should be organized.') }}
                 </p>
               </div>
@@ -1140,8 +1140,8 @@ onMounted(async () => {
                 class="rounded-full px-2.5 py-1 text-[11px] font-medium"
                 :class="
                   selectedMaintenancePanel === 'schema'
-                    ? 'bg-amber-100 text-amber-700'
-                    : 'bg-slate-100 text-slate-600'
+                    ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                 "
               >
                 {{ tr('knowledge.active', 'Active') }}
@@ -1152,7 +1152,7 @@ onMounted(async () => {
               v-model="schemaContent"
               data-testid="knowledge-schema-editor"
               rows="10"
-              class="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+              class="mt-3 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none transition focus:border-amber-300 dark:focus:border-amber-800/70 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-800/70"
             />
 
             <button
@@ -1169,14 +1169,14 @@ onMounted(async () => {
         <section
           id="knowledge-panel-log"
           data-testid="knowledge-panel-log"
-          class="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:h-[36rem]"
+          class="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm xl:h-[36rem]"
         >
           <div class="flex items-center justify-between gap-3">
             <div>
-              <h2 class="text-[15px] font-semibold text-slate-950">
+              <h2 class="text-[15px] font-semibold text-slate-950 dark:text-slate-100">
                 {{ tr('knowledge.activityTitle', 'Recent activity') }}
               </h2>
-              <p class="mt-1 text-[13px] text-slate-600 sm:text-sm">
+              <p class="mt-1 text-[13px] text-slate-600 dark:text-slate-300 sm:text-sm">
                 {{
                   tr(
                     'knowledge.activityHint',
@@ -1189,8 +1189,8 @@ onMounted(async () => {
               class="rounded-full px-2.5 py-1 text-[11px] font-medium"
               :class="
                 selectedMaintenancePanel === 'log'
-                  ? 'bg-sky-100 text-sky-700'
-                  : 'bg-slate-100 text-slate-600'
+                  ? 'bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
               "
             >
               {{ recentActivity.length }}
@@ -1201,24 +1201,24 @@ onMounted(async () => {
             <article
               v-for="entry in recentActivity"
               :key="`${entry.timestamp}-${entry.operation}-${entry.title}`"
-              class="rounded-2xl border border-slate-200 bg-slate-50/80 p-3"
+              class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 p-3"
             >
               <div class="flex items-center justify-between gap-3">
-                <div class="text-sm font-semibold text-slate-900">
+                <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">
                   {{ entry.title }}
                 </div>
                 <span
-                  class="rounded-full bg-white px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-slate-500"
+                  class="rounded-full bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400"
                 >
                   {{ entry.operation }}
                 </span>
               </div>
-              <div class="mt-2 text-xs text-slate-500">
+              <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 {{ formatDate(entry.timestamp) }}
               </div>
               <div
                 v-if="entry.reason"
-                class="mt-2 text-sm text-slate-600"
+                class="mt-2 text-sm text-slate-600 dark:text-slate-300"
               >
                 {{ entry.reason }}
               </div>

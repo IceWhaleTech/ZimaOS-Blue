@@ -2106,18 +2106,18 @@ onUnmounted(() => {
       <AutomationTabs class="automation-tab-strip" />
 
       <section
-        class="overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_38%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.96))] shadow-sm"
+        class="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_38%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.96))] shadow-sm dark:bg-none dark:bg-surface-elevated"
       >
-        <div class="flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 sm:px-5">
+        <div class="flex flex-col gap-4 border-b border-slate-200/80 dark:border-slate-700/80 px-4 py-4 sm:px-5">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div class="space-y-2">
-              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
                 {{ t('nav.automation') }}
               </p>
-              <h1 class="text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">
+              <h1 class="text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-100 sm:text-2xl">
                 {{ tr('automation.tabs.harness', 'Harness') }}
               </h1>
-              <p class="max-w-2xl text-sm leading-5 text-slate-600">
+              <p class="max-w-2xl text-sm leading-5 text-slate-600 dark:text-slate-300">
                 {{
                   tr(
                     'harness.groups.subtitle',
@@ -2127,7 +2127,7 @@ onUnmounted(() => {
               </p>
             </div>
             <div
-              class="inline-flex items-center rounded-full border border-white/70 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:text-sm"
+              class="inline-flex items-center rounded-full border border-white/70 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-sm sm:text-sm"
             >
               {{ formatCount(activeEvalRuns) }}
               {{ tr('harness.evalRuns.active', 'Active eval runs') }}
@@ -2138,12 +2138,12 @@ onUnmounted(() => {
             <article
               v-for="card in harnessSummaryCards"
               :key="card.key"
-              class="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5"
+              class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 px-3 py-2.5"
             >
-              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                 {{ card.label }}
               </div>
-              <div class="mt-2 text-lg font-semibold text-slate-950 sm:text-xl">
+              <div class="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-100 sm:text-xl">
                 {{ card.value }}
               </div>
             </article>

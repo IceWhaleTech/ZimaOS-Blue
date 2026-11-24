@@ -6,7 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ICONS_DIR="$SCRIPT_DIR/../tauri-app/src-tauri/icons"
 NSIS_ICONS_DIR="$SCRIPT_DIR/../tauri-app/src-tauri/nsis/icons"
-SOURCE="$ICONS_DIR/icon-source.svg"
+SOURCE="$SCRIPT_DIR/../web/public/logo.svg"
 ICONSET_DIR="/tmp/zimaos-blue.iconset"
 
 if ! command -v rsvg-convert &>/dev/null; then
@@ -14,6 +14,7 @@ if ! command -v rsvg-convert &>/dev/null; then
   brew install librsvg
 fi
 
+mkdir -p "$ICONS_DIR" "$NSIS_ICONS_DIR"
 echo "Generating PNGs from $SOURCE..."
 
 # Generate main icon.png (1024x1024)
@@ -26,9 +27,9 @@ rsvg-convert -w 48  -h 48  "$SOURCE" -o "$ICONS_DIR/48x48.png"
 rsvg-convert -w 128 -h 128 "$SOURCE" -o "$ICONS_DIR/128x128.png"
 rsvg-convert -w 256 -h 256 "$SOURCE" -o "$ICONS_DIR/128x128@2x.png"
 
-# Generate tray icon from dedicated tray-source.svg (single-color template, 44x44 for Retina)
-TRAY_SOURCE="$ICONS_DIR/tray-source.svg"
-rsvg-convert -w 44 -h 44 "$TRAY_SOURCE" -o "$ICONS_DIR/tray.png"
+# Keep the transparent macOS template separate from the colored Windows/Linux tray icon.
+TRAY_SOURCE="$NSIS_ICONS_DIR/tray-template.svg"
+rsvg-convert -w 44 -h 44 "$TRAY_SOURCE" -o "$NSIS_ICONS_DIR/tray-template.png"
 
 # Generate macOS .icns via iconutil
 rm -rf "$ICONSET_DIR"

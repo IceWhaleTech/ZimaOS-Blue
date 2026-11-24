@@ -120,12 +120,16 @@ const PANEL_WINDOW_MIN_WIDTH: f64 = 640.0;
 const PANEL_WINDOW_MIN_HEIGHT: f64 = 420.0;
 const PANEL_WINDOW_PATH: &str = "/chat?panel=1";
 const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
-(() => {
+(function renderSplash() {
   if (window.location.href !== 'about:blank') {
     return;
   }
   const body = document.body;
   if (!body) {
+    document.addEventListener('DOMContentLoaded', renderSplash, { once: true });
+    return;
+  }
+  if (document.querySelector('.startup-shell')) {
     return;
   }
   const useGlass = Boolean(window.__BLUE_MACOS_GLASS__);
@@ -2278,8 +2282,12 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&panel, &quit])?;
 
             // Build tray icon with template image (macOS auto-adapts for light/dark mode)
-            let icon = Image::from_bytes(include_bytes!("../nsis/icons/tray.png"))
-                .expect("Failed to load tray icon");
+            let icon = Image::from_bytes(if cfg!(target_os = "macos") {
+                include_bytes!("../nsis/icons/tray-template.png").as_slice()
+            } else {
+                include_bytes!("../nsis/icons/tray.png").as_slice()
+            })
+            .expect("Failed to load tray icon");
             let tray = TrayIconBuilder::new()
                 .icon(icon)
                 .icon_as_template(true)

@@ -2826,21 +2826,21 @@ onUnmounted(() => {
   }
 }
 
-:global([data-theme='dark']) .browser-monitor-launcher {
+[data-theme='dark'] .browser-monitor-launcher {
   border-color: rgba(71, 85, 105, 0.48);
   background:
     linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94)), rgba(15, 23, 42, 0.94);
 }
 
-:global([data-theme='dark']) .browser-monitor-launcher__copy strong {
+[data-theme='dark'] .browser-monitor-launcher__copy strong {
   color: #f8fafc;
 }
 
-:global([data-theme='dark']) .browser-monitor-launcher__copy span {
+[data-theme='dark'] .browser-monitor-launcher__copy span {
   color: #cbd5e1;
 }
 
-:global([data-theme='dark']) .browser-monitor {
+[data-theme='dark'] .browser-monitor {
   border-color: rgba(71, 85, 105, 0.42);
   background:
     radial-gradient(circle at top left, rgba(245, 158, 11, 0.12), transparent 30%),
@@ -2848,91 +2848,95 @@ onUnmounted(() => {
     rgba(15, 23, 42, 0.9);
 }
 
-:global([data-theme='dark']) .browser-monitor__sidebar {
+[data-theme='dark'] .browser-monitor__sidebar {
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.82)), rgba(15, 23, 42, 0.84);
   border-right-color: rgba(71, 85, 105, 0.38);
 }
 
-:global([data-theme='dark']) .browser-monitor__panel,
-:global([data-theme='dark']) .browser-monitor__task {
+[data-theme='dark'] .browser-monitor__panel,
+[data-theme='dark'] .browser-monitor__task {
   background: rgba(15, 23, 42, 0.72);
   border-color: rgba(71, 85, 105, 0.4);
 }
 
-:global([data-theme='dark']) .browser-monitor__filter-chip {
+[data-theme='dark'] .browser-monitor__filter-chip {
   border-color: rgba(71, 85, 105, 0.52);
   background: rgba(30, 41, 59, 0.88);
   color: #cbd5e1;
 }
 
-:global([data-theme='dark']) .browser-monitor__filter-chip.is-active {
+[data-theme='dark'] .browser-monitor__filter-chip.is-active {
   border-color: rgba(125, 211, 252, 0.34);
   background: rgba(14, 165, 233, 0.18);
   color: #bae6fd;
 }
 
-:global([data-theme='dark']) .browser-monitor__capability.is-alert {
+[data-theme='dark'] .browser-monitor__capability {
+  background: rgba(30, 41, 59, 0.72);
+}
+
+[data-theme='dark'] .browser-monitor__capability.is-alert {
   background: linear-gradient(135deg, rgba(127, 29, 29, 0.42), rgba(120, 53, 15, 0.34));
 }
 
-:global([data-theme='dark']) .browser-monitor__panel-heading,
-:global([data-theme='dark']) .browser-monitor__capability-label,
-:global([data-theme='dark']) .browser-monitor__task-title {
+[data-theme='dark'] .browser-monitor__panel-heading,
+[data-theme='dark'] .browser-monitor__capability-label,
+[data-theme='dark'] .browser-monitor__task-title {
   color: #f8fafc;
 }
 
-:global([data-theme='dark']) .browser-monitor__hint,
-:global([data-theme='dark']) .browser-monitor__capability-detail,
-:global([data-theme='dark']) .browser-monitor__task-meta,
-:global([data-theme='dark']) .browser-monitor__task-subtitle,
-:global([data-theme='dark']) .browser-monitor__task-blocker,
-:global([data-theme='dark']) .browser-monitor__empty {
+[data-theme='dark'] .browser-monitor__hint,
+[data-theme='dark'] .browser-monitor__capability-detail,
+[data-theme='dark'] .browser-monitor__task-meta,
+[data-theme='dark'] .browser-monitor__task-subtitle,
+[data-theme='dark'] .browser-monitor__task-blocker,
+[data-theme='dark'] .browser-monitor__empty {
   color: #cbd5e1;
 }
 
-:global([data-theme='dark']) .browser-monitor__empty {
+[data-theme='dark'] .browser-monitor__empty {
   background: rgba(30, 41, 59, 0.82);
 }
 
-:global([data-theme='dark']) .browser-monitor__priority-pill {
+[data-theme='dark'] .browser-monitor__priority-pill {
   background: rgba(255, 255, 255, 0.08);
   color: #e2e8f0;
 }
 
-:global([data-theme='dark']) .browser-monitor__task-blocker {
+[data-theme='dark'] .browser-monitor__task-blocker {
   background: rgba(245, 158, 11, 0.18);
   color: #fde68a;
 }
 
-:global([data-theme='dark']) .browser-monitor__timeline-shot {
+[data-theme='dark'] .browser-monitor__timeline-shot {
   background: rgba(15, 23, 42, 0.76);
   border-color: rgba(71, 85, 105, 0.4);
   color: #cbd5e1;
 }
 
-:global([data-theme='dark']) .browser-monitor__timeline-shot.is-active {
+[data-theme='dark'] .browser-monitor__timeline-shot.is-active {
   border-color: rgba(125, 211, 252, 0.38);
   background: rgba(14, 165, 233, 0.18);
   color: #f8fafc;
 }
 
-:global([data-theme='dark']) .browser-monitor__compact {
+[data-theme='dark'] .browser-monitor__compact {
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.66), rgba(15, 23, 42, 0.82)), rgba(15, 23, 42, 0.76);
 }
 
-:global([data-theme='dark']) .browser-monitor__compact-thumb {
+[data-theme='dark'] .browser-monitor__compact-thumb {
   border-color: rgba(71, 85, 105, 0.48);
   background: rgba(15, 23, 42, 0.72);
 }
 
-:global([data-theme='dark']) .browser-monitor__compact-thumb.is-active {
+[data-theme='dark'] .browser-monitor__compact-thumb.is-active {
   border-color: rgba(125, 211, 252, 0.52);
   box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.24);
 }
 
-:global([data-theme='dark']) .browser-monitor__resize-grip {
+[data-theme='dark'] .browser-monitor__resize-grip {
   background: linear-gradient(
     135deg,
     transparent 0 42%,
